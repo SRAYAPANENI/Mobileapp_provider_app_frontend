@@ -33,7 +33,7 @@ export const JOBS_DATA: Record<string, any> = {
     categoryTag: 'Urgent / Technical',
     skillMatch: 92,
     employer: {
-      name: 'SkoFy Home Services',
+      name: 'Dodorez Home Services',
       rating: 4.8,
       jobsCompleted: 1240,
       image: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=200',
@@ -42,7 +42,7 @@ export const JOBS_DATA: Record<string, any> = {
       'Must have own toolset for AC repair.',
       'Proper identification card required.',
       'Must report 10 mins early for safety briefing.',
-      'Uniform provided by SkoFy or wear clean neutral clothing.',
+      'Uniform provided by Dodorez or wear clean neutral clothing.',
     ],
     media: [
       { type: 'image', url: 'https://picsum.photos/id/1048/1200/800', thumbnail: 'https://picsum.photos/id/1048/400/300' },

@@ -643,7 +643,7 @@ export default function JobDetailsScreen() {
                   <Marker coordinate={userLocation} title="Your Location">
                     <View style={styles.skofyMarkerContainer}>
                       <Image
-                        source={require('@/assets/images/logo.png')}
+                        source={require('@/assets/images/icon-mark.png')}
                         style={styles.skofyMarkerIcon}
                         contentFit="contain"
                       />

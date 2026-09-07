@@ -124,7 +124,7 @@ async function showIncomingCallNotification(data: IncomingCallData) {
       channelId: CALL_CHANNEL_ID,
       importance: AndroidImportance.HIGH,
       category: 'call' as any,
-      largeIcon: require('@/assets/images/logo.png'),
+      largeIcon: require('@/assets/images/icon-mark.png'),
       circularLargeIcon: true,
       fullScreenAction: { id: 'default' },
       pressAction: { id: 'default' },
@@ -642,7 +642,7 @@ function setupCallKeepForIOS() {
 
   RNCallKeep.setup({
     ios: {
-      appName: 'SkoFy Provider',
+      appName: 'Dodorez Pro',
       supportsVideo: false,
       maximumCallGroups: '1',
       maximumCallsPerCallGroup: '1',

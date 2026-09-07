@@ -1,5 +1,5 @@
 /**
- * SkoFy Service Provider App — API Client
+ * Dodorez Pro — API Client
  *
  * Real HTTP calls to the FastAPI backend.
  * - Tokens stored securely via expo-secure-store
@@ -252,7 +252,7 @@ export const SkoFyApi = {
       // should never actually fire. Kept as a safety net in case the
       // contract ever changes.
       if (data.role !== 'provider') {
-        throw { success: false, error_code: 'WRONG_APP', message: 'This number is registered as a Customer account. Please use the SkoFy Customer app.' } as ApiError;
+        throw { success: false, error_code: 'WRONG_APP', message: 'This number is registered as a Customer account. Please use the Dodorez Customer app.' } as ApiError;
       }
       await TokenStore.setTokens(data.tokens.access_token, data.tokens.refresh_token);
       const user: AuthUser = {
@@ -323,7 +323,7 @@ export const SkoFyApi = {
         skipAuth: true,
       });
       if (data.role !== 'provider') {
-        throw { success: false, error_code: 'WRONG_APP', message: 'This number is registered as a Customer account. Please use the SkoFy Customer app.' } as ApiError;
+        throw { success: false, error_code: 'WRONG_APP', message: 'This number is registered as a Customer account. Please use the Dodorez Customer app.' } as ApiError;
       }
       await TokenStore.setTokens(data.tokens.access_token, data.tokens.refresh_token);
       const user: AuthUser = {

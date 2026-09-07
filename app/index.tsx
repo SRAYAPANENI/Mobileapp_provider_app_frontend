@@ -1,7 +1,7 @@
+import AnimatedBrandMark from '@/components/animated-brand-mark';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import React, { useEffect, useMemo } from 'react';
 import { TokenStore } from '@/services/api';
@@ -101,12 +101,8 @@ export default function SplashScreen() {
 
       {/* Content Layer: Logo and Tagline */}
       <View style={styles.content}>
-        <Animated.View style={[styles.logoContainer, logoStyle]}>
-          <Image
-            source={require('@/assets/images/logo.png')}
-            style={styles.logo}
-            contentFit="contain"
-          />
+        <Animated.View style={logoStyle}>
+          <AnimatedBrandMark size={48} nameSize={30} />
         </Animated.View>
         <Animated.View style={[styles.taglineContainer, taglineStyle]}>
           <Text style={styles.tagline}>Skill. Service. Success.</Text>
@@ -196,7 +192,12 @@ function StructureNode({ node, progress }: { node: any; progress: SharedValue<nu
     };
   });
 
-  return <AnimatedCircle animatedProps={animatedProps} fill={Colors.light.brand} />;
+  // Was Colors.light.brand (pale yellow, #FFCE48) — measured contrast against
+  // the white splash background is 1.48:1, functionally invisible (same
+  // problem measured earlier for yellow text on white elsewhere in this
+  // app). Dark navy matches the wordmark's own "Dod" color and gives a real
+  // 17.74:1 contrast, so the animation is actually visible.
+  return <AnimatedCircle animatedProps={animatedProps} fill="#111827" />;
 }
 
 function StructureLine({ p1, p2, progress }: { p1: any; p2: any; progress: SharedValue<number> }) {
@@ -233,7 +234,7 @@ function StructureLine({ p1, p2, progress }: { p1: any; p2: any; progress: Share
     };
   });
 
-  return <AnimatedLine animatedProps={animatedProps} stroke={Colors.light.brand} strokeWidth="1.5" />;
+  return <AnimatedLine animatedProps={animatedProps} stroke="#111827" strokeWidth="1.5" />;
 }
 
 function makeStyles(t: typeof Colors.light) {
@@ -248,16 +249,6 @@ function makeStyles(t: typeof Colors.light) {
       alignItems: 'center',
       justifyContent: 'center',
       zIndex: 10,
-    },
-    logoContainer: {
-      width: 280,
-      height: 100,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    logo: {
-      width: 240,
-      height: 80,
     },
     taglineContainer: {
       marginTop: 8,

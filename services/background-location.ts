@@ -39,7 +39,7 @@ export async function startBackgroundLocation() {
       timeInterval: 2000,   // … OR every 2 s while standing still
       // Foreground service keeps the task alive even when the app is swiped away
       foregroundService: {
-        notificationTitle: 'SkoFy — On the way',
+        notificationTitle: 'Dodorez Pro — On the way',
         notificationBody: 'Your location is being shared with the customer.',
         notificationColor: '#FFCE48',
       },

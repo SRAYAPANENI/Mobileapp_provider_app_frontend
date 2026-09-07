@@ -331,7 +331,7 @@ export default function ChatScreen() {
       // direct way there instead of leaving the user to find it themselves.
       Alert.alert(
         'Call Failed',
-        'Could not access the microphone. Enable microphone access for SkoFy in your phone\'s settings and try again.',
+        'Could not access the microphone. Enable microphone access for Dodorez in your phone\'s settings and try again.',
         [{ text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
       );
       cleanupCall();
@@ -376,7 +376,7 @@ export default function ChatScreen() {
       console.error('Failed to answer call:', err);
       Alert.alert(
         'Call Failed',
-        'Could not answer the call. Enable microphone access for SkoFy in your phone\'s settings and try again.',
+        'Could not answer the call. Enable microphone access for Dodorez in your phone\'s settings and try again.',
         [{ text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
       );
       sendSignal({ type: 'call_end' });
@@ -727,7 +727,7 @@ export default function ChatScreen() {
         <View style={styles.userInfo}>
           <View style={styles.avatarContainer}>
             <Image
-              source={profileImage ? { uri: profileImage } : require('@/assets/images/logo.png')}
+              source={profileImage ? { uri: profileImage } : require('@/assets/images/icon-mark.png')}
               style={styles.avatar}
             />
             {isOtherOnline && <View style={styles.onlineBadge} />}

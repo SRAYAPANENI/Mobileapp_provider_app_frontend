@@ -1,4 +1,5 @@
 import AnimatedBackground from '@/components/animated-background';
+import AnimatedBrandMark from '@/components/animated-brand-mark';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors, Fonts } from '@/constants/theme';
@@ -610,13 +611,9 @@ export default function RegisterScreen() {
               <ChevronLeft size={24} color={themeColors.text} />
             </TouchableOpacity>
 
-            <Image
-              source={require('@/assets/images/logo.png')}
-              style={styles.logo}
-              contentFit="contain"
-            />
+            <AnimatedBrandMark size={44} nameSize={26} />
 
-            <ThemedText style={styles.title}>Register as a SkoFy Provider</ThemedText>
+            <ThemedText style={styles.title}>Register as a Pro</ThemedText>
             <ThemedText style={styles.subtitle}>Register to start providing services and grow your business</ThemedText>
           </View>
 
@@ -1726,11 +1723,6 @@ function makeStyles(t: typeof Colors.light) {
     left: 0,
     top: 5,
     padding: 8,
-  },
-  logo: {
-    width: 60,
-    height: 60,
-    marginBottom: 12,
   },
   title: {
     fontSize: 24,
