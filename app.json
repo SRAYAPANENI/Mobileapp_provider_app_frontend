@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "skofy-service-provider-app",
+    "name": "Dodorez Pro",
     "slug": "skofy-service-provider-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -71,12 +71,13 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/logo.png",
-          "imageWidth": 160,
+          "image": "./assets/images/splash-blank.png",
+          "imageWidth": 1,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
           "dark": {
-            "backgroundColor": "#000000"
+            "backgroundColor": "#1C1C1E",
+            "image": "./assets/images/splash-blank-dark.png"
           }
         }
       ],

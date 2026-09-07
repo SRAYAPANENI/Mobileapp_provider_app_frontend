@@ -1,3 +1,4 @@
+import AnimatedBrandMark from '@/components/animated-brand-mark';
 import React, { useState, useEffect, useMemo } from 'react';
 import { SkoFyApi } from '@/services/api';
 import { kmToMiles, milesToKm } from '@/services/schedulingEngine';
@@ -1398,8 +1399,7 @@ export default function ProfileScreen() {
       <View style={[styles.headerFixed, { paddingTop: Math.max(insets.top, 20) + 5 }]}>
         <View style={styles.headerTop}>
           <View style={styles.logoRow}>
-            <Image source={require('@/assets/images/logo.png')} style={styles.brandLogo} />
-            <ThemedText style={styles.logoText}>SkoFy</ThemedText>
+            <AnimatedBrandMark size={32} nameSize={22} centered={false} pro />
           </View>
           <TouchableOpacity
             style={styles.settingsHeaderBtn}
@@ -2382,12 +2382,12 @@ export default function ProfileScreen() {
           <ScrollView contentContainerStyle={styles.termsContent}>
             <ThemedText style={styles.termsTitle}>1. Provider Agreement</ThemedText>
             <ThemedText style={styles.termsText}>
-              As a SkoFy Service Provider, you agree to represent yourself accurately, maintain
+              As a Dodorez Pro, you agree to represent yourself accurately, maintain
               high quality standards, and follow all safety protocols while serving customers.
             </ThemedText>
             <ThemedText style={styles.termsTitle}>2. Platform Usage</ThemedText>
             <ThemedText style={styles.termsText}>
-              SkoFy provides the technology to connect you with clients. We do not employ you directly;
+              Dodorez provides the technology to connect you with clients. We do not employ you directly;
               you are an independent professional utilizing our marketplace tools.
             </ThemedText>
             <ThemedText style={styles.termsTitle}>3. Payment Policy</ThemedText>
@@ -2482,7 +2482,7 @@ export default function ProfileScreen() {
                 <TouchableOpacity onPress={() => setIsTestMinimized(true)}>
                   <ChevronDown size={28} color="#000" />
                 </TouchableOpacity>
-                <ThemedText style={styles.assessBrand}>SkoFy Test</ThemedText>
+                <ThemedText style={styles.assessBrand}>Dodorez Test</ThemedText>
                 <TouchableOpacity onPress={closeTest}>
                   <XCircle size={24} color="#000" />
                 </TouchableOpacity>
@@ -3285,17 +3285,6 @@ function makeStyles(t: typeof Colors.light) {
   logoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  logoText: {
-    fontSize: 22,
-    fontFamily: Fonts.poppinsBold,
-    color: t.textPrimary,
-  },
-  brandLogo: {
-    width: 32,
-    height: 32,
-    resizeMode: 'contain',
   },
   settingsHeaderBtn: {
     width: 44,

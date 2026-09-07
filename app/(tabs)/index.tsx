@@ -1,3 +1,4 @@
+import AnimatedBrandMark from '@/components/animated-brand-mark';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   AppState,
@@ -1418,8 +1419,7 @@ const filteredJobs = jobs.filter((job) => {
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View style={styles.centeredLogoRow}>
-            <Image source={require('@/assets/images/logo.png')} style={styles.headerLogo} contentFit="contain" />
-            <ThemedText style={styles.headerTitleText}>SkoFy</ThemedText>
+            <AnimatedBrandMark size={32} nameSize={20} centered={false} pro />
           </View>
 
           <View style={styles.headerActions}>
@@ -1710,7 +1710,7 @@ const filteredJobs = jobs.filter((job) => {
                     <ThemedText style={styles.customerName}>
                       {selectedJob.employer?.name || 'Customer'} (Customer)
                     </ThemedText>
-                    <ThemedText style={styles.customerBadge}>Verified SkoFy Silver User</ThemedText>
+                    <ThemedText style={styles.customerBadge}>Verified Dodorez Silver User</ThemedText>
                   </View>
                   <View style={styles.customerContactBtns}>
                     <TouchableOpacity
@@ -2327,7 +2327,7 @@ const filteredJobs = jobs.filter((job) => {
             </View>
             <ThemedText style={styles.locationModalTitle}>Location Access Needed</ThemedText>
             <ThemedText style={styles.locationModalSubtitle}>
-              We need to confirm you've reached the site before starting this job. Enable location access for SkoFy in your phone's settings, then come back and try again.
+              We need to confirm you've reached the site before starting this job. Enable location access for Dodorez in your phone's settings, then come back and try again.
             </ThemedText>
             <TouchableOpacity
               style={styles.locationModalPrimaryBtn}
@@ -2502,16 +2502,6 @@ const styles = StyleSheet.create({
   centeredLogoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-  },
-  headerLogo: {
-    width: 32,
-    height: 32,
-  },
-  headerTitleText: {
-    fontSize: 20,
-    fontFamily: Fonts.poppinsBold,
-    color: '#111827',
   },
   headerActions: {
     flexDirection: 'row',

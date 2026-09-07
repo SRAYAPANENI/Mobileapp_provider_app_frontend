@@ -39,7 +39,7 @@ export default function SupportChatScreen() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      text: "Hello! Welcome to Skofy Provider Support. How can we help you today?",
+      text: "Hello! Welcome to Dodorez Pro Support. How can we help you today?",
       sender: 'agent',
       timestamp: '10:00 AM'
     }
@@ -84,7 +84,7 @@ export default function SupportChatScreen() {
         {!isUser && (
           <View style={styles.agentAvatar}>
             <Image
-              source={require('@/assets/images/logo.png')}
+              source={require('@/assets/images/logo-mark.png')}
               style={{ width: 20, height: 20 }}
               contentFit="contain"
             />
@@ -124,13 +124,13 @@ export default function SupportChatScreen() {
         <View style={styles.headerInfo}>
           <View style={styles.avatarContainer}>
             <Image
-              source={require('@/assets/images/logo.png')}
+              source={require('@/assets/images/logo-mark.png')}
               style={styles.headerAvatar}
               contentFit="contain"
             />
           </View>
           <View>
-            <ThemedText style={styles.headerTitle}>Skofy Support</ThemedText>
+            <ThemedText style={styles.headerTitle}>Dodorez Support</ThemedText>
             <View style={styles.onlineBadgeRow}>
               <View style={styles.onlineDot} />
               <ThemedText style={styles.headerStatus}>Online</ThemedText>

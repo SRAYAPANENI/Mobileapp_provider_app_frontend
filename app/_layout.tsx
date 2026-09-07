@@ -4,6 +4,7 @@ import { Stack, router, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef } from 'react';
+import { View } from 'react-native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import 'react-native-reanimated';
 
@@ -44,11 +45,22 @@ export default function RootLayout() {
   const pathnameRef = useRef(pathname);
   useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
 
+  // Hiding this on fontsLoaded alone fires before the actual splash route
+  // (app/index.tsx — a fairly heavy animated SVG mesh) has laid out and
+  // painted a frame, so the native splash disappears into a blank/white gap
+  // and the custom animation is sometimes never seen before it redirects.
+  // Hiding on the rendered tree's own onLayout below waits for real content
+  // instead; this effect stays only as a safety net for a font *load error*,
+  // where there may be nothing else to layout-trigger the hide.
   useEffect(() => {
-    if (loaded || error) {
+    if (error) {
       SplashScreen.hideAsync();
     }
-  }, [loaded, error]);
+  }, [error]);
+
+  const handleRootLayout = () => {
+    SplashScreen.hideAsync();
+  };
 
   useEffect(() => {
     initCallManager();
@@ -73,24 +85,26 @@ export default function RootLayout() {
   }
 
   return (
-    <KeyboardProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <AppProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="index" />
-            <Stack.Screen name="login" options={{ animation: 'fade' }} />
-            <Stack.Screen name="register" options={{ animation: 'slide_from_right' }} />
-            <Stack.Screen name="forgot-password" options={{ animation: 'slide_from_right' }} />
-            <Stack.Screen name="(tabs)" options={{ animation: 'slide_from_right' }} />
-            <Stack.Screen name="job-details" options={{ animation: 'slide_from_right' }} />
-            <Stack.Screen name="navigate-to-site" options={{ animation: 'slide_from_bottom' }} />
-          </Stack>
-          <NetworkStatusBanner />
-          {/* "auto" follows the device's actual system theme, not our
-              locked-light useColorScheme — pinned to dark icons to match. */}
-          <StatusBar style="dark" />
-        </AppProvider>
-      </ThemeProvider>
-    </KeyboardProvider>
+    <View style={{ flex: 1 }} onLayout={handleRootLayout}>
+      <KeyboardProvider>
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <AppProvider>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="login" options={{ animation: 'fade' }} />
+              <Stack.Screen name="register" options={{ animation: 'slide_from_right' }} />
+              <Stack.Screen name="forgot-password" options={{ animation: 'slide_from_right' }} />
+              <Stack.Screen name="(tabs)" options={{ animation: 'slide_from_right' }} />
+              <Stack.Screen name="job-details" options={{ animation: 'slide_from_right' }} />
+              <Stack.Screen name="navigate-to-site" options={{ animation: 'slide_from_bottom' }} />
+            </Stack>
+            <NetworkStatusBanner />
+            {/* "auto" follows the device's actual system theme, not our
+                locked-light useColorScheme — pinned to dark icons to match. */}
+            <StatusBar style="dark" />
+          </AppProvider>
+        </ThemeProvider>
+      </KeyboardProvider>
+    </View>
   );
 }
