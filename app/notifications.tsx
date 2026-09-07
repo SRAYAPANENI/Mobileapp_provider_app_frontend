@@ -219,9 +219,9 @@ function makeStyles(t: typeof Colors.light) {
       backgroundColor: t.card, borderBottomWidth: 1, borderBottomColor: t.borderSubtle,
     },
     backBtn: { padding: 4 },
-    headerTitle: { fontSize: 18, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
+    headerTitle: { fontSize: 18, lineHeight: 22, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
     clearBtn: { paddingVertical: 4, paddingHorizontal: 8 },
-    clearText: { fontSize: 12, fontFamily: Fonts.poppinsMedium, color: '#EF4444' },
+    clearText: { fontSize: 12, lineHeight: 16, fontFamily: Fonts.poppinsMedium, color: '#EF4444' },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     scrollContent: { padding: 16, paddingBottom: 40 },
     notificationCard: {
@@ -241,17 +241,17 @@ function makeStyles(t: typeof Colors.light) {
       flexDirection: 'row', alignItems: 'center',
       justifyContent: 'space-between', marginBottom: 4,
     },
-    notifTitle: { fontSize: 14, fontFamily: Fonts.poppinsSemiBold, color: t.textSecondary, flex: 1 },
+    notifTitle: { fontSize: 14, lineHeight: 18, fontFamily: Fonts.poppinsSemiBold, color: t.textSecondary, flex: 1 },
     unreadTitle: { color: t.textPrimary },
     unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFCE48', marginLeft: 8 },
     notifMessage: { fontSize: 13, fontFamily: Fonts.poppins, color: t.textSecondary, lineHeight: 18, marginBottom: 6 },
-    timeText: { fontSize: 11, fontFamily: Fonts.poppins, color: t.textMuted },
+    timeText: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.poppins, color: t.textMuted },
     emptyState: { alignItems: 'center', justifyContent: 'center', marginTop: 100 },
     emptyIconCircle: {
       width: 80, height: 80, borderRadius: 40,
       backgroundColor: t.inputFilled, justifyContent: 'center', alignItems: 'center', marginBottom: 20,
     },
-    emptyTitle: { fontSize: 18, fontFamily: Fonts.poppinsBold, color: t.textSecondary, marginBottom: 8 },
-    emptySubtitle: { fontSize: 14, fontFamily: Fonts.poppins, color: t.textMuted, textAlign: 'center', paddingHorizontal: 40 },
+    emptyTitle: { fontSize: 18, lineHeight: 22, fontFamily: Fonts.poppinsBold, color: t.textSecondary, marginBottom: 8 },
+    emptySubtitle: { fontSize: 14, lineHeight: 18, fontFamily: Fonts.poppins, color: t.textMuted, textAlign: 'center', paddingHorizontal: 40 },
   });
 }

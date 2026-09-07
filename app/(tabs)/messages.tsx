@@ -52,7 +52,7 @@ function makeStyles(t: typeof Colors.light) {
       padding: 20,
       marginTop: 100,
     },
-    text: { marginTop: 20, fontSize: 24, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
+    text: { marginTop: 20, fontSize: 24, lineHeight: 30, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
     subtext: { marginTop: 10, textAlign: 'center', color: t.textSecondary, fontFamily: Fonts.poppins },
   });
 }

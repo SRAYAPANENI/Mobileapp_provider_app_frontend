@@ -74,8 +74,24 @@ function withIosNotificationSound(config) {
   return withXcodeProject(config, (config) => {
     const project = config.modResults;
     const groupKey = project.findPBXGroupKey({ name: config.modRequest.projectName });
-    if (groupKey && !project.hasFile(IOS_SOUND_FILENAME)) {
-      project.addResourceFile(IOS_SOUND_FILENAME, {}, groupKey);
+    // addResourceFile unconditionally looks up a PBXGroup literally named
+    // "Resources" to rewrite the file's path relative to it, and crashes
+    // (null.path) if that group doesn't exist — current RN/Expo Xcode
+    // templates no longer create one. Creating an empty placeholder group
+    // satisfies the lookup without changing where the file actually lands.
+    if (!project.pbxGroupByName('Resources')) {
+      project.pbxCreateGroup('Resources', '');
+    }
+    // findPBXGroupKey({ name: projectName }) is ambiguous — there can be more
+    // than one group sharing that name (e.g. an unrelated Expo-modules-
+    // provider group with no `path` set), and it isn't guaranteed to return
+    // the actual main app group. Registering the file with the project-name
+    // folder baked into its own path makes it resolve correctly (relative to
+    // SOURCE_ROOT) no matter which group it ends up nested under — matching
+    // where it's physically copied above, ios/<projectName>/ringtone.wav.
+    const resourcePath = path.join(config.modRequest.projectName, IOS_SOUND_FILENAME);
+    if (groupKey && !project.hasFile(resourcePath)) {
+      project.addResourceFile(resourcePath, {}, groupKey);
     }
     return config;
   });

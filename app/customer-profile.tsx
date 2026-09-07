@@ -320,7 +320,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     borderBottomColor: t.inputFilled,
   },
   backButton: { width: 40, height: 40, justifyContent: 'center' },
-  headerTitle: { fontSize: 20, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
+  headerTitle: { fontSize: 20, lineHeight: 25, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
   scrollContent: { paddingBottom: 40 },
 
   // Profile
@@ -345,7 +345,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     borderWidth: 3,
     borderColor: '#FFCE48',
   },
-  userName: { fontSize: 22, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
+  userName: { fontSize: 22, lineHeight: 28, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
   verifiedRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -356,14 +356,14 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 12,
   },
-  verifiedText: { fontSize: 11, fontFamily: Fonts.poppinsBold, color: '#10B981' },
+  verifiedText: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.poppinsBold, color: '#10B981' },
   starRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 10,
     gap: 4,
   },
-  ratingNum: { fontSize: 14, fontFamily: Fonts.poppinsSemiBold, color: t.textSecondary, marginLeft: 6 },
+  ratingNum: { fontSize: 14, lineHeight: 18, fontFamily: Fonts.poppinsSemiBold, color: t.textSecondary, marginLeft: 6 },
 
   // Stats
   statsRow: {
@@ -383,10 +383,10 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     alignItems: 'center',
   },
   statItem: { alignItems: 'center', flex: 1 },
-  statValue: { fontSize: 20, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
-  statLabel: { fontSize: 11, fontFamily: Fonts.poppinsSemiBold, color: t.textMuted, marginTop: 4 },
+  statValue: { fontSize: 20, lineHeight: 25, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
+  statLabel: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.poppinsSemiBold, color: t.textMuted, marginTop: 4 },
   divider: { width: 1, height: 40, backgroundColor: t.inputFilled },
-  gaugeText: { fontSize: 14, fontFamily: Fonts.poppinsBold, color: '#FFCE48' },
+  gaugeText: { fontSize: 14, lineHeight: 18, fontFamily: Fonts.poppinsBold, color: '#FFCE48' },
 
   // About
   aboutCard: {
@@ -402,7 +402,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     elevation: 2,
   },
   aboutRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
-  aboutText: { fontSize: 13, fontFamily: Fonts.poppins, color: t.textSecondary, flex: 1 },
+  aboutText: { fontSize: 13, lineHeight: 17, fontFamily: Fonts.poppins, color: t.textSecondary, flex: 1 },
 
   // Section
   sectionHeader: {
@@ -413,8 +413,8 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     marginTop: 24,
     marginBottom: 12,
   },
-  sectionTitle: { fontSize: 16, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
-  historyCount: { fontSize: 12, fontFamily: Fonts.poppinsSemiBold, color: t.textMuted },
+  sectionTitle: { fontSize: 16, lineHeight: 20, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
+  historyCount: { fontSize: 12, lineHeight: 16, fontFamily: Fonts.poppinsSemiBold, color: t.textMuted },
 
   // History Card
   historyCard: {
@@ -430,12 +430,12 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     elevation: 2,
   },
   historyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  historyTitle: { fontSize: 14, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
-  historySubtitle: { fontSize: 11, fontFamily: Fonts.poppins, color: t.textMuted, marginTop: 2 },
+  historyTitle: { fontSize: 14, lineHeight: 18, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
+  historySubtitle: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.poppins, color: t.textMuted, marginTop: 2 },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
-  statusText: { fontSize: 10, fontFamily: Fonts.poppinsBold },
+  statusText: { fontSize: 10, lineHeight: 14, fontFamily: Fonts.poppinsBold },
   ratingSection: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 8 },
-  priceText: { fontSize: 14, fontFamily: Fonts.poppinsBold, color: '#FFCE48' },
+  priceText: { fontSize: 14, lineHeight: 18, fontFamily: Fonts.poppinsBold, color: '#FFCE48' },
   commentText: {
     fontSize: 12,
     fontFamily: Fonts.poppins,
@@ -446,7 +446,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   metricsContainer: { gap: 8 },
   metricItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  metricLabel: { fontSize: 11, fontFamily: Fonts.poppinsSemiBold, color: t.textMuted, width: 80 },
+  metricLabel: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.poppinsSemiBold, color: t.textMuted, width: 80 },
   metricBar: {
     flex: 1,
     height: 6,
@@ -462,5 +462,5 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
 }); }
 
 const styles = StyleSheet.create({
-  gaugeText: { fontSize: 14, fontFamily: Fonts.poppinsBold, color: '#FFCE48' },
+  gaugeText: { fontSize: 14, lineHeight: 18, fontFamily: Fonts.poppinsBold, color: '#FFCE48' },
 });

@@ -424,7 +424,7 @@ function makeStyles(t: typeof Colors.light) {
       elevation: 2,
     },
     headerTitle: {
-      fontSize: 22,
+      fontSize: 22, lineHeight: 28,
       fontFamily: Fonts.poppinsBold,
       color: t.textPrimary,
       marginBottom: 14,
@@ -452,7 +452,7 @@ function makeStyles(t: typeof Colors.light) {
       shadowRadius: 4,
       elevation: 2,
     },
-    tabBtnText: { fontSize: 14, fontFamily: Fonts.poppinsSemiBold, color: t.textMuted },
+    tabBtnText: { fontSize: 14, lineHeight: 18, fontFamily: Fonts.poppinsSemiBold, color: t.textMuted },
     tabBtnTextActive: { color: t.textPrimary },
     tabCount: {
       backgroundColor: '#FFCE48',
@@ -462,7 +462,7 @@ function makeStyles(t: typeof Colors.light) {
       minWidth: 20,
       alignItems: 'center',
     },
-    tabCountText: { fontSize: 11, fontFamily: Fonts.poppinsBold, color: '#111827' },
+    tabCountText: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.poppinsBold, color: '#111827' },
 
     listContent: { padding: 16, paddingBottom: 30 },
 
@@ -477,21 +477,21 @@ function makeStyles(t: typeof Colors.light) {
     },
     badgeRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
     urgencyBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8 },
-    urgencyText: { fontSize: 11, fontFamily: Fonts.poppinsSemiBold },
+    urgencyText: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.poppinsSemiBold },
     statusBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8 },
-    statusText: { fontSize: 11, fontFamily: Fonts.poppinsSemiBold },
-    cardTitle: { fontSize: 16, fontFamily: Fonts.poppinsBold, color: t.textPrimary, marginBottom: 5 },
+    statusText: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.poppinsSemiBold },
+    cardTitle: { fontSize: 16, lineHeight: 20, fontFamily: Fonts.poppinsBold, color: t.textPrimary, marginBottom: 5 },
     cardDesc: { fontSize: 13, fontFamily: Fonts.poppins, color: t.textSecondary, lineHeight: 19 },
 
     metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12 },
     metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    budgetText: { fontSize: 13, fontFamily: Fonts.poppinsSemiBold, color: '#059669' },
-    dateText: { fontSize: 12, fontFamily: Fonts.poppins, color: t.textMuted },
+    budgetText: { fontSize: 13, lineHeight: 17, fontFamily: Fonts.poppinsSemiBold, color: '#059669' },
+    dateText: { fontSize: 12, lineHeight: 16, fontFamily: Fonts.poppins, color: t.textMuted },
 
     bidInfo: { flexDirection: 'row', alignItems: 'center', marginTop: 8, flexWrap: 'wrap' },
-    bidInfoLabel: { fontSize: 12, fontFamily: Fonts.poppins, color: t.textMuted },
-    bidInfoValue: { fontSize: 12, fontFamily: Fonts.poppinsSemiBold, color: t.textSecondary },
-    bidInfoMsg: { fontSize: 12, fontFamily: Fonts.poppins, color: t.textSecondary, flex: 1 },
+    bidInfoLabel: { fontSize: 12, lineHeight: 16, fontFamily: Fonts.poppins, color: t.textMuted },
+    bidInfoValue: { fontSize: 12, lineHeight: 16, fontFamily: Fonts.poppinsSemiBold, color: t.textSecondary },
+    bidInfoMsg: { fontSize: 12, lineHeight: 16, fontFamily: Fonts.poppins, color: t.textSecondary, flex: 1 },
 
     actionRow: {
       flexDirection: 'row',
@@ -510,17 +510,17 @@ function makeStyles(t: typeof Colors.light) {
       paddingVertical: 11,
       borderRadius: 12,
     },
-    actionBtnText: { fontSize: 13, fontFamily: Fonts.poppinsBold, color: '#fff' },
+    actionBtnText: { fontSize: 13, lineHeight: 17, fontFamily: Fonts.poppinsBold, color: '#fff' },
 
     emptyWrap: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 32 },
-    emptyTitle: { fontSize: 18, fontFamily: Fonts.poppinsBold, color: t.textSecondary, marginTop: 20, textAlign: 'center' },
+    emptyTitle: { fontSize: 18, lineHeight: 22, fontFamily: Fonts.poppinsBold, color: t.textSecondary, marginTop: 20, textAlign: 'center' },
     emptySub: { fontSize: 13, fontFamily: Fonts.poppins, color: t.textMuted, marginTop: 8, textAlign: 'center', lineHeight: 20 },
 
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
     modalSheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40 },
     modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#D1D5DB', alignSelf: 'center', marginBottom: 20 },
     modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-    modalTitle: { fontSize: 18, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
+    modalTitle: { fontSize: 18, lineHeight: 22, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
     modalDesc: { fontSize: 13, fontFamily: Fonts.poppins, color: t.textSecondary, lineHeight: 19, marginBottom: 16 },
     disputeInput: {
       borderWidth: 1.5,
@@ -528,13 +528,13 @@ function makeStyles(t: typeof Colors.light) {
       padding: 14,
       minHeight: 110,
       fontFamily: Fonts.poppins,
-      fontSize: 14,
+      fontSize: 14, lineHeight: 18,
       marginBottom: 20,
     },
     modalActions: { flexDirection: 'row', gap: 12 },
     cancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 14, borderWidth: 1.5, borderColor: t.border, alignItems: 'center' },
-    cancelBtnText: { fontSize: 14, fontFamily: Fonts.poppinsSemiBold, color: t.textSecondary },
+    cancelBtnText: { fontSize: 14, lineHeight: 18, fontFamily: Fonts.poppinsSemiBold, color: t.textSecondary },
     submitBtn: { flex: 2, paddingVertical: 13, borderRadius: 14, backgroundColor: '#EF4444', alignItems: 'center' },
-    submitBtnText: { fontSize: 14, fontFamily: Fonts.poppinsBold, color: '#fff' },
+    submitBtnText: { fontSize: 14, lineHeight: 18, fontFamily: Fonts.poppinsBold, color: '#fff' },
   });
 }

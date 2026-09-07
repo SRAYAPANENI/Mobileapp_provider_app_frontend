@@ -87,8 +87,16 @@ export default function NavigateToSiteScreen() {
   const styles = React.useMemo(() => makeStyles(themeColors), [colorScheme]);
 
   const { lat, lng, title, jobId } = useLocalSearchParams<{ lat: string; lng: string; title: string; jobId?: string }>();
-  const destination: LatLng | null =
-    lat && lng ? { latitude: parseFloat(lat), longitude: parseFloat(lng) } : null;
+  // Memoized on the underlying primitives — this used to be a fresh object
+  // literal every render, which made the [gpsLoc, destination] effect below
+  // see a "changed" dependency every render (same values, new reference),
+  // refire every time, setState, re-render, refire again: infinite loop
+  // ("Maximum update depth exceeded"), which starved the map screen from
+  // ever settling and rendering correctly.
+  const destination: LatLng | null = React.useMemo(
+    () => (lat && lng ? { latitude: parseFloat(lat), longitude: parseFloat(lng) } : null),
+    [lat, lng],
+  );
 
   const appAlert = useAppAlert();
   const mapRef = useRef<any>(null);
@@ -476,12 +484,12 @@ function makeStyles(t: typeof Colors.light) {
       marginBottom: 16,
     },
     arrivingLabel: {
-      fontSize: 13,
+      fontSize: 13, lineHeight: 17,
       fontFamily: Fonts.poppins,
       color: t.textSecondary,
     },
     etaText: {
-      fontSize: 24,
+      fontSize: 24, lineHeight: 30,
       fontFamily: Fonts.poppinsBold,
       color: t.textPrimary,
       marginTop: 2,
@@ -493,7 +501,7 @@ function makeStyles(t: typeof Colors.light) {
       borderRadius: 14,
     },
     distanceText: {
-      fontSize: 15,
+      fontSize: 15, lineHeight: 19,
       fontFamily: Fonts.poppinsBold,
       color: t.textPrimary,
     },
@@ -509,12 +517,12 @@ function makeStyles(t: typeof Colors.light) {
       gap: 12,
     },
     panelTitle: {
-      fontSize: 15,
+      fontSize: 15, lineHeight: 19,
       fontFamily: Fonts.poppinsBold,
       color: t.textPrimary,
     },
     panelSub: {
-      fontSize: 12,
+      fontSize: 12, lineHeight: 16,
       fontFamily: Fonts.poppins,
       color: t.textSecondary,
       marginTop: 2,
@@ -530,7 +538,7 @@ function makeStyles(t: typeof Colors.light) {
     },
     externalBtnText: {
       color: '#fff',
-      fontSize: 13,
+      fontSize: 13, lineHeight: 17,
       fontFamily: Fonts.poppinsSemiBold,
     },
     arrivedBtn: {
@@ -546,7 +554,7 @@ function makeStyles(t: typeof Colors.light) {
     },
     arrivedBtnText: {
       color: '#fff',
-      fontSize: 16,
+      fontSize: 16, lineHeight: 20,
       fontFamily: Fonts.poppinsBold,
     },
     fallback: {
@@ -557,7 +565,7 @@ function makeStyles(t: typeof Colors.light) {
       padding: 40,
     },
     fallbackText: {
-      fontSize: 15,
+      fontSize: 15, lineHeight: 19,
       fontFamily: Fonts.poppins,
       color: '#9CA3AF',
       textAlign: 'center',

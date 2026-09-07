@@ -2,6 +2,13 @@
   "name": "skofy-service-provider-app",
   "main": "index.js",
   "version": "1.0.0",
+  "expo": {
+    "autolinking": {
+      "ios": {
+        "exclude": ["@react-native-ml-kit/face-detection"]
+      }
+    }
+  },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
@@ -25,6 +32,7 @@
     "@react-navigation/native": "^7.1.8",
     "expo": "~54.0.33",
     "expo-av": "^16.0.8",
+    "expo-build-properties": "~1.0.10",
     "expo-constants": "~18.0.13",
     "expo-dev-client": "~6.0.21",
     "expo-font": "~14.0.11",
