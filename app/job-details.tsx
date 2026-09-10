@@ -1088,6 +1088,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   headerTitle: {
     fontSize: 18,
+    lineHeight: 24,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
@@ -1123,6 +1124,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   jobTitle: {
     fontSize: 22,
+    lineHeight: 28,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
     marginBottom: 6,
@@ -1133,6 +1135,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   locationText: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppins,
     color: t.textSecondary,
     marginLeft: 4,
@@ -1148,6 +1151,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   rateText: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppinsBold,
     color: '#B45309',
   },
@@ -1168,6 +1172,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   remoteJobPlaceholderText: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsSemiBold,
     color: '#6B7280',
   },
@@ -1186,6 +1191,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   categoryLabel: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppinsSemiBold,
     color: '#B45309',
   },
@@ -1203,6 +1209,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   navigateText: {
     color: '#fff',
     fontSize: 12,
+    lineHeight: 18,
     marginLeft: 6,
     fontFamily: Fonts.poppinsMedium,
   },
@@ -1260,6 +1267,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   employerName: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
@@ -1270,6 +1278,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   statText: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppins,
     color: t.textSecondary,
     marginLeft: 4,
@@ -1290,6 +1299,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
     marginBottom: 12,
@@ -1327,6 +1337,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   feasibilityText: {
     color: '#fff',
     fontSize: 10,
+    lineHeight: 16,
     fontFamily: Fonts.poppinsBold,
   },
   bulletRow: {
@@ -1361,6 +1372,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   skillMeterText: {
     fontSize: 9,
+    lineHeight: 15,
     fontFamily: Fonts.poppins,
     color: t.textMuted,
     textAlign: 'center',
@@ -1426,11 +1438,13 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   summaryStatLabel: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppins,
     color: t.textSecondary,
   },
   summaryStatValue: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
@@ -1444,6 +1458,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   feasibilityDetailTextLarge: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsSemiBold,
     flex: 1,
   },
@@ -1463,6 +1478,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   skillTagText: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppinsMedium,
     color: t.textSecondary,
   },
@@ -1499,6 +1515,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   declineBtnText: {
     fontSize: 15,
+    lineHeight: 21,
     fontFamily: Fonts.poppinsSemiBold,
     color: '#EF4444',
   },
@@ -1553,6 +1570,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   applyButtonText: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
     marginLeft: 8,
@@ -1583,11 +1601,13 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   viewerModalTitle: {
     fontSize: 18,
+    lineHeight: 24,
     fontFamily: Fonts.poppinsBold,
     color: '#fff',
   },
   viewerModalType: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppins,
     color: 'rgba(255,255,255,0.7)',
   },
@@ -1633,6 +1653,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   successHeading: {
     fontSize: 20,
+    lineHeight: 26,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
     textAlign: 'center',
@@ -1727,6 +1748,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   mapDistanceText: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
@@ -1743,6 +1765,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   jobTypeBadgeText: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppinsBold,
     color: '#fff',
     textTransform: 'uppercase',
@@ -1759,6 +1782,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   feasibilityDetailTextSmall: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppinsSemiBold,
     flex: 1,
   },
@@ -1782,18 +1806,21 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   },
   bidSheetTitle: {
     fontSize: 20,
+    lineHeight: 26,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
     marginBottom: 4,
   },
   bidSheetJob: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppins,
     color: t.textSecondary,
     marginBottom: 20,
   },
   bidFieldLabel: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsSemiBold,
     color: t.textPrimary,
     marginBottom: 8,

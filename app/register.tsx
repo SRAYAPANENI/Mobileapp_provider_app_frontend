@@ -663,7 +663,7 @@ export default function RegisterScreen() {
               <View style={[...getInputStyle('email'), { flexDirection: 'row', alignItems: 'center' }]}>
                 <Mail size={18} color={themeColors.icon} style={{ marginRight: 8 }} />
                 <TextInput
-                  style={{ flex: 1, color: themeColors.text, fontFamily: Fonts.poppins, fontSize: 15 }}
+                  style={{ flex: 1, color: themeColors.text, fontFamily: Fonts.poppins, fontSize: 15, lineHeight: 21 }}
                   placeholder="you@example.com"
                   placeholderTextColor={themeColors.icon}
                   value={formData.email}
@@ -676,7 +676,7 @@ export default function RegisterScreen() {
                 />
               </View>
               {!!formData.email && !formData.email.includes('@') && (
-                <ThemedText style={{ fontSize: 12, color: '#EF4444', marginTop: 4, fontFamily: Fonts.poppins }}>
+                <ThemedText style={{ fontSize: 12, lineHeight: 18, color: '#EF4444', marginTop: 4, fontFamily: Fonts.poppins }}>
                   Please enter a valid email address.
                 </ThemedText>
               )}
@@ -748,7 +748,7 @@ export default function RegisterScreen() {
                   <CheckCircle2 size={16} color="#4CAF50" />
                   <ThemedText style={styles.verifiedText}>Mobile Number Verified</ThemedText>
                   <TouchableOpacity onPress={() => setIsOtpVerified(false)} style={{ marginLeft: 'auto' }}>
-                    <ThemedText style={{ color: themeColors.brand, fontSize: 12, fontFamily: Fonts.poppinsBold }}>Edit</ThemedText>
+                    <ThemedText style={{ color: themeColors.brand, fontSize: 12, lineHeight: 18, fontFamily: Fonts.poppinsBold }}>Edit</ThemedText>
                   </TouchableOpacity>
                 </View>
               )}
@@ -1095,7 +1095,7 @@ export default function RegisterScreen() {
                 onPress={() => setShowProfessionModal(true)}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Text style={{ color: formData.primaryProfession ? themeColors.text : themeColors.icon, fontFamily: Fonts.poppins, fontSize: 15 }}>
+                  <Text style={{ color: formData.primaryProfession ? themeColors.text : themeColors.icon, fontFamily: Fonts.poppins, fontSize: 15, lineHeight: 21 }}>
                     {formData.primaryProfession || 'Select Profession'}
                   </Text>
                   <ChevronDown size={20} color={themeColors.icon} />
@@ -1116,13 +1116,13 @@ export default function RegisterScreen() {
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Text style={{ color: formData.skills.length > 0 ? themeColors.text : themeColors.icon, fontFamily: Fonts.poppins, fontSize: 15, flex: 1, marginRight: 8 }} numberOfLines={1}>
+                  <Text style={{ color: formData.skills.length > 0 ? themeColors.text : themeColors.icon, fontFamily: Fonts.poppins, fontSize: 15, lineHeight: 21, flex: 1, marginRight: 8 }} numberOfLines={1}>
                     {formData.skills.length > 0 ? formData.skills.join(', ') : 'Select Skills'}
                   </Text>
                   <ChevronDown size={20} color={themeColors.icon} />
                 </View>
               </TouchableOpacity>
-              <ThemedText style={{ fontSize: 11, color: themeColors.icon, fontFamily: Fonts.poppins, marginTop: 6 }}>
+              <ThemedText style={{ fontSize: 11, lineHeight: 17, color: themeColors.icon, fontFamily: Fonts.poppins, marginTop: 6 }}>
                 You can add more skills and other professions anytime from your profile after signing up.
               </ThemedText>
             </View>
@@ -1505,7 +1505,7 @@ export default function RegisterScreen() {
               {/* Media preview — supports a batch of multiple files */}
               {pendingMediaBatch.length > 0 && (
                 <View style={{ paddingVertical: 16, paddingHorizontal: 16, backgroundColor: themeColors.inputBackground }}>
-                  <ThemedText style={{ fontSize: 13, fontFamily: Fonts.poppinsSemiBold, color: themeColors.icon, marginBottom: 10 }}>
+                  <ThemedText style={{ fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: themeColors.icon, marginBottom: 10 }}>
                     {pendingMediaBatch.length} file{pendingMediaBatch.length !== 1 ? 's' : ''} selected
                   </ThemedText>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -1537,6 +1537,7 @@ export default function RegisterScreen() {
                       borderRadius: 16,
                       padding: 14,
                       fontSize: 14,
+                      lineHeight: 20,
                       fontFamily: Fonts.poppins,
                       color: themeColors.text,
                       minHeight: 80,
@@ -1558,7 +1559,7 @@ export default function RegisterScreen() {
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: themeColors.inputBackground, borderWidth: 1, borderColor: themeColors.inputBorder, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12 }}>
                     <Layers size={16} color={themeColors.icon} />
                     <TextInput
-                      style={{ flex: 1, fontSize: 14, fontFamily: Fonts.poppins, color: themeColors.text }}
+                      style={{ flex: 1, fontSize: 14, lineHeight: 20, fontFamily: Fonts.poppins, color: themeColors.text }}
                       placeholder="Search skills..."
                       placeholderTextColor={themeColors.icon}
                       value={tagSkillSearch}
@@ -1569,7 +1570,7 @@ export default function RegisterScreen() {
                   {selectedTagSkill && (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F0FDF4', borderWidth: 1, borderColor: '#DCFCE7', borderRadius: 12, padding: 10, marginBottom: 12 }}>
                       <CheckCircle2 size={14} color="#10B981" />
-                      <ThemedText style={{ flex: 1, fontSize: 13, fontFamily: Fonts.poppinsBold, color: '#166534' }}>{selectedTagSkill}</ThemedText>
+                      <ThemedText style={{ flex: 1, fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppinsBold, color: '#166534' }}>{selectedTagSkill}</ThemedText>
                       <TouchableOpacity onPress={() => setSelectedTagSkill(null)}>
                         <X size={16} color={themeColors.icon} />
                       </TouchableOpacity>
@@ -1577,7 +1578,7 @@ export default function RegisterScreen() {
                   )}
 
                   {formData.skills.length === 0 ? (
-                    <ThemedText style={{ fontSize: 13, color: themeColors.icon, fontFamily: Fonts.poppins }}>
+                    <ThemedText style={{ fontSize: 13, lineHeight: 19, color: themeColors.icon, fontFamily: Fonts.poppins }}>
                       Select your skills first (above) before tagging proof media.
                     </ThemedText>
                   ) : (
@@ -1595,7 +1596,7 @@ export default function RegisterScreen() {
                             borderColor: selectedTagSkill === skill ? '#D97706' : themeColors.brand + '50',
                           }}
                         >
-                          <ThemedText style={{ color: themeColors.text, fontFamily: Fonts.poppinsBold, fontSize: 12 }}>{skill}</ThemedText>
+                          <ThemedText style={{ color: themeColors.text, fontFamily: Fonts.poppinsBold, fontSize: 12, lineHeight: 18 }}>{skill}</ThemedText>
                         </TouchableOpacity>
                       ))}
                     </View>
@@ -1674,6 +1675,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   modalTitle: {
     fontSize: 18,
+    lineHeight: 24,
     fontFamily: Fonts.poppinsBold,
   },
   modalScroll: {
@@ -1692,6 +1694,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   modalItemText: {
     fontSize: 15,
+    lineHeight: 21,
     fontFamily: Fonts.poppins,
   },
   container: {
@@ -1726,12 +1729,14 @@ function makeStyles(t: typeof Colors.light) {
   },
   title: {
     fontSize: 24,
+    lineHeight: 30,
     textAlign: 'center',
     marginBottom: 4,
     fontFamily: Fonts.poppinsBold,
   },
   subtitle: {
     fontSize: 14,
+    lineHeight: 20,
     textAlign: 'center',
     opacity: 0.5,
     paddingHorizontal: 20,
@@ -1762,24 +1767,29 @@ function makeStyles(t: typeof Colors.light) {
   },
   sectionLabel: {
     fontSize: 18,
+    lineHeight: 24,
     fontFamily: Fonts.poppinsBold,
   },
   sectionLabelSmall: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
   },
   sectionSubLabel: {
     fontSize: 11,
+    lineHeight: 17,
     opacity: 0.5,
     fontFamily: Fonts.poppins,
   },
   fieldLabel: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsBold,
     marginBottom: 8,
   },
   requiredMark: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsBold,
     color: '#EF4444',
   },
@@ -1816,6 +1826,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   photoLabel: {
     fontSize: 11,
+    lineHeight: 17,
     opacity: 0.6,
     fontFamily: Fonts.poppinsBold,
   },
@@ -1847,6 +1858,7 @@ function makeStyles(t: typeof Colors.light) {
     borderRadius: 16,
     paddingHorizontal: 16,
     fontSize: 15,
+    lineHeight: 21,
     fontFamily: Fonts.poppins,
   },
   verifyButtonAction: {
@@ -1879,6 +1891,7 @@ function makeStyles(t: typeof Colors.light) {
   verifiedText: {
     color: '#166534',
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsBold,
   },
   otpSection: {
@@ -1924,6 +1937,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   locationButtonText: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppinsBold,
     color: '#FFB800',
   },
@@ -1948,6 +1962,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   typeChipText: {
     fontSize: 13,
+    lineHeight: 19,
     color: '#6B7280',
     fontFamily: Fonts.poppinsSemiBold,
   },
@@ -2010,6 +2025,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   suggestionMainText: {
     fontSize: 15,
+    lineHeight: 21,
     color: '#111827',
     fontFamily: Fonts.poppinsSemiBold,
   },
@@ -2021,6 +2037,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   suggestionDistance: {
     fontSize: 11,
+    lineHeight: 17,
     color: '#6B7280',
     fontFamily: Fonts.poppins,
     borderRightWidth: 1,
@@ -2029,6 +2046,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   suggestionSecondaryText: {
     fontSize: 12,
+    lineHeight: 18,
     color: '#6B7280',
     fontFamily: Fonts.poppins,
     flex: 1,
@@ -2044,6 +2062,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   locateOnMapText: {
     fontSize: 13,
+    lineHeight: 19,
     color: '#344054',
     fontFamily: Fonts.poppinsBold,
   },
@@ -2059,6 +2078,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   searchingText: {
     fontSize: 13,
+    lineHeight: 19,
     color: '#6B7280',
     fontFamily: Fonts.poppins,
   },
@@ -2069,6 +2089,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   errorText: {
     fontSize: 14,
+    lineHeight: 20,
     color: '#6B7280',
     fontFamily: Fonts.poppins,
     textAlign: 'center',
@@ -2076,6 +2097,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   manualText: {
     fontSize: 13,
+    lineHeight: 19,
     color: '#FFCE48',
     fontFamily: Fonts.poppinsBold,
   },
@@ -2097,6 +2119,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   previewTitle: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppinsBold,
     color: '#6B7280',
     textTransform: 'uppercase',
@@ -2118,6 +2141,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   coordsText: {
     fontSize: 10,
+    lineHeight: 16,
     color: '#9CA3AF',
     fontFamily: Fonts.poppins,
   },
@@ -2132,6 +2156,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   validText: {
     fontSize: 10,
+    lineHeight: 16,
     color: '#059669',
     fontFamily: Fonts.poppinsBold,
   },
@@ -2143,6 +2168,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   checkboxLabel: {
     fontSize: 14,
+    lineHeight: 20,
     color: '#4B5563',
     fontFamily: Fonts.poppinsSemiBold,
     flex: 1,
@@ -2160,6 +2186,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   uploadBoxText: {
     fontSize: 12,
+    lineHeight: 18,
     color: '#6B7280',
     fontFamily: Fonts.poppinsSemiBold,
   },
@@ -2217,6 +2244,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   statusLabel: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppinsSemiBold,
     marginTop: 16,
     color: '#6B7280',
@@ -2250,6 +2278,7 @@ function makeStyles(t: typeof Colors.light) {
   skillTagText: {
     color: '#FFF',
     fontSize: 9,
+    lineHeight: 15,
     fontFamily: Fonts.poppinsBold,
     textAlign: 'center',
   },
@@ -2281,12 +2310,14 @@ function makeStyles(t: typeof Colors.light) {
   },
   strengthText: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppinsBold,
     minWidth: 60,
   },
   passwordErrorText: {
     color: '#FF4B4B',
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppins,
     marginTop: 4,
   },
@@ -2299,6 +2330,7 @@ function makeStyles(t: typeof Colors.light) {
   passwordMatchText: {
     color: '#4CAF50',
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppins,
   },
   alertOverlay: {
@@ -2327,6 +2359,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   alertTitle: {
     fontSize: 20,
+    lineHeight: 26,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
     marginBottom: 8,
@@ -2348,6 +2381,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   alertButtonText: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: '#fff',
   },

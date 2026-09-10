@@ -38,7 +38,6 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   Landmark,
-  Home,
 } from 'lucide-react-native';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { Colors, Fonts } from '@/constants/theme';
@@ -804,6 +803,30 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleRemoveSkill = async (skillId: string) => {
+    const prevSkills = apiSkills;
+    setApiSkills(prev => prev.filter(s => s.skill_id !== skillId));
+    try {
+      await SkoFyApi.skills.removeSkill(skillId);
+      showAlert('delete', 'Skill Removed', 'The skill has been removed from your profile.');
+    } catch {
+      setApiSkills(prevSkills);
+      showAlert('error', 'Could Not Remove Skill', 'Something went wrong. Please try again.');
+    }
+  };
+
+  const handleDeleteProof = async (docId: string) => {
+    const prevProofs = proofs;
+    setProofs(prev => prev.filter(p => p.id !== docId));
+    try {
+      await SkoFyApi.provider.deleteDocument(docId);
+      showAlert('delete', 'Item Removed', 'The photo/video has been removed from your gallery.');
+    } catch {
+      setProofs(prevProofs);
+      showAlert('error', 'Could Not Remove Item', 'Something went wrong. Please try again.');
+    }
+  };
+
   const [customAlert, setCustomAlert] = useState<{
     visible: boolean;
     type: 'success' | 'error' | 'delete';
@@ -1256,7 +1279,7 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.ratingSection}>
-          <ThemedText style={{ fontSize: 12, color: '#6B7280', fontFamily: Fonts.poppins, flex: 1 }} numberOfLines={2}>
+          <ThemedText style={{ fontSize: 12, lineHeight: 18, color: '#6B7280', fontFamily: Fonts.poppins, flex: 1 }} numberOfLines={2}>
             {item.description}
           </ThemedText>
           <ThemedText style={styles.priceText}>
@@ -1267,24 +1290,24 @@ export default function ProfileScreen() {
         {item.review && (
           <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F3F4F6' }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <ThemedText style={{ fontSize: 11, fontFamily: Fonts.poppinsSemiBold, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              <ThemedText style={{ fontSize: 11, lineHeight: 17, fontFamily: Fonts.poppinsSemiBold, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 Rating from Customer
               </ThemedText>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Star size={14} color="#FFCE48" fill="#FFCE48" />
-                <ThemedText style={{ fontSize: 14, fontFamily: Fonts.poppinsBold, color: '#111827' }}>
+                <ThemedText style={{ fontSize: 14, lineHeight: 20, fontFamily: Fonts.poppinsBold, color: '#111827' }}>
                   {item.review.overall_rating.toFixed(1)}
                 </ThemedText>
               </View>
             </View>
             {item.review.comment && (
-              <ThemedText style={{ fontSize: 12, fontFamily: Fonts.poppins, color: '#6B7280', fontStyle: 'italic', marginBottom: 10 }}>
+              <ThemedText style={{ fontSize: 12, lineHeight: 18, fontFamily: Fonts.poppins, color: '#6B7280', fontStyle: 'italic', marginBottom: 10 }}>
                 "{item.review.comment}"
               </ThemedText>
             )}
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
-                <ThemedText style={{ fontSize: 10, fontFamily: Fonts.poppinsSemiBold, color: '#6B7280', marginBottom: 4 }}>
+                <ThemedText style={{ fontSize: 10, lineHeight: 16, fontFamily: Fonts.poppinsSemiBold, color: '#6B7280', marginBottom: 4 }}>
                   Skill {item.review.skill_rating}/5
                 </ThemedText>
                 <View style={{ height: 4, backgroundColor: '#F3F4F6', borderRadius: 2 }}>
@@ -1292,7 +1315,7 @@ export default function ProfileScreen() {
                 </View>
               </View>
               <View style={{ flex: 1 }}>
-                <ThemedText style={{ fontSize: 10, fontFamily: Fonts.poppinsSemiBold, color: '#6B7280', marginBottom: 4 }}>
+                <ThemedText style={{ fontSize: 10, lineHeight: 16, fontFamily: Fonts.poppinsSemiBold, color: '#6B7280', marginBottom: 4 }}>
                   Punctuality {item.review.punctuality_rating}/5
                 </ThemedText>
                 <View style={{ height: 4, backgroundColor: '#F3F4F6', borderRadius: 2 }}>
@@ -1302,7 +1325,7 @@ export default function ProfileScreen() {
             </View>
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
               <View style={{ flex: 1 }}>
-                <ThemedText style={{ fontSize: 10, fontFamily: Fonts.poppinsSemiBold, color: '#6B7280', marginBottom: 4 }}>
+                <ThemedText style={{ fontSize: 10, lineHeight: 16, fontFamily: Fonts.poppinsSemiBold, color: '#6B7280', marginBottom: 4 }}>
                   Behaviour {item.review.behaviour_rating}/5
                 </ThemedText>
                 <View style={{ height: 4, backgroundColor: '#F3F4F6', borderRadius: 2 }}>
@@ -1310,7 +1333,7 @@ export default function ProfileScreen() {
                 </View>
               </View>
               <View style={{ flex: 1 }}>
-                <ThemedText style={{ fontSize: 10, fontFamily: Fonts.poppinsSemiBold, color: '#6B7280', marginBottom: 4 }}>
+                <ThemedText style={{ fontSize: 10, lineHeight: 16, fontFamily: Fonts.poppinsSemiBold, color: '#6B7280', marginBottom: 4 }}>
                   Communication {item.review.communication_rating}/5
                 </ThemedText>
                 <View style={{ height: 4, backgroundColor: '#F3F4F6', borderRadius: 2 }}>
@@ -1324,24 +1347,24 @@ export default function ProfileScreen() {
         {item.customer_review && (
           <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#EEF2FF' }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <ThemedText style={{ fontSize: 11, fontFamily: Fonts.poppinsSemiBold, color: '#6366F1', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              <ThemedText style={{ fontSize: 11, lineHeight: 17, fontFamily: Fonts.poppinsSemiBold, color: '#6366F1', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 Your Rating of Customer
               </ThemedText>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Star size={14} color="#FFCE48" fill="#FFCE48" />
-                <ThemedText style={{ fontSize: 14, fontFamily: Fonts.poppinsBold, color: '#111827' }}>
+                <ThemedText style={{ fontSize: 14, lineHeight: 20, fontFamily: Fonts.poppinsBold, color: '#111827' }}>
                   {item.customer_review.overall_rating.toFixed(1)}
                 </ThemedText>
               </View>
             </View>
             {item.customer_review.comment && (
-              <ThemedText style={{ fontSize: 12, fontFamily: Fonts.poppins, color: '#6B7280', fontStyle: 'italic', marginBottom: 10 }}>
+              <ThemedText style={{ fontSize: 12, lineHeight: 18, fontFamily: Fonts.poppins, color: '#6B7280', fontStyle: 'italic', marginBottom: 10 }}>
                 "{item.customer_review.comment}"
               </ThemedText>
             )}
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
-                <ThemedText style={{ fontSize: 10, fontFamily: Fonts.poppinsSemiBold, color: '#6B7280', marginBottom: 4 }}>
+                <ThemedText style={{ fontSize: 10, lineHeight: 16, fontFamily: Fonts.poppinsSemiBold, color: '#6B7280', marginBottom: 4 }}>
                   Payment {item.customer_review.payment_rating}/5
                 </ThemedText>
                 <View style={{ height: 4, backgroundColor: '#EEF2FF', borderRadius: 2 }}>
@@ -1349,7 +1372,7 @@ export default function ProfileScreen() {
                 </View>
               </View>
               <View style={{ flex: 1 }}>
-                <ThemedText style={{ fontSize: 10, fontFamily: Fonts.poppinsSemiBold, color: '#6B7280', marginBottom: 4 }}>
+                <ThemedText style={{ fontSize: 10, lineHeight: 16, fontFamily: Fonts.poppinsSemiBold, color: '#6B7280', marginBottom: 4 }}>
                   Behaviour {item.customer_review.behaviour_rating}/5
                 </ThemedText>
                 <View style={{ height: 4, backgroundColor: '#EEF2FF', borderRadius: 2 }}>
@@ -1359,7 +1382,7 @@ export default function ProfileScreen() {
             </View>
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
               <View style={{ flex: 1 }}>
-                <ThemedText style={{ fontSize: 10, fontFamily: Fonts.poppinsSemiBold, color: '#6B7280', marginBottom: 4 }}>
+                <ThemedText style={{ fontSize: 10, lineHeight: 16, fontFamily: Fonts.poppinsSemiBold, color: '#6B7280', marginBottom: 4 }}>
                   Negotiation {item.customer_review.negotiation_rating}/5
                 </ThemedText>
                 <View style={{ height: 4, backgroundColor: '#EEF2FF', borderRadius: 2 }}>
@@ -1367,7 +1390,7 @@ export default function ProfileScreen() {
                 </View>
               </View>
               <View style={{ flex: 1 }}>
-                <ThemedText style={{ fontSize: 10, fontFamily: Fonts.poppinsSemiBold, color: '#6B7280', marginBottom: 4 }}>
+                <ThemedText style={{ fontSize: 10, lineHeight: 16, fontFamily: Fonts.poppinsSemiBold, color: '#6B7280', marginBottom: 4 }}>
                   Environment {item.customer_review.environment_rating}/5
                 </ThemedText>
                 <View style={{ height: 4, backgroundColor: '#EEF2FF', borderRadius: 2 }}>
@@ -1398,7 +1421,7 @@ export default function ProfileScreen() {
           justifyContent: 'center', alignItems: 'center',
         }}>
           <ActivityIndicator size="large" color="#FFCE48" />
-          <ThemedText style={{ marginTop: 12, fontSize: 13, color: '#9CA3AF', fontFamily: Fonts.poppins }}>
+          <ThemedText style={{ marginTop: 12, fontSize: 13, lineHeight: 19, color: '#9CA3AF', fontFamily: Fonts.poppins }}>
             Loading your profile...
           </ThemedText>
         </View>
@@ -1406,24 +1429,20 @@ export default function ProfileScreen() {
       <View style={[styles.headerFixed, { paddingTop: Math.max(insets.top, 20) + 5 }]}>
         <View style={styles.headerTop}>
           <View style={styles.logoRow}>
+            {/* Profile has no bottom tab bar to fall back on (it's hidden
+                app-wide — see (tabs)/_layout.tsx), so without this there was
+                no way back at all. Falls back to the dashboard only when
+                there's nothing left on the stack to go back to (e.g. a deep
+                link straight into Profile). */}
+            <TouchableOpacity
+              style={[styles.settingsHeaderBtn, { marginRight: 10 }]}
+              onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
+            >
+              <ChevronLeft size={24} color="#111827" />
+            </TouchableOpacity>
             <AnimatedBrandMark size={32} nameSize={22} centered={false} pro />
           </View>
           <View style={styles.headerActions}>
-            {/* Profile has no bottom tab bar to fall back on (it's hidden
-                app-wide — see (tabs)/_layout.tsx), so without this there was
-                no way back to the dashboard at all. Always replace() straight
-                to Home rather than canGoBack()-then-back(): Profile is also
-                reached from register.tsx (replace, right after signup, with
-                /login still sitting under it in history) and from
-                job-details.tsx's verification-gate prompts — back() in
-                either case would land this "Home" button on the login
-                screen or job-details instead of Home. */}
-            <TouchableOpacity
-              style={styles.settingsHeaderBtn}
-              onPress={() => router.replace('/(tabs)')}
-            >
-              <Home size={22} color="#111827" />
-            </TouchableOpacity>
             <TouchableOpacity
               style={styles.settingsHeaderBtn}
               onPress={() => setIsSettingsOpen(true)}
@@ -1493,7 +1512,7 @@ export default function ProfileScreen() {
                 <Image source={{ uri: profileImage }} style={styles.avatar} />
               ) : (
                 <View style={[styles.avatar, { backgroundColor: '#FFCE48', alignItems: 'center', justifyContent: 'center' }]}>
-                  <ThemedText style={{ fontSize: 28, fontFamily: Fonts.poppinsSemiBold, color: '#1a1a1a' }}>
+                  <ThemedText style={{ fontSize: 28, lineHeight: 34, fontFamily: Fonts.poppinsSemiBold, color: '#1a1a1a' }}>
                     {providerName ? providerName.charAt(0).toUpperCase() : '?'}
                   </ThemedText>
                 </View>
@@ -1510,7 +1529,7 @@ export default function ProfileScreen() {
               {yearsExperience > 0 && (
                 <ThemedText style={styles.profileRole}>{yearsExperience} {yearsExperience === 1 ? 'year' : 'years'} experience</ThemedText>
               )}
-              {providerBio ? <ThemedText numberOfLines={2} style={{ fontSize: 11, color: '#6B7280', fontFamily: Fonts.poppins, marginTop: 2 }}>{providerBio}</ThemedText> : null}
+              {providerBio ? <ThemedText numberOfLines={2} style={{ fontSize: 11, lineHeight: 17, color: '#6B7280', fontFamily: Fonts.poppins, marginTop: 2 }}>{providerBio}</ThemedText> : null}
               <TouchableOpacity style={[styles.availabilityBadge, !isAvailable && { backgroundColor: '#F3F4F6' }]} onPress={handleToggleAvailability}>
                 <View style={[styles.onlineDot, !isAvailable && { backgroundColor: '#9CA3AF' }]} />
                 <ThemedText style={[styles.availabilityText, !isAvailable && { color: '#6B7280' }]}>
@@ -1526,7 +1545,7 @@ export default function ProfileScreen() {
               <ThemedText style={styles.sectionTitleSmall}>HCI Meter</ThemedText>
               <ThemedText style={styles.sectionSubtitleSmall}>Human Capital Index</ThemedText>
               {reviewCount === 0 ? (
-                <ThemedText style={{ fontSize: 11, color: '#9CA3AF', fontFamily: Fonts.poppins, marginTop: 4 }}>
+                <ThemedText style={{ fontSize: 11, lineHeight: 17, color: '#9CA3AF', fontFamily: Fonts.poppins, marginTop: 4 }}>
                   Not enough data yet — complete a job to see these
                 </ThemedText>
               ) : (
@@ -1709,7 +1728,7 @@ export default function ProfileScreen() {
         <Animated.View entering={FadeInUp.delay(60)} style={[styles.sectionHeaderInner, { marginTop: 20 }]}>
           <View style={{ flex: 1, paddingRight: 12 }}>
             <ThemedText style={styles.sectionTitleSmall}>Online Status</ThemedText>
-            <ThemedText style={{ fontSize: 12, fontFamily: Fonts.poppins, color: '#6B7280', marginTop: 2 }}>
+            <ThemedText style={{ fontSize: 12, lineHeight: 18, fontFamily: Fonts.poppins, color: '#6B7280', marginTop: 2 }}>
               {isAvailable ? "You're visible and can receive new job offers." : "You're offline — turn on to start receiving jobs."}
             </ThemedText>
           </View>
@@ -1744,7 +1763,7 @@ export default function ProfileScreen() {
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingLeft: 20, gap: 12 }}>
           {activeSlots.length === 0 ? (
-            <ThemedText style={{ color: '#6B7280', fontSize: 13, fontFamily: Fonts.poppins, marginTop: 10 }}>No slots added. Tap Manage to schedule.</ThemedText>
+            <ThemedText style={{ color: '#6B7280', fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppins, marginTop: 10 }}>No slots added. Tap Manage to schedule.</ThemedText>
           ) : (
             activeSlots.slice(0, 5).map(slot => {
               const [y, m, d] = slot.date.split('-').map(Number);
@@ -1769,7 +1788,7 @@ export default function ProfileScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View style={{ flex: 1, paddingRight: 12 }}>
               <ThemedText style={styles.sectionTitleSmall}>Pickup & Delivery</ThemedText>
-              <ThemedText style={{ fontSize: 12, fontFamily: Fonts.poppins, color: '#6B7280', marginTop: 2 }}>
+              <ThemedText style={{ fontSize: 12, lineHeight: 18, fontFamily: Fonts.poppins, color: '#6B7280', marginTop: 2 }}>
                 {!isAvailable
                   ? 'Go online to receive these.'
                   : isIdentityVerified
@@ -1816,13 +1835,13 @@ export default function ProfileScreen() {
                 style={{ backgroundColor: '#FFCE48', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 4 }}
               >
                 <Plus size={13} color="#000" />
-                <ThemedText style={{ fontSize: 12, fontFamily: Fonts.poppinsBold, color: '#000' }}>Add</ThemedText>
+                <ThemedText style={{ fontSize: 12, lineHeight: 18, fontFamily: Fonts.poppinsBold, color: '#000' }}>Add</ThemedText>
               </TouchableOpacity>
             </View>
           </View>
 
           {assessableSkills.length === 0 ? (
-            <ThemedText style={{ color: '#6B7280', fontSize: 13, fontFamily: Fonts.poppins, textAlign: 'center', paddingVertical: 16 }}>
+            <ThemedText style={{ color: '#6B7280', fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppins, textAlign: 'center', paddingVertical: 16 }}>
               No skills added yet. Tap "Add" to get started.
             </ThemedText>
           ) : (
@@ -1853,9 +1872,10 @@ export default function ProfileScreen() {
 
                 return (
                   <View key={skillItem.skill_id} style={styles.skillItemFull}>
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <View style={styles.skillMainInfo}>
                       <ThemedText style={styles.skillMainLabel}>{skill}</ThemedText>
-                      <ThemedText style={{ fontSize: 11, color: '#9CA3AF', fontFamily: Fonts.poppins }}>{skillItem.profession}</ThemedText>
+                      <ThemedText style={{ fontSize: 11, lineHeight: 17, color: '#9CA3AF', fontFamily: Fonts.poppins }}>{skillItem.profession}</ThemedText>
                       <View style={styles.skillBadgeRow}>
                         <View style={[styles.levelBadgeMini, { backgroundColor: levelBg, borderColor: levelBorder }]}>
                           <ThemedText style={[styles.levelTextMini, { color: levelColor }]}>{levelLabel}</ThemedText>
@@ -1901,11 +1921,19 @@ export default function ProfileScreen() {
                         )}
                       </TouchableOpacity>
                       {buttonState === 'verified_locked' && eligibility?.reason === 'needs_more_jobs' && (
-                        <ThemedText style={{ fontSize: 10, color: '#6B7280', marginTop: 4, fontFamily: Fonts.poppins, textAlign: 'right', maxWidth: 110 }}>
+                        <ThemedText style={{ fontSize: 10, lineHeight: 16, color: '#6B7280', marginTop: 4, fontFamily: Fonts.poppins, textAlign: 'right', maxWidth: 110 }}>
                           {eligibility.jobs_required - eligibility.jobs_completed} more job(s) to upgrade
                         </ThemedText>
                       )}
                     </View>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => handleRemoveSkill(skillItem.skill_id)}
+                      style={styles.skillDeleteBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Trash2 size={16} color="#EF4444" />
+                    </TouchableOpacity>
                   </View>
                 );
               })}
@@ -2026,7 +2054,7 @@ export default function ProfileScreen() {
           </View>
 
           {proofs.length === 0 && (
-            <ThemedText style={{ color: '#6B7280', fontSize: 13, fontFamily: Fonts.poppins, paddingHorizontal: 20, paddingVertical: 12 }}>
+            <ThemedText style={{ color: '#6B7280', fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppins, paddingHorizontal: 20, paddingVertical: 12 }}>
               No work proof added yet. Tap "Add Skill Proof" below to upload photos or videos.
             </ThemedText>
           )}
@@ -2057,6 +2085,15 @@ export default function ProfileScreen() {
 
                 {/* Dark gradient at bottom */}
                 <View style={styles.cardGradientOverlay} />
+
+                {/* Delete button — top-left, mirrors the type badge on the right */}
+                <TouchableOpacity
+                  onPress={() => handleDeleteProof(item.id)}
+                  style={styles.proofDeleteBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Trash2 size={14} color="#fff" />
+                </TouchableOpacity>
 
                 {/* Centred play button — only for videos */}
                 {item.type === 'video' && (
@@ -2112,7 +2149,7 @@ export default function ProfileScreen() {
 
         <View style={{ paddingBottom: 20 }}>
           {jobHistory.length === 0 ? (
-            <ThemedText style={{ color: '#6B7280', fontSize: 13, fontFamily: Fonts.poppins, textAlign: 'center', paddingVertical: 20, paddingHorizontal: 24 }}>
+            <ThemedText style={{ color: '#6B7280', fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppins, textAlign: 'center', paddingVertical: 20, paddingHorizontal: 24 }}>
               No job history yet. Completed jobs will appear here.
             </ThemedText>
           ) : (
@@ -2277,7 +2314,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
             <ThemedText style={styles.modalHeaderTitle}>Edit Profile</ThemedText>
             <TouchableOpacity onPress={handleSaveProfile} disabled={isSavingProfile} style={{ paddingHorizontal: 8 }}>
-              <ThemedText style={{ color: '#D97706', fontFamily: Fonts.poppinsSemiBold, fontSize: 15 }}>
+              <ThemedText style={{ color: '#D97706', fontFamily: Fonts.poppinsSemiBold, fontSize: 15, lineHeight: 21 }}>
                 {isSavingProfile ? 'Saving…' : 'Save'}
               </ThemedText>
             </TouchableOpacity>
@@ -2296,11 +2333,11 @@ export default function ProfileScreen() {
             <View>
               <ThemedText style={styles.inputLabel}>Mobile Number</ThemedText>
               <View style={[styles.editableInput, { marginTop: 6, justifyContent: 'center', backgroundColor: '#F3F4F6' }]}>
-                <ThemedText style={{ color: '#6B7280', fontFamily: Fonts.poppins, fontSize: 15 }}>
+                <ThemedText style={{ color: '#6B7280', fontFamily: Fonts.poppins, fontSize: 15, lineHeight: 21 }}>
                   {providerPhone || 'Not set'}
                 </ThemedText>
               </View>
-              <ThemedText style={{ fontSize: 11, color: '#9CA3AF', fontFamily: Fonts.poppins, marginTop: 4 }}>
+              <ThemedText style={{ fontSize: 11, lineHeight: 17, color: '#9CA3AF', fontFamily: Fonts.poppins, marginTop: 4 }}>
                 Contact support to change your registered mobile number.
               </ThemedText>
             </View>
@@ -2360,7 +2397,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
             <ThemedText style={styles.modalHeaderTitle}>Job Preferences</ThemedText>
             <TouchableOpacity onPress={handleSavePreferences} disabled={isSavingPreferences} style={{ paddingHorizontal: 8 }}>
-              <ThemedText style={{ color: '#D97706', fontFamily: Fonts.poppinsSemiBold, fontSize: 15 }}>
+              <ThemedText style={{ color: '#D97706', fontFamily: Fonts.poppinsSemiBold, fontSize: 15, lineHeight: 21 }}>
                 {isSavingPreferences ? 'Saving…' : 'Save'}
               </ThemedText>
             </TouchableOpacity>
@@ -2368,7 +2405,7 @@ export default function ProfileScreen() {
           <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
             <View>
               <ThemedText style={styles.inputLabel}>Maximum Travel Distance</ThemedText>
-              <ThemedText style={{ fontSize: 12, color: '#9CA3AF', fontFamily: Fonts.poppins, marginTop: 4, marginBottom: 12 }}>
+              <ThemedText style={{ fontSize: 12, lineHeight: 18, color: '#9CA3AF', fontFamily: Fonts.poppins, marginTop: 4, marginBottom: 12 }}>
                 You'll only be notified about jobs within this distance from you.
               </ThemedText>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
@@ -2376,16 +2413,16 @@ export default function ProfileScreen() {
                   onPress={() => setPreferredRadiusMiles(prev => Math.max(1, prev - 5))}
                   style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' }}
                 >
-                  <ThemedText style={{ fontSize: 20, fontFamily: Fonts.poppinsSemiBold }}>−</ThemedText>
+                  <ThemedText style={{ fontSize: 20, lineHeight: 26, fontFamily: Fonts.poppinsSemiBold }}>−</ThemedText>
                 </TouchableOpacity>
-                <ThemedText style={{ fontSize: 24, fontFamily: Fonts.poppinsBold, minWidth: 90, textAlign: 'center' }}>
+                <ThemedText style={{ fontSize: 24, lineHeight: 30, fontFamily: Fonts.poppinsBold, minWidth: 90, textAlign: 'center' }}>
                   {preferredRadiusMiles} mi
                 </ThemedText>
                 <TouchableOpacity
                   onPress={() => setPreferredRadiusMiles(prev => Math.min(62, prev + 5))}
                   style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' }}
                 >
-                  <ThemedText style={{ fontSize: 20, fontFamily: Fonts.poppinsSemiBold }}>+</ThemedText>
+                  <ThemedText style={{ fontSize: 20, lineHeight: 26, fontFamily: Fonts.poppinsSemiBold }}>+</ThemedText>
                 </TouchableOpacity>
               </View>
             </View>
@@ -2522,13 +2559,13 @@ export default function ProfileScreen() {
                       ? <CheckCircle2 size={36} color="#10B981" />
                       : <XCircle size={36} color="#EF4444" />}
                   </View>
-                  <ThemedText style={{ fontSize: 18, fontFamily: Fonts.poppinsBold, color: '#111827' }}>
+                  <ThemedText style={{ fontSize: 18, lineHeight: 24, fontFamily: Fonts.poppinsBold, color: '#111827' }}>
                     {finalTestResult.passed ? 'Skill Verified!' : 'Not Quite — Try Again Later'}
                   </ThemedText>
-                  <ThemedText style={{ fontSize: 14, color: '#6B7280', fontFamily: Fonts.poppins }}>
+                  <ThemedText style={{ fontSize: 14, lineHeight: 20, color: '#6B7280', fontFamily: Fonts.poppins }}>
                     Score: {finalTestResult.score}%
                   </ThemedText>
-                  <ThemedText style={{ fontSize: 12, color: '#9CA3AF', fontFamily: Fonts.poppins, textAlign: 'center', paddingHorizontal: 20 }}>
+                  <ThemedText style={{ fontSize: 12, lineHeight: 18, color: '#9CA3AF', fontFamily: Fonts.poppins, textAlign: 'center', paddingHorizontal: 20 }}>
                     {finalTestResult.passed
                       ? `${testSkillName} has been added to your verified skills.`
                       : 'You can retry this test after the cooldown period.'}
@@ -2608,10 +2645,10 @@ export default function ProfileScreen() {
                         marginTop: 12, padding: 12, borderRadius: 12,
                         backgroundColor: testFeedback.isCorrect ? '#ECFDF5' : '#FEF2F2',
                       }}>
-                        <ThemedText style={{ fontFamily: Fonts.poppinsBold, fontSize: 13, color: testFeedback.isCorrect ? '#10B981' : '#EF4444', marginBottom: 4 }}>
+                        <ThemedText style={{ fontFamily: Fonts.poppinsBold, fontSize: 13, lineHeight: 19, color: testFeedback.isCorrect ? '#10B981' : '#EF4444', marginBottom: 4 }}>
                           {testFeedback.isCorrect ? 'Correct!' : 'Incorrect'}
                         </ThemedText>
-                        <ThemedText style={{ fontSize: 12, color: '#6B7280', fontFamily: Fonts.poppins }}>
+                        <ThemedText style={{ fontSize: 12, lineHeight: 18, color: '#6B7280', fontFamily: Fonts.poppins }}>
                           {testFeedback.explanation}
                         </ThemedText>
                       </View>
@@ -2760,6 +2797,13 @@ export default function ProfileScreen() {
                       <Play size={16} color="#fff" fill="#fff" />
                     </View>
                   )}
+                  <TouchableOpacity
+                    onPress={() => handleDeleteProof(item.id)}
+                    style={[styles.proofDeleteBtn, { top: 8, left: 8 }]}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Trash2 size={14} color="#fff" />
+                  </TouchableOpacity>
                   <View style={styles.gridTag}>
                     <ThemedText style={styles.gridTagText}>{item.skill}</ThemedText>
                   </View>
@@ -2786,7 +2830,7 @@ export default function ProfileScreen() {
               {/* Media Preview — supports a batch of multiple files */}
               {pendingMediaBatch.length > 0 && (
                 <View style={{ paddingVertical: 16, paddingHorizontal: 20 }}>
-                  <ThemedText style={{ fontSize: 13, fontFamily: Fonts.poppinsSemiBold, color: '#9CA3AF', marginBottom: 10 }}>
+                  <ThemedText style={{ fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: '#9CA3AF', marginBottom: 10 }}>
                     {pendingMediaBatch.length} file{pendingMediaBatch.length !== 1 ? 's' : ''} selected
                   </ThemedText>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -2848,7 +2892,7 @@ export default function ProfileScreen() {
                   )}
 
                   {apiSkills.length === 0 ? (
-                    <ThemedText style={{ fontSize: 13, color: '#9CA3AF', fontFamily: Fonts.poppins, paddingVertical: 8 }}>
+                    <ThemedText style={{ fontSize: 13, lineHeight: 19, color: '#9CA3AF', fontFamily: Fonts.poppins, paddingVertical: 8 }}>
                       Add a skill to your profile first before tagging proof media.
                     </ThemedText>
                   ) : (
@@ -2898,7 +2942,7 @@ export default function ProfileScreen() {
           </View>
           <ScrollView contentContainerStyle={{ paddingTop: 16, paddingBottom: 40 }}>
             {jobHistory.length === 0 ? (
-              <ThemedText style={{ color: '#6B7280', fontSize: 13, fontFamily: Fonts.poppins, textAlign: 'center', paddingVertical: 40, paddingHorizontal: 24 }}>
+              <ThemedText style={{ color: '#6B7280', fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppins, textAlign: 'center', paddingVertical: 40, paddingHorizontal: 24 }}>
                 No job history yet. Completed jobs will appear here.
               </ThemedText>
             ) : (
@@ -3161,14 +3205,14 @@ export default function ProfileScreen() {
                   <ThemedText style={styles.withdrawalConfirmBtnText}>Manage Payouts on Stripe</ThemedText>
                 )}
               </TouchableOpacity>
-              <ThemedText style={{ fontSize: 12, color: '#6B7280', fontFamily: Fonts.poppins, textAlign: 'center', marginTop: 10 }}>
+              <ThemedText style={{ fontSize: 12, lineHeight: 18, color: '#6B7280', fontFamily: Fonts.poppins, textAlign: 'center', marginTop: 10 }}>
                 Your bank account and payout schedule are managed directly through Stripe — money is deposited automatically after each completed job.
               </ThemedText>
             </View>
 
             <ThemedText style={[styles.sectionTitleSmall, { marginTop: 24 }]}>Recent Payouts</ThemedText>
             {recentPayouts.length === 0 ? (
-              <ThemedText style={{ color: '#9CA3AF', fontSize: 13, fontFamily: Fonts.poppins, paddingVertical: 12 }}>
+              <ThemedText style={{ color: '#9CA3AF', fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppins, paddingVertical: 12 }}>
                 Nothing paid out yet — this fills in as jobs complete.
               </ThemedText>
             ) : (
@@ -3181,7 +3225,7 @@ export default function ProfileScreen() {
                       {p.paidAt ? new Date(p.paidAt).toLocaleDateString() : ''}
                     </ThemedText>
                   </View>
-                  <ThemedText style={{ fontSize: 15, fontFamily: Fonts.poppinsBold, color: '#111827' }}>
+                  <ThemedText style={{ fontSize: 15, lineHeight: 21, fontFamily: Fonts.poppinsBold, color: '#111827' }}>
                     ${p.amount.toFixed(2)}
                   </ThemedText>
                 </View>
@@ -3196,7 +3240,7 @@ export default function ProfileScreen() {
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
           <View style={{ backgroundColor: themeColors.card, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, maxHeight: '80%' }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <ThemedText style={{ fontSize: 20, fontFamily: Fonts.poppinsBold, color: themeColors.textPrimary }}>
+              <ThemedText style={{ fontSize: 20, lineHeight: 26, fontFamily: Fonts.poppinsBold, color: themeColors.textPrimary }}>
                 {addSkillProfession ? addSkillProfession : 'Select Profession'}
               </ThemedText>
               <TouchableOpacity onPress={() => setIsAddSkillOpen(false)}>
@@ -3215,7 +3259,7 @@ export default function ProfileScreen() {
                     onPress={() => fetchSkillsForProfession(name)}
                     style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: themeColors.border }}
                   >
-                    <ThemedText style={{ fontSize: 15, fontFamily: Fonts.poppinsSemiBold, color: themeColors.textPrimary }}>{name}</ThemedText>
+                    <ThemedText style={{ fontSize: 15, lineHeight: 21, fontFamily: Fonts.poppinsSemiBold, color: themeColors.textPrimary }}>{name}</ThemedText>
                     <ChevronRight size={18} color={themeColors.border} />
                   </TouchableOpacity>
                 ))}
@@ -3227,9 +3271,9 @@ export default function ProfileScreen() {
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16 }}
                 >
                   <ChevronLeft size={16} color="#FFCE48" />
-                  <ThemedText style={{ fontSize: 13, fontFamily: Fonts.poppinsSemiBold, color: '#FFCE48' }}>Change Profession</ThemedText>
+                  <ThemedText style={{ fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: '#FFCE48' }}>Change Profession</ThemedText>
                 </TouchableOpacity>
-                <ThemedText style={{ fontSize: 13, fontFamily: Fonts.poppins, color: themeColors.textSecondary, marginBottom: 16 }}>
+                <ThemedText style={{ fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppins, color: themeColors.textSecondary, marginBottom: 16 }}>
                   Tap a skill to add it to your profile
                 </ThemedText>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingBottom: 20 }}>
@@ -3356,6 +3400,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   profileTabText: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppinsSemiBold,
     color: '#9CA3AF',
   },
@@ -3441,11 +3486,13 @@ function makeStyles(t: typeof Colors.light) {
   },
   profileName: {
     fontSize: 24,
+    lineHeight: 30,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
   profileRole: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppins,
     color: t.textSecondary,
     marginBottom: 8,
@@ -3468,6 +3515,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   availabilityText: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppinsSemiBold,
     color: '#10B981',
   },
@@ -3487,11 +3535,13 @@ function makeStyles(t: typeof Colors.light) {
   },
   sectionTitleSmall: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
   sectionSubtitleSmall: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppins,
     color: t.textSecondary,
     marginBottom: 12,
@@ -3513,6 +3563,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   meterTagText: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppinsSemiBold,
   },
   meterCircleWrapper: {
@@ -3523,6 +3574,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   meterPercentage: {
     fontSize: 18,
+    lineHeight: 24,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
@@ -3537,6 +3589,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   sectionTitle: {
     fontSize: 20,
+    lineHeight: 26,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
@@ -3559,6 +3612,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   skillCountText: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppinsSemiBold,
     color: '#3B82F6',
     backgroundColor: '#EFF6FF',
@@ -3584,16 +3638,27 @@ function makeStyles(t: typeof Colors.light) {
     shadowRadius: 10,
     elevation: 2,
   },
+  skillDeleteBtn: {
+    marginLeft: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FEF2F2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   skillMainInfo: {
     flex: 1,
   },
   skillMainLabel: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
   skillStatsSmall: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppinsSemiBold,
     color: t.textMuted,
   },
@@ -3609,6 +3674,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   testBtnText: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsBold,
     color: '#000',
   },
@@ -3624,6 +3690,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   viewAllBtn: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsBold,
     color: '#FFCE48',
   },
@@ -3635,11 +3702,13 @@ function makeStyles(t: typeof Colors.light) {
   },
   verificationLabel: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
   verificationSubtext: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppins,
     color: t.textSecondary,
     marginTop: 2,
@@ -3652,6 +3721,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   verificationActionText: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppinsBold,
     color: '#D97706',
   },
@@ -3673,6 +3743,18 @@ function makeStyles(t: typeof Colors.light) {
     shadowRadius: 15,
     elevation: 6,
   },
+  proofDeleteBtn: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 3,
+  },
   typeBadge: {
     position: 'absolute',
     top: 16,
@@ -3687,6 +3769,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   typeBadgeText: {
     fontSize: 10,
+    lineHeight: 16,
     fontFamily: Fonts.poppinsBold,
     letterSpacing: 0.5,
   },
@@ -3731,6 +3814,7 @@ function makeStyles(t: typeof Colors.light) {
   cardSkillTag: {
     color: '#fff',
     fontSize: 18,
+    lineHeight: 24,
     fontFamily: Fonts.poppinsBold,
   },
   miniPlayIcon: {
@@ -3769,11 +3853,13 @@ function makeStyles(t: typeof Colors.light) {
   addProofText: {
     flex: 1,
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: '#B45309',
   },
   uploadTip: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppinsSemiBold,
     color: '#9CA3AF',
     textAlign: 'center',
@@ -3798,6 +3884,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   statValue: {
     fontSize: 20,
+    lineHeight: 26,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
@@ -3850,11 +3937,13 @@ function makeStyles(t: typeof Colors.light) {
   },
   reviewerName: {
     fontSize: 15,
+    lineHeight: 21,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
   reviewedJob: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppins,
     color: t.textSecondary,
   },
@@ -3892,6 +3981,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   verifiedText: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppinsSemiBold,
     color: '#D97706',
   },
@@ -3906,17 +3996,20 @@ function makeStyles(t: typeof Colors.light) {
   },
   assessBrand: {
     fontSize: 20,
+    lineHeight: 26,
     fontFamily: Fonts.poppinsBold,
     color: '#000',
   },
   assessTitle: {
     fontSize: 28,
+    lineHeight: 34,
     fontFamily: Fonts.poppinsBold,
     color: '#000',
     marginBottom: 4,
   },
   assessSub: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppins,
     color: '#6B7280',
     marginBottom: 24,
@@ -3934,6 +4027,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   assessStepText: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsSemiBold,
     color: t.textSecondary,
   },
@@ -3944,6 +4038,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   assessTimerText: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsBold,
     color: '#EF4444',
   },
@@ -3999,11 +4094,13 @@ function makeStyles(t: typeof Colors.light) {
   },
   optionIdText: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsBold,
     color: t.textSecondary,
   },
   optionText: {
     fontSize: 15,
+    lineHeight: 21,
     fontFamily: Fonts.poppinsSemiBold,
     color: t.textSecondary,
     flex: 1,
@@ -4026,12 +4123,14 @@ function makeStyles(t: typeof Colors.light) {
   },
   contextHeader: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
     marginBottom: 4,
   },
   contextItem: {
     fontSize: 10,
+    lineHeight: 16,
     fontFamily: Fonts.poppins,
     color: t.textSecondary,
     marginBottom: 2,
@@ -4047,11 +4146,13 @@ function makeStyles(t: typeof Colors.light) {
   },
   aiLabel: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
   aiStatus: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppins,
     color: '#3B82F6',
     fontStyle: 'italic',
@@ -4064,11 +4165,13 @@ function makeStyles(t: typeof Colors.light) {
   },
   confidenceNum: {
     fontSize: 18,
+    lineHeight: 24,
     fontFamily: Fonts.poppinsBold,
     color: '#10B981',
   },
   confidenceLabel: {
     fontSize: 9,
+    lineHeight: 15,
     fontFamily: Fonts.poppinsBold,
     color: t.textSecondary,
     marginTop: -2,
@@ -4091,6 +4194,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   nextBtnText: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: '#000',
   },
@@ -4103,6 +4207,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   levelTextMini: {
     fontSize: 8,
+    lineHeight: 14,
     fontFamily: Fonts.poppinsBold,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -4128,6 +4233,7 @@ function makeStyles(t: typeof Colors.light) {
   mediaTypeText: {
     color: '#fff',
     fontSize: 8,
+    lineHeight: 14,
     fontFamily: Fonts.poppinsBold,
     textTransform: 'uppercase',
   },
@@ -4159,6 +4265,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   exitBtnText: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsSemiBold,
     color: '#000',
   },
@@ -4189,11 +4296,13 @@ function makeStyles(t: typeof Colors.light) {
   },
   skillTagText: {
     fontSize: 9,
+    lineHeight: 15,
     fontFamily: Fonts.poppinsBold,
     color: '#000',
   },
   skillTagTextSmall: {
     fontSize: 8,
+    lineHeight: 14,
     fontFamily: Fonts.poppinsBold,
     color: '#000',
   },
@@ -4217,11 +4326,13 @@ function makeStyles(t: typeof Colors.light) {
   viewerSkill: {
     color: '#fff',
     fontSize: 20,
+    lineHeight: 26,
     fontFamily: Fonts.poppinsBold,
   },
   viewerType: {
     color: 'rgba(255,255,255,0.6)',
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppins,
   },
   viewerClose: {
@@ -4272,6 +4383,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   modalTitle: {
     fontSize: 24,
+    lineHeight: 30,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
@@ -4291,6 +4403,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   settingLabel: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsSemiBold,
     color: t.textSecondary,
   },
@@ -4304,6 +4417,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   closeModalButtonText: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: t.textMuted,
   },
@@ -4320,6 +4434,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   modalHeaderTitle: {
     fontSize: 20,
+    lineHeight: 26,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
@@ -4333,6 +4448,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   termsTitle: {
     fontSize: 18,
+    lineHeight: 24,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
     marginBottom: 8,
@@ -4350,6 +4466,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   inputLabel: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsSemiBold,
     color: t.textSecondary,
     marginBottom: 8,
@@ -4359,6 +4476,7 @@ function makeStyles(t: typeof Colors.light) {
     borderRadius: 16,
     padding: 16,
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppins,
     color: t.textPrimary,
     borderWidth: 1,
@@ -4383,11 +4501,13 @@ function makeStyles(t: typeof Colors.light) {
   },
   cancelBtnText: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: t.textSecondary,
   },
   updateBtnText: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: '#000',
   },
@@ -4411,6 +4531,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   photoSheetTitle: {
     fontSize: 18,
+    lineHeight: 24,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
@@ -4429,6 +4550,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   photoOptionText: {
     fontSize: 15,
+    lineHeight: 21,
     fontFamily: Fonts.poppinsSemiBold,
     color: '#344054',
   },
@@ -4450,6 +4572,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   alertTitle: {
     fontSize: 20,
+    lineHeight: 26,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
     marginBottom: 8,
@@ -4471,6 +4594,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   alertButtonText: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: '#fff',
   },
@@ -4492,6 +4616,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   viewAllTitle: {
     fontSize: 18,
+    lineHeight: 24,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
@@ -4541,6 +4666,7 @@ function makeStyles(t: typeof Colors.light) {
   gridTagText: {
     color: '#fff',
     fontSize: 10,
+    lineHeight: 16,
     fontFamily: Fonts.poppinsBold,
   },
   tagGrid: {
@@ -4558,6 +4684,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   tagText: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
@@ -4611,6 +4738,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   tagFieldLabel: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
     marginBottom: 8,
@@ -4621,6 +4749,7 @@ function makeStyles(t: typeof Colors.light) {
     borderRadius: 16,
     padding: 14,
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppins,
     color: t.textPrimary,
     minHeight: 80,
@@ -4641,6 +4770,7 @@ function makeStyles(t: typeof Colors.light) {
   tagSearchInput: {
     flex: 1,
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppins,
     color: t.textPrimary,
   },
@@ -4658,6 +4788,7 @@ function makeStyles(t: typeof Colors.light) {
   selectedSkillBadgeText: {
     flex: 1,
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsBold,
     color: '#166534',
   },
@@ -4681,6 +4812,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   tagSubmitText: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: '#000',
   },
@@ -4701,11 +4833,13 @@ function makeStyles(t: typeof Colors.light) {
   },
   historyTitle: {
     fontSize: 15,
+    lineHeight: 21,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
   historySubtitle: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppins,
     color: t.textMuted,
     marginTop: 2,
@@ -4717,6 +4851,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   statusText: {
     fontSize: 10,
+    lineHeight: 16,
     fontFamily: Fonts.poppinsBold,
   },
   ratingSection: {
@@ -4727,17 +4862,20 @@ function makeStyles(t: typeof Colors.light) {
   },
   ratingValue: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
     marginLeft: 4,
   },
   priceText: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
   commentText: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppins,
     fontStyle: 'italic',
     color: t.textSecondary,
@@ -4757,6 +4895,7 @@ function makeStyles(t: typeof Colors.light) {
   metricLabel: {
     width: 80,
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppinsSemiBold,
     color: t.textSecondary,
   },
@@ -4783,6 +4922,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   historyHelpText: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsSemiBold,
     color: t.textSecondary,
   },
@@ -4797,6 +4937,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   cancellationReasonText: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppinsSemiBold,
     color: '#EF4444',
   },
@@ -4833,12 +4974,14 @@ function makeStyles(t: typeof Colors.light) {
   },
   minTitle: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     marginBottom: 4,
     color: t.textPrimary,
   },
   minSub: {
     fontSize: 13,
+    lineHeight: 19,
     color: t.textSecondary,
     marginBottom: 16,
     fontFamily: Fonts.poppins,
@@ -4873,11 +5016,13 @@ function makeStyles(t: typeof Colors.light) {
   },
   slotDateText: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
   slotTimeText: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppins,
     color: t.textSecondary,
   },
@@ -4890,17 +5035,20 @@ function makeStyles(t: typeof Colors.light) {
   },
   slotFormTitle: {
     fontSize: 18,
+    lineHeight: 24,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
   slotFormSub: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppins,
     color: t.textSecondary,
     marginBottom: 24,
   },
   slotInputLabel: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsBold,
     color: t.textSecondary,
     marginBottom: 8,
@@ -4929,6 +5077,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   slotPickerText: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsSemiBold,
     color: t.textSecondary,
   },
@@ -4941,6 +5090,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   slotAddSubmitText: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsBold,
     color: '#000',
   },
@@ -4956,11 +5106,13 @@ function makeStyles(t: typeof Colors.light) {
   },
   slotListDate: {
     fontSize: 15,
+    lineHeight: 21,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
   slotListTime: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppins,
     color: t.textSecondary,
   },
@@ -4989,6 +5141,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   webPickerTitle: {
     fontSize: 20,
+    lineHeight: 26,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
@@ -5004,6 +5157,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   timeColumnTitle: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsSemiBold,
     color: t.textSecondary,
     marginBottom: 12,
@@ -5022,6 +5176,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   timeOptionText: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppins,
     color: t.textSecondary,
   },
@@ -5065,6 +5220,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   walletTitleMini: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsSemiBold,
     color: '#92400E',
   },
@@ -5079,6 +5235,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   withdrawSmallText: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppinsBold,
     color: '#D97706',
   },
@@ -5089,11 +5246,13 @@ function makeStyles(t: typeof Colors.light) {
   },
   currencyMini: {
     fontSize: 18,
+    lineHeight: 24,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
   },
   balanceMini: {
     fontSize: 28,
+    lineHeight: 34,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
   },
@@ -5108,6 +5267,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   walletStatTextMini: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppinsMedium,
     color: '#10B981',
   },
@@ -5127,6 +5287,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   walletHeaderTitleLarge: {
     fontSize: 18,
+    lineHeight: 24,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
@@ -5142,12 +5303,14 @@ function makeStyles(t: typeof Colors.light) {
   },
   walletBalanceLabelLarge: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppins,
     color: 'rgba(255,255,255,0.6)',
     marginBottom: 4,
   },
   walletBalanceValueLarge: {
     fontSize: 32,
+    lineHeight: 38,
     fontFamily: Fonts.poppinsBold,
     color: '#fff',
     marginBottom: 16,
@@ -5164,6 +5327,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   walletBalanceBadgeTextLarge: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppinsMedium,
     color: '#FFCE48',
   },
@@ -5180,12 +5344,14 @@ function makeStyles(t: typeof Colors.light) {
   },
   withdrawInputLabel: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsMedium,
     color: t.textSecondary,
     marginBottom: 8,
   },
   withdrawAmountInput: {
     fontSize: 24,
+    lineHeight: 30,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
     borderBottomWidth: 2,
@@ -5215,6 +5381,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   methodText: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsBold,
     color: t.textSecondary,
   },
@@ -5232,11 +5399,13 @@ function makeStyles(t: typeof Colors.light) {
   },
   paymentInfoTextLarge: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsBold,
     color: t.textPrimary,
   },
   paymentInfoSubTextLarge: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppins,
     color: t.textSecondary,
   },
@@ -5254,6 +5423,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   addPaymentPromptText: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsMedium,
     color: t.textSecondary,
   },
@@ -5265,6 +5435,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   withdrawalConfirmBtnText: {
     fontSize: 15,
+    lineHeight: 21,
     fontFamily: Fonts.poppinsBold,
     color: '#000',
   },
@@ -5286,6 +5457,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   methodTabText: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsSemiBold,
     color: t.textSecondary,
   },
@@ -5301,6 +5473,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   fieldLabelLarge: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsSemiBold,
     color: t.textSecondary,
     marginLeft: 4,
@@ -5313,6 +5486,7 @@ function makeStyles(t: typeof Colors.light) {
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 15,
+    lineHeight: 21,
     fontFamily: Fonts.poppins,
     color: t.textPrimary,
   },
@@ -5325,6 +5499,7 @@ function makeStyles(t: typeof Colors.light) {
   },
   saveBankBtnTextLarge: {
     fontSize: 15,
+    lineHeight: 21,
     fontFamily: Fonts.poppinsBold,
     color: '#fff',
   },

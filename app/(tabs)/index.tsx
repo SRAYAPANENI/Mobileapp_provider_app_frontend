@@ -22,6 +22,7 @@ import {
   Pressable,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppAlert } from '@/components/app-alert';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -80,6 +81,7 @@ const formatTime = (deadline: number, now: number) => {
 
 export default function DashboardScreen() {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { openServiceRoom, jobId: paramJobId } = useLocalSearchParams<{ openServiceRoom?: string; jobId?: string }>();
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
@@ -1034,6 +1036,7 @@ const filteredJobs = jobs.filter((job) => {
     if (!selectedJob) return;
     const { latitude, longitude, title } = selectedJob;
     if (latitude && longitude) {
+      setShowManageModal(false);
       router.push({
         pathname: '/navigate-to-site' as any,
         params: { lat: String(latitude), lng: String(longitude), title: title ?? 'Job Site', jobId: selectedJob.id },
@@ -1632,7 +1635,7 @@ const filteredJobs = jobs.filter((job) => {
       >
         <View style={styles.modalOverlay}>
           <RNAnimated.View
-            style={[styles.manageSheet, { transform: [{ translateY: panY }] }]}
+            style={[styles.manageSheet, { paddingTop: insets.top + 24, transform: [{ translateY: panY }] }]}
           >
             {/* panHandlers scoped to just this handle, not the whole sheet —
                 it used to cover the entire sheet including the ScrollView
@@ -2554,6 +2557,7 @@ const styles = StyleSheet.create({
   },
   locationBadgeLabel: {
     fontSize: 9,
+    lineHeight: 15,
     fontFamily: Fonts.poppinsBold,
     color: '#FFCE48',
     letterSpacing: 1,
@@ -2565,6 +2569,7 @@ const styles = StyleSheet.create({
   },
   addressText: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsSemiBold,
     color: '#111827',
     flex: 1,
@@ -2579,11 +2584,13 @@ const styles = StyleSheet.create({
   },
   greetingText: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppins,
     color: '#6B7280',
   },
   userNameHighlight: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
   },
@@ -2612,6 +2619,7 @@ const styles = StyleSheet.create({
   },
   sliderTabText: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppins,
     color: '#9CA3AF',
   },
@@ -2639,12 +2647,14 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: '#9CA3AF',
     textAlign: 'center',
   },
   emptySubText: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppins,
     color: '#D1D5DB',
     textAlign: 'center',
@@ -2691,6 +2701,7 @@ const styles = StyleSheet.create({
   },
   directRequestText: {
     fontSize: 9,
+    lineHeight: 15,
     fontFamily: Fonts.poppinsBold,
     color: '#fff',
     letterSpacing: 0.3,
@@ -2702,6 +2713,7 @@ const styles = StyleSheet.create({
   },
   feasibilityText: {
     fontSize: 9,
+    lineHeight: 15,
     fontFamily: Fonts.poppinsBold,
     color: '#fff',
     letterSpacing: 0.5,
@@ -2713,6 +2725,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 10,
+    lineHeight: 16,
     fontFamily: Fonts.poppinsBold,
     color: '#fff',
   },
@@ -2727,11 +2740,13 @@ const styles = StyleSheet.create({
   },
   distanceBadgeText: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppinsBold,
     color: '#92400E',
   },
   jobTitle: {
     fontSize: 15,
+    lineHeight: 21,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
     marginRight: 8,
@@ -2754,6 +2769,7 @@ const styles = StyleSheet.create({
   },
   feasibilityDetailText: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppins,
     flex: 1,
   },
@@ -2776,6 +2792,7 @@ const styles = StyleSheet.create({
   },
   skillText: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppinsMedium,
     color: '#92400E',
   },
@@ -2791,6 +2808,7 @@ const styles = StyleSheet.create({
   },
   detailText: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppins,
     color: '#374151',
   },
@@ -2810,11 +2828,13 @@ const styles = StyleSheet.create({
   },
   feeLabel: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppins,
     color: '#9CA3AF',
   },
   feeValue: {
     fontSize: 17,
+    lineHeight: 23,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
   },
@@ -2831,6 +2851,7 @@ const styles = StyleSheet.create({
   },
   detailsButtonText: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsBold,
     color: '#374151',
   },
@@ -2841,6 +2862,7 @@ const styles = StyleSheet.create({
   },
   acceptButtonText: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
   },
@@ -2870,12 +2892,14 @@ const styles = StyleSheet.create({
   },
   successOverlayTitle: {
     fontSize: 22,
+    lineHeight: 28,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
     marginTop: 16,
   },
   successOverlaySubtitle: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppins,
     color: '#6B7280',
     textAlign: 'center',
@@ -2907,11 +2931,13 @@ const styles = StyleSheet.create({
   },
   chatNotifTitle: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsBold,
     color: '#fff',
   },
   chatNotifSubtitle: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppins,
     color: '#9CA3AF',
   },
@@ -2938,11 +2964,13 @@ const styles = StyleSheet.create({
   },
   cancelJobModalTitle: {
     fontSize: 18,
+    lineHeight: 24,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
   },
   cancelJobModalSubtitle: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppins,
     color: '#6B7280',
     marginTop: 4,
@@ -2961,6 +2989,7 @@ const styles = StyleSheet.create({
   },
   cancelReasonChipText: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsSemiBold,
     color: '#374151',
   },
@@ -2988,6 +3017,7 @@ const styles = StyleSheet.create({
   },
   cancelJobModalSecondaryBtnText: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsBold,
     color: '#374151',
   },
@@ -3000,6 +3030,7 @@ const styles = StyleSheet.create({
   },
   cancelJobModalPrimaryBtnText: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsBold,
     color: '#fff',
   },
@@ -3032,6 +3063,7 @@ const styles = StyleSheet.create({
   },
   exitTitle: {
     fontSize: 22,
+    lineHeight: 28,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
     marginBottom: 8,
@@ -3063,6 +3095,7 @@ const styles = StyleSheet.create({
   },
   exitCancelText: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: '#6B7280',
   },
@@ -3071,6 +3104,7 @@ const styles = StyleSheet.create({
   },
   exitConfirmText: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: '#fff',
   },
@@ -3102,6 +3136,7 @@ const styles = StyleSheet.create({
   },
   manageTitle: {
     fontSize: 22,
+    lineHeight: 28,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
     textAlign: 'center',
@@ -3109,6 +3144,7 @@ const styles = StyleSheet.create({
   },
   manageSubtitle: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppins,
     color: '#9CA3AF',
     textAlign: 'center',
@@ -3138,12 +3174,14 @@ const styles = StyleSheet.create({
   },
   liveBadgeText: {
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: Fonts.poppinsBold,
     color: '#EF4444',
     letterSpacing: 0.5,
   },
   requirementLabel: {
     fontSize: 11,
+    lineHeight: 17,
     fontFamily: Fonts.poppinsBold,
     color: '#9CA3AF',
     letterSpacing: 1,
@@ -3151,6 +3189,7 @@ const styles = StyleSheet.create({
   },
   serviceJobTitle: {
     fontSize: 22,
+    lineHeight: 28,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
     marginBottom: 8,
@@ -3189,12 +3228,14 @@ const styles = StyleSheet.create({
   },
   customerName: {
     fontSize: 15,
+    lineHeight: 21,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
     marginBottom: 2,
   },
   customerBadge: {
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: Fonts.poppinsSemiBold,
     color: '#16A34A',
   },
@@ -3221,6 +3262,7 @@ const styles = StyleSheet.create({
   },
   navigateBtnText: {
     fontSize: 15,
+    lineHeight: 21,
     fontFamily: Fonts.poppinsBold,
     color: '#fff',
   },
@@ -3244,6 +3286,7 @@ const styles = StyleSheet.create({
   },
   completeJobText: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: '#fff',
   },
@@ -3261,6 +3304,7 @@ const styles = StyleSheet.create({
   },
   cancelJobBtnText: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsBold,
     color: '#EF4444',
   },
@@ -3278,6 +3322,7 @@ const styles = StyleSheet.create({
   },
   pickupPhotoBtnText: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
   },
@@ -3340,6 +3385,7 @@ const styles = StyleSheet.create({
   },
   otpDigit: {
     fontSize: 24,
+    lineHeight: 30,
     fontFamily: Fonts.poppinsBold,
     color: '#9CA3AF',
     textAlign: 'center',
@@ -3366,6 +3412,7 @@ const styles = StyleSheet.create({
   },
   inspectionTimerLabel: {
     fontSize: 13,
+    lineHeight: 19,
     color: '#6D28D9',
     fontFamily: Fonts.poppinsSemiBold,
     marginBottom: 6,
@@ -3391,6 +3438,7 @@ const styles = StyleSheet.create({
   },
   closeModalText: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsSemiBold,
     color: '#9CA3AF',
   },
@@ -3405,6 +3453,7 @@ const styles = StyleSheet.create({
   },
   ratingTitle: {
     fontSize: 20,
+    lineHeight: 26,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
     textAlign: 'center',
@@ -3412,6 +3461,7 @@ const styles = StyleSheet.create({
   },
   ratingSubtitle: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppins,
     color: '#6B7280',
     textAlign: 'center',
@@ -3425,6 +3475,7 @@ const styles = StyleSheet.create({
   },
   ratingLabel: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsSemiBold,
     color: '#374151',
     width: 110,
@@ -3452,6 +3503,7 @@ const styles = StyleSheet.create({
   },
   submitRatingText: {
     fontSize: 16,
+    lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
   },
@@ -3470,6 +3522,7 @@ const styles = StyleSheet.create({
   },
   finalSuccessTitle: {
     fontSize: 24,
+    lineHeight: 30,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
     marginTop: 16,
@@ -3492,6 +3545,7 @@ const styles = StyleSheet.create({
   },
   finalSuccessBtnText: {
     fontSize: 15,
+    lineHeight: 21,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
   },
@@ -3516,6 +3570,7 @@ const styles = StyleSheet.create({
   },
   locationModalTitle: {
     fontSize: 20,
+    lineHeight: 26,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
     marginTop: 16,
@@ -3540,6 +3595,7 @@ const styles = StyleSheet.create({
   },
   locationModalPrimaryBtnText: {
     fontSize: 15,
+    lineHeight: 21,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
   },
@@ -3549,6 +3605,7 @@ const styles = StyleSheet.create({
   },
   locationModalSecondaryBtnText: {
     fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.poppinsSemiBold,
     color: '#9CA3AF',
   },

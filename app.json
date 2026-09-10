@@ -30,22 +30,19 @@
       "predictiveBackGestureEnabled": false,
       "googleServicesFile": "./google-services.json",
       "permissions": [
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_BACKGROUND_LOCATION",
-        "RECORD_AUDIO",
-        "MODIFY_AUDIO_SETTINGS",
-        "READ_PHONE_STATE",
-        "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_LOCATION",
-        "FOREGROUND_SERVICE_PHONE_CALL",
-        "USE_FULL_SCREEN_INTENT",
-        "POST_NOTIFICATIONS",
-        "BIND_TELECOM_CONNECTION_SERVICE",
-        "WAKE_LOCK"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.READ_PHONE_STATE",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.FOREGROUND_SERVICE_PHONE_CALL",
+        "android.permission.USE_FULL_SCREEN_INTENT",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.BIND_TELECOM_CONNECTION_SERVICE",
+        "android.permission.WAKE_LOCK"
       ],
       "config": {
         "googleMaps": {
@@ -91,7 +88,9 @@
         }
       ],
       "./plugins/with-notification-sounds.js",
-      "./plugins/with-real-device-architecture.js"
+      "./plugins/with-real-device-architecture.js",
+      "./plugins/with-modular-headers.js",
+      "./plugins/with-ios-google-maps.js"
     ],
     "experiments": {
       "typedRoutes": true,
