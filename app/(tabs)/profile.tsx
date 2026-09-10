@@ -37,7 +37,8 @@ import {
   Wallet,
   ArrowUpRight,
   ArrowDownLeft,
-  Landmark
+  Landmark,
+  Home,
 } from 'lucide-react-native';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { Colors, Fonts } from '@/constants/theme';
@@ -1057,8 +1058,14 @@ export default function ProfileScreen() {
       } else {
         await SkoFyApi.skills.addSkillsByName([{ name: skillName, profession: addSkillProfession }]);
       }
+      // No success alert here on purpose — this modal is meant for picking
+      // several skills in a row, and a blocking confirmation modal after
+      // every single tap (stacked on top of this already-open one) forced
+      // the user to dismiss it before picking the next skill, which is what
+      // read as the picker "getting stuck" on multi-select. The chip itself
+      // flipping to its disabled "✓ already added" state below (once
+      // apiSkills updates) is the confirmation now.
       await refreshSkillsAndEligibility();
-      showAlert('success', 'Skill Added', `${skillName} has been added to your profile.`);
     } catch {
       showAlert('error', 'Error', 'Failed to add skill. Please try again.');
     } finally {
@@ -1401,12 +1408,29 @@ export default function ProfileScreen() {
           <View style={styles.logoRow}>
             <AnimatedBrandMark size={32} nameSize={22} centered={false} pro />
           </View>
-          <TouchableOpacity
-            style={styles.settingsHeaderBtn}
-            onPress={() => setIsSettingsOpen(true)}
-          >
-            <Settings size={22} color="#111827" />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            {/* Profile has no bottom tab bar to fall back on (it's hidden
+                app-wide — see (tabs)/_layout.tsx), so without this there was
+                no way back to the dashboard at all. Always replace() straight
+                to Home rather than canGoBack()-then-back(): Profile is also
+                reached from register.tsx (replace, right after signup, with
+                /login still sitting under it in history) and from
+                job-details.tsx's verification-gate prompts — back() in
+                either case would land this "Home" button on the login
+                screen or job-details instead of Home. */}
+            <TouchableOpacity
+              style={styles.settingsHeaderBtn}
+              onPress={() => router.replace('/(tabs)')}
+            >
+              <Home size={22} color="#111827" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.settingsHeaderBtn}
+              onPress={() => setIsSettingsOpen(true)}
+            >
+              <Settings size={22} color="#111827" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Stays fixed above the scroll — switching tabs shouldn't require
@@ -3285,6 +3309,11 @@ function makeStyles(t: typeof Colors.light) {
   logoRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   settingsHeaderBtn: {
     width: 44,
