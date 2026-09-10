@@ -1,7 +1,9 @@
 import AnimatedBrandMark from '@/components/animated-brand-mark';
 import React, { useState, useEffect, useMemo } from 'react';
 import { SkoFyApi } from '@/services/api';
+import { getCurrentVoipToken } from '@/services/callManager';
 import { kmToMiles, milesToKm } from '@/services/schedulingEngine';
+import messaging from '@react-native-firebase/messaging';
 import { StyleSheet, View, TouchableOpacity, ScrollView, Platform, Dimensions, Modal, Switch, TextInput, RefreshControl, SafeAreaView, Pressable, BackHandler, PanResponder, Animated as RNAnimated, ActivityIndicator, Alert, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -1149,7 +1151,16 @@ export default function ProfileScreen() {
   const handleLogout = async () => {
     // Local logout proceeds regardless — this is just telling the server to
     // invalidate the refresh token server-side.
-    try { await SkoFyApi.auth.logout(); } catch (err) {
+    try {
+      // Best-effort — a failure here shouldn't block logout, it would just
+      // mean the backend deletes the token by user_id next login instead of
+      // right now (see auth_service.py's logout docstring for why this
+      // exists at all: without it, a logged-out device kept ringing for
+      // incoming calls indefinitely).
+      const fcmToken = await messaging().getToken().catch(() => undefined);
+      const voipToken = getCurrentVoipToken() ?? undefined;
+      await SkoFyApi.auth.logout(fcmToken, voipToken);
+    } catch (err) {
       console.error('Server-side logout failed:', err);
     }
     router.replace('/login');

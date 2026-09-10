@@ -17,7 +17,10 @@
         "NSMicrophoneUsageDescription": "This app needs access to your microphone for voice calls with customers.",
         "NSCameraUsageDescription": "Skofy needs camera access so you can take your profile photo and document photos.",
         "NSPhotoLibraryUsageDescription": "Skofy needs photo library access so you can attach documents and skill-proof media.",
-        "UIBackgroundModes": ["voip", "audio", "location"]
+        "UIBackgroundModes": ["voip", "audio", "location", "remote-notification"]
+      },
+      "entitlements": {
+        "aps-environment": "development"
       }
     },
     "android": {
@@ -90,7 +93,8 @@
       "./plugins/with-notification-sounds.js",
       "./plugins/with-real-device-architecture.js",
       "./plugins/with-modular-headers.js",
-      "./plugins/with-ios-google-maps.js"
+      "./plugins/with-ios-google-maps.js",
+      "./plugins/with-pushkit-voip.js"
     ],
     "experiments": {
       "typedRoutes": true,
