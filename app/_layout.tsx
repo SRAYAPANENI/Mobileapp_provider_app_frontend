@@ -3,8 +3,8 @@ import { useFonts } from 'expo-font';
 import { Stack, router, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef } from 'react';
-import { Alert, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { View } from 'react-native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import 'react-native-reanimated';
 
@@ -20,6 +20,8 @@ import { AppProvider } from '@/context/AppContext';
 import { initCallManager, registerFcmToken } from '@/services/callManager';
 import { TokenStore, setSessionExpiredHandler } from '@/services/api';
 import { NetworkStatusBanner } from '@/components/network-status-banner';
+import AppLockGate from '@/components/app-lock-gate';
+import SessionExpiredModal from '@/components/session-expired-modal';
 import '@/services/background-location'; // registers background GPS task at startup
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
@@ -44,6 +46,8 @@ export default function RootLayout() {
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
   useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
+
+  const [signedOutVisible, setSignedOutVisible] = useState(false);
 
   // Hiding this on fontsLoaded alone fires before the actual splash route
   // (app/index.tsx — a fairly heavy animated SVG mesh) has laid out and
@@ -83,8 +87,12 @@ export default function RootLayout() {
         // generic explanation here covers every trigger (a genuinely
         // expired session, or this account's refresh token having been
         // revoked by a newer login elsewhere for the same role).
-        Alert.alert('Signed Out', 'Your session has ended. Please log in again.');
-        router.replace('/login' as any);
+        // A plain native Alert.alert() looked jarringly out of place next
+        // to the rest of the app's branded modals — replaced with
+        // SessionExpiredModal below. Navigation happens on its dismiss
+        // callback, not immediately, so it doesn't fire while the message
+        // is still on screen and the user hasn't actually seen it yet.
+        setSignedOutVisible(true);
       }
     });
   }, []);
@@ -98,16 +106,25 @@ export default function RootLayout() {
       <KeyboardProvider>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <AppProvider>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="index" />
-              <Stack.Screen name="login" options={{ animation: 'fade' }} />
-              <Stack.Screen name="register" options={{ animation: 'slide_from_right' }} />
-              <Stack.Screen name="forgot-password" options={{ animation: 'slide_from_right' }} />
-              <Stack.Screen name="(tabs)" options={{ animation: 'slide_from_right' }} />
-              <Stack.Screen name="job-details" options={{ animation: 'slide_from_right' }} />
-              <Stack.Screen name="navigate-to-site" options={{ animation: 'slide_from_bottom' }} />
-            </Stack>
-            <NetworkStatusBanner />
+            <AppLockGate>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="login" options={{ animation: 'fade' }} />
+                <Stack.Screen name="register" options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="forgot-password" options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="(tabs)" options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="job-details" options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="navigate-to-site" options={{ animation: 'slide_from_bottom' }} />
+              </Stack>
+              <NetworkStatusBanner />
+            </AppLockGate>
+            <SessionExpiredModal
+              visible={signedOutVisible}
+              onDismiss={() => {
+                setSignedOutVisible(false);
+                router.replace('/login' as any);
+              }}
+            />
             {/* "auto" follows the device's actual system theme, not our
                 locked-light useColorScheme — pinned to dark icons to match. */}
             <StatusBar style="dark" />

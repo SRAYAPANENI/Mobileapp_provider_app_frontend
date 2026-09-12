@@ -94,7 +94,13 @@
       "./plugins/with-real-device-architecture.js",
       "./plugins/with-modular-headers.js",
       "./plugins/with-ios-google-maps.js",
-      "./plugins/with-pushkit-voip.js"
+      "./plugins/with-pushkit-voip.js",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Dodorez Pro to use Face ID to unlock the app."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
