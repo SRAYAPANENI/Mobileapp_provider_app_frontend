@@ -147,7 +147,16 @@ export default function LoginScreen() {
 
   const handleSendOtp = async () => {
     const requiredLength = getPhoneNumberLength(countryCode);
-    if (phoneNumber.length !== requiredLength) return;
+    // Matches forgot-password.tsx's fix for the same bug: a length-only
+    // check silently no-op'd on an invalid number (button just did
+    // nothing, no feedback) and let an obviously-fake number like
+    // 1234567890 through, which only failed with a confusing 422 from the
+    // server — the backend always forces a +1 prefix and only ever
+    // validates as a 10-digit US number regardless of country selected.
+    if (phoneNumber.length !== requiredLength || !/^[2-9]/.test(phoneNumber)) {
+      showFeedback('error', 'Invalid Number', `Enter a valid ${requiredLength}-digit phone number.`);
+      return;
+    }
     try {
       setIsLoading(true);
       const res = await SkoFyApi.auth.sendOTP(`+${callingCode}${phoneNumber}`);
@@ -167,6 +176,17 @@ export default function LoginScreen() {
     setCallingCode(country.callingCode[0]);
     setIsCountryPickerVisible(false);
     setPhoneNumber('');
+  };
+
+  // isOtpSent already locks the phone number TextInput itself
+  // (editable={!isOtpSent} below) — this button had no matching guard, so
+  // tapping the flag while OTP entry was showing silently cleared
+  // phoneNumber via onSelectCountry above while leaving isOtpSent true.
+  // Submitting then called verifyOTP with an empty phone number: a
+  // confusing failure with nothing on screen explaining why.
+  const openCountryPicker = () => {
+    if (isOtpSent) return;
+    setIsCountryPickerVisible(true);
   };
 
   const getInputStyle = (name: string) => [
@@ -219,7 +239,8 @@ export default function LoginScreen() {
                         shadowRadius: 4,
                         elevation: 2,
                       }]}
-                      onPress={() => setIsCountryPickerVisible(true)}
+                      onPress={openCountryPicker}
+                      disabled={isOtpSent}
                     >
                       <CountryPicker
                         countryCode={countryCode}

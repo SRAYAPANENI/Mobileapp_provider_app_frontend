@@ -119,6 +119,14 @@ export default function ChatScreen() {
       if (!paramJobTitle && job?.title) setJobTitle(job.title);
     }).catch(() => {});
   }, [jobId, paramName, paramJobTitle]);
+  // The WS onmessage handler is set up in an effect keyed only on [jobId],
+  // so inline code inside it (not routed through a ref, unlike
+  // handleAcceptCall/handleEndCall/etc.) only ever sees the `name` state
+  // from whichever render was active when that effect ran — stale for a
+  // cold notification-tap open where the real name is backfilled moments
+  // later by the effect above.
+  const nameRef = useRef('');
+  useEffect(() => { nameRef.current = name; }, [name]);
 
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
@@ -182,6 +190,15 @@ export default function ChatScreen() {
   // Mute/Speaker actions.
   const toggleMuteRef = useRef<() => void>(() => {});
   const toggleSpeakerRef = useRef<() => void>(() => {});
+  // Same staleness concern again — the WS onmessage handler's call_offer
+  // branch calls this directly instead of through a ref, so it only ever
+  // saw the `name` state from whichever render was active when that
+  // effect's [jobId]-keyed closure was created. Opened cold from a
+  // notification tap (paramName empty, backfilled async above), that's
+  // '' — startOngoingCallNotification(jobId, name || 'Customer') inside
+  // handleAcceptCall permanently showed "Customer" even after the real
+  // name loaded moments later.
+  const handleAcceptCallRef = useRef<() => void>(() => {});
   // callState !== 'idle' alone isn't a reliable re-entry guard for
   // handleStartCall: React state updates aren't visible until the next
   // render, so two taps fired close enough together (faster than a
@@ -383,6 +400,7 @@ export default function ChatScreen() {
       cleanupCall();
     }
   };
+  handleAcceptCallRef.current = handleAcceptCall;
 
   const handleDeclineCall = () => {
     clearCallTimeout();
@@ -523,7 +541,12 @@ export default function ChatScreen() {
             if (autoAnswer === 'true') {
               // Already answered via the native incoming-call screen (CallKeep) —
               // skip showing our own ringing UI, go straight to connecting.
-              handleAcceptCall();
+              // Through the ref (not handleAcceptCall directly) — this effect
+              // is keyed only on [jobId], so a direct call here would only
+              // ever see whatever `name` state existed on the render that
+              // set up this handler, not the real name backfilled moments
+              // later for a notification-tap open.
+              handleAcceptCallRef.current();
             } else {
               setCallState('ringing');
               // InCallManager.startRingtone plays on the actual ring audio
@@ -550,7 +573,7 @@ export default function ChatScreen() {
             pendingIceRef.current = [];
             outgoingOfferRef.current = null;
             setCallState('connected');
-            if (jobId) startOngoingCallNotification(jobId, name || 'Customer');
+            if (jobId) startOngoingCallNotification(jobId, nameRef.current || 'Customer');
             registerHangupHandler(() => handleEndCallRef.current());
             registerMuteHandler(() => toggleMuteRef.current());
             registerSpeakerHandler(() => toggleSpeakerRef.current());
@@ -846,7 +869,13 @@ export default function ChatScreen() {
                   }
                   setRatingSubmitting(true);
                   try {
-                    await SkoFyApi.jobs.submitCustomerReview(jobId, { ...ratings, comment: ratingComment });
+                    await SkoFyApi.jobs.submitCustomerReview(jobId, {
+                      behaviour_rating: ratings.behaviour,
+                      negotiation_rating: ratings.negotiation,
+                      payment_rating: ratings.payment,
+                      environment_rating: ratings.environment,
+                      comment: ratingComment,
+                    });
                     setRatingVisible(false);
                   } catch {
                     Alert.alert('Error', 'Failed to submit rating. Please try again.');

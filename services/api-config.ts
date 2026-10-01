@@ -9,7 +9,8 @@ const DEV_LAN_IP = '192.168.1.6';
 
 // TEMPORARY ngrok tunnel — lets a release APK reach the local backend over
 // mobile data/any network, not just the same WiFi as DEV_LAN_IP.
-// Previous account's URL — hit its monthly bandwidth cap (ERR_NGROK_725):
+// Previous accounts' URLs — each hit its monthly bandwidth cap (ERR_NGROK_725):
+// const NGROK_URL = 'https://underrate-snowfield-chemist.ngrok-free.dev/v1';
 // const NGROK_URL = 'https://lavender-strife-monopoly.ngrok-free.dev/v1';
-const NGROK_URL = 'https://underrate-snowfield-chemist.ngrok-free.dev/v1';
+const NGROK_URL = 'https://dill-unstirred-amply.ngrok-free.dev/v1';
 export const API_BASE_URL = NGROK_URL;

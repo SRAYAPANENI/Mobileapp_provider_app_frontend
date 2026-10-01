@@ -42,6 +42,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import MapView, { Marker, PROVIDER_GOOGLE, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { checkFeasibility, FeasibilityResult, calculateDistance, kmToMiles } from '@/services/schedulingEngine';
+import { resolveApplyGate } from '@/services/applyErrorGate';
 import { SkoFyApi } from '@/services/api';
 import Animated, { FadeInUp, FadeInRight } from 'react-native-reanimated';
 import { Alert } from 'react-native';
@@ -220,10 +221,19 @@ export default function JobDetailsScreen() {
           })
           .catch((err) => console.error('Failed to get current location:', err));
 
-        // Fetch job details — try API first, fall back to local mock data
+        // Fetch job details — try API first, fall back to local mock data.
+        // getActive() feeds the feasibility/conflict check below (this
+        // provider's other booked jobs to check the new one against) — it's
+        // chained with its own .catch so a failure here can't be mistaken
+        // for the job fetch itself failing and trigger the mock-data fallback.
         let jobData: any;
+        let activeJobsRaw: any[] = [];
         try {
-          const raw = await SkoFyApi.jobs.get(id || '');
+          const [raw, activeRes] = await Promise.all([
+            SkoFyApi.jobs.get(id || ''),
+            SkoFyApi.jobs.getActive().catch(() => []),
+          ]);
+          activeJobsRaw = Array.isArray(activeRes) ? activeRes : [];
           const j = raw as any;
           // Checking job.status alone here was a real bug: if a DIFFERENT
           // provider got hired (job moves to ACCEPTED/IN_PROGRESS), every
@@ -275,12 +285,18 @@ export default function JobDetailsScreen() {
             location: 'Customer Location',
             startTime: scheduledMs ?? Date.now() + 3600000,
             endTime: scheduledMs ? scheduledMs + 7200000 : Date.now() + 7200000,
-            deadline: scheduledMs ?? Date.now() + 9 * 3600000,
+            // Anchored to when the job was actually POSTED (j.created_at),
+            // not to whenever this screen happens to load — same reasoning
+            // as (tabs)/index.tsx's mapInbound/mapActive. Using Date.now()
+            // here meant an ASAP job's countdown silently reset to a fresh
+            // 9 hours every time this screen was opened, never actually
+            // counting down to anything real.
+            deadline: scheduledMs ?? new Date(j.created_at).getTime() + 9 * 3600000,
             budgetMin: j.budget_min,
             budgetMax: j.budget_max,
             rate: budgetStr,
             duration: 'project',
-            fee: j.inspection_fee > 0 ? `$${j.inspection_fee}` : '$0 (Free Inspection)',
+            fee: j.inspection_fee > 0 ? `$${j.inspection_fee}` : '$0 (No Visiting Fee)',
             skills: requiredSkills.map(s => s.name),
             requiredSkills,
             requirements: j.notes ? [j.notes] : [],
@@ -347,11 +363,23 @@ export default function JobDetailsScreen() {
         }
         setJob(jobData);
 
-        const result = jobData.isOngoing
+        // Other confirmed jobs to check this one against — same shape/fields
+        // as (tabs)/index.tsx's mapActive, filtered to ones with a real
+        // location (a job with no lat/lng can't have a travel-time conflict
+        // computed against it and would otherwise skew the Haversine calc).
+        const existingJobs = activeJobsRaw
+          .filter((aj: any) => aj.job_id?.toString() !== jobData.id && aj.lat != null && aj.lng != null)
+          .map((aj: any) => ({
+            id: String(aj.job_id ?? aj.id),
+            startTime: aj.scheduled_at ? new Date(aj.scheduled_at).getTime() : Date.now(),
+            endTime: aj.scheduled_at ? new Date(aj.scheduled_at).getTime() + 7200000 : Date.now() + 7200000,
+            location: { latitude: aj.lat, longitude: aj.lng },
+          }));
+        const result = jobData.isOngoing || jobData.latitude == null || jobData.longitude == null
           ? { feasible: true, score: 0, status: 'SAFE', reason: 'Active Job', travelTime: 0 }
           : checkFeasibility(
             { startTime: jobData.startTime, endTime: jobData.endTime, location: jobData.coordinates },
-            []
+            existingJobs
           );
         setFeasibility(result as any);
       } catch (error) {
@@ -411,18 +439,12 @@ export default function JobDetailsScreen() {
       }, 2500);
     } catch (err: any) {
       const msg = err?.message ?? '';
-      if (err?.error_code === 'SKILL_NOT_VERIFIED') {
+      const gate = resolveApplyGate(err);
+      if (gate) {
         setGateModal({
-          title: 'Skill Test Required',
-          message: msg || 'You need to pass the skill test for this job\'s required skill before applying.',
-          actionLabel: 'Take Test',
-          onAction: () => { setGateModal(null); router.push('/(tabs)/profile'); },
-        });
-      } else if (err?.error_code === 'IDENTITY_NOT_VERIFIED') {
-        setGateModal({
-          title: 'Identity Verification Required',
-          message: msg || 'Your identity must be verified before you can apply to jobs.',
-          actionLabel: 'Verify Now',
+          title: gate.title,
+          message: gate.message,
+          actionLabel: gate.actionLabel,
           onAction: () => { setGateModal(null); router.push('/(tabs)/profile'); },
         });
       } else {
@@ -460,20 +482,15 @@ export default function JobDetailsScreen() {
       if (msg.toLowerCase().includes('already') || err?.error_code === 'ALREADY_BID') {
         setShowBidModal(false);
         Alert.alert('Already Applied', 'You have already submitted a bid for this job.');
-      } else if (err?.error_code === 'SKILL_NOT_VERIFIED') {
+        return;
+      }
+      const gate = resolveApplyGate(err);
+      if (gate) {
         setShowBidModal(false);
         setGateModal({
-          title: 'Skill Test Required',
-          message: msg || 'You need to pass the skill test for this job\'s required skill before applying.',
-          actionLabel: 'Take Test',
-          onAction: () => { setGateModal(null); router.push('/(tabs)/profile'); },
-        });
-      } else if (err?.error_code === 'IDENTITY_NOT_VERIFIED') {
-        setShowBidModal(false);
-        setGateModal({
-          title: 'Identity Verification Required',
-          message: msg || 'Your identity must be verified before you can apply to jobs.',
-          actionLabel: 'Verify Now',
+          title: gate.title,
+          message: gate.message,
+          actionLabel: gate.actionLabel,
           onAction: () => { setGateModal(null); router.push('/(tabs)/profile'); },
         });
       } else {

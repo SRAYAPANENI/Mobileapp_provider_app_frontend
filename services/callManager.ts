@@ -1,4 +1,4 @@
-import notifee, { AndroidForegroundServiceType, AndroidImportance, AndroidVisibility, EventType } from '@notifee/react-native';
+import notifee, { AndroidForegroundServiceType, AndroidImportance, AndroidStyle, AndroidVisibility, EventType } from '@notifee/react-native';
 import messaging from '@react-native-firebase/messaging';
 import { router } from 'expo-router';
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
@@ -239,7 +239,7 @@ async function showDirectRequestNotification(data: DirectRequestData) {
   await ensureDirectRequestChannel();
   const parts = [data.jobTitle];
   if (data.skillName) parts.push(data.skillName);
-  if (data.inspectionFee && Number(data.inspectionFee) > 0) parts.push(`$${data.inspectionFee} inspection fee`);
+  if (data.inspectionFee && Number(data.inspectionFee) > 0) parts.push(`$${data.inspectionFee} visiting fee`);
   parts.push(`expires in ~${data.timeoutMinutes || '10'} min`);
 
   await notifee.displayNotification({
@@ -327,6 +327,44 @@ async function showJobUpdateNotification(jobId: string, title: string, body: str
   });
 }
 
+const ADMIN_BROADCAST_CHANNEL_ID = 'admin_broadcasts_v1';
+
+/** Fired on "admin_broadcast" pushes (admin portal's Push Notifications
+ * screen) — same class of bug as elsewhere in this file: no handler existed
+ * for this type, so every `if` in both the background and foreground
+ * listener fell through and it silently never produced a visible
+ * notification, only ever showing up if the provider happened to open the
+ * in-app Notifications list. Not job-scoped, so pressing it opens the
+ * Notifications list rather than deep-linking to a job. */
+async function showAdminBroadcastNotification(title: string, body: string, imageUrl?: string) {
+  await notifee.createChannel({
+    id: ADMIN_BROADCAST_CHANNEL_ID,
+    name: 'Announcements',
+    importance: AndroidImportance.DEFAULT,
+    visibility: AndroidVisibility.PUBLIC,
+  });
+  // notifee's Android BigPictureStyle accepts a remote HTTP(S) URL directly.
+  // iOS notification attachments do NOT — UNNotificationAttachment only
+  // takes a local file path, so passing a raw https:// URL there silently
+  // fails to attach anything. Downloading it to a temp file first (like the
+  // customer app does) would need expo-file-system, which isn't installed
+  // in this app — rather than add a new native dependency (its own install
+  // + rebuild) just for this, iOS gets the notification without the image;
+  // Android gets the full image, and both get the actual notification,
+  // which is the part that was completely missing before this fix.
+  await notifee.displayNotification({
+    title,
+    body,
+    data: { adminBroadcast: true } as any,
+    android: {
+      channelId: ADMIN_BROADCAST_CHANNEL_ID,
+      pressAction: { id: 'default' },
+      autoCancel: true,
+      ...(imageUrl ? { style: { type: AndroidStyle.BIGPICTURE, picture: imageUrl } } : {}),
+    },
+  });
+}
+
 /** Fired on receiving a "call_cancelled" push — the caller hung up (or the
  * no-answer timeout fired) before this device answered. Only shows a missed-
  * call notice if this device was actually the one ringing for that job;
@@ -396,6 +434,12 @@ function handleNotifeeEvent(type: EventType, detail: any) {
     // (the dashboard needs nothing), but would silently break '/chat' (needs
     // jobId to know which thread to load) the moment that route got used.
     safeNavigate(() => router.push({ pathname: route, params: { jobId: jobUpdateJobId } } as any));
+    if (detail.notification?.id) notifee.cancelNotification(detail.notification.id);
+    return;
+  }
+
+  if (detail.notification?.data?.adminBroadcast && (type === EventType.PRESS || type === EventType.ACTION_PRESS)) {
+    safeNavigate(() => router.push('/notifications' as any));
     if (detail.notification?.id) notifee.cancelNotification(detail.notification.id);
     return;
   }
@@ -775,6 +819,14 @@ export function registerBackgroundHandler() {
       );
       return;
     }
+    if (remoteMessage.data?.type === 'admin_broadcast') {
+      await showAdminBroadcastNotification(
+        (remoteMessage.data.title as string) || 'Announcement',
+        (remoteMessage.data.body as string) || '',
+        remoteMessage.data.image_url as string | undefined,
+      );
+      return;
+    }
     const call = parseIncomingCall(remoteMessage.data);
     if (call) await showIncomingCallNotification(call);
   });
@@ -877,6 +929,14 @@ export function initCallManager() {
         (remoteMessage.data.title as string) || 'New message',
         (remoteMessage.data.body as string) || 'You have a new message.',
         '/chat',
+      );
+      return;
+    }
+    if (remoteMessage.data?.type === 'admin_broadcast') {
+      await showAdminBroadcastNotification(
+        (remoteMessage.data.title as string) || 'Announcement',
+        (remoteMessage.data.body as string) || '',
+        remoteMessage.data.image_url as string | undefined,
       );
       return;
     }

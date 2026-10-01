@@ -6,6 +6,7 @@ import { router } from 'expo-router';
 import React, { useEffect, useMemo } from 'react';
 import { TokenStore } from '@/services/api';
 import { handleInitialCallAction, handleInitialNotification } from '@/services/callManager';
+import { prefetchDashboardEssentials } from '@/services/homeCache';
 import { Dimensions, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -45,6 +46,17 @@ export default function SplashScreen() {
     // CallStyle one (Android's real colored-button notification).
     Promise.all([handleInitialNotification(), handleInitialCallAction()]).then(([a, b]) => {
       handledRef.current = a || b;
+    });
+
+    // Kicked off immediately rather than waiting for the 3.5s animation
+    // below to finish (navigateAfterSplash's own token check, further down,
+    // is unchanged and still gates the actual navigation) — this used to be
+    // pure dead time with nothing happening behind it. A fire-and-forget
+    // profile prefetch, not the jobs list itself: loadJobs() does real
+    // feasibility-scoring work against the provider's other bookings that
+    // doesn't belong duplicated here.
+    TokenStore.getAccessToken().then(token => {
+      if (token) prefetchDashboardEssentials();
     });
 
     // Total sequence in 3.5 seconds

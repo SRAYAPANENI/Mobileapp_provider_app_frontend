@@ -43,6 +43,19 @@ async function _connect(): Promise<void> {
   const token = await TokenStore.getAccessToken();
   if (!token) return;
 
+  // A prior socket can still be open or mid-handshake if this fires again
+  // before that one settled (e.g. the active-job effect re-running) —
+  // close it and strip its handlers first, otherwise it's silently
+  // leaked (never closed, no longer referenced by _socket below) and its
+  // own onclose could schedule a stray reconnect on top of this one.
+  if (_socket) {
+    const stale = _socket;
+    stale.onopen = null;
+    stale.onclose = null;
+    stale.onerror = null;
+    stale.close();
+  }
+
   const url = `${WS_BASE}/ws/jobs/${_jobId}`;
   const ws = new WebSocket(url);
   _socket = ws;

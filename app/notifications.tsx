@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
@@ -37,6 +38,7 @@ interface NotifItem {
   job_id: string | null;
   is_read: boolean;
   created_at: string;
+  image_url: string | null;
 }
 
 function getTypeStyles(type: string) {
@@ -187,6 +189,9 @@ export default function NotificationsScreen() {
                         {!item.is_read && <View style={styles.unreadDot} />}
                       </View>
                       <ThemedText style={styles.notifMessage} numberOfLines={2}>{item.body}</ThemedText>
+                      {item.image_url && (
+                        <Image source={{ uri: item.image_url }} style={styles.bannerImage} contentFit="cover" />
+                      )}
                       <ThemedText style={styles.timeText}>{timeAgo(item.created_at)}</ThemedText>
                     </View>
                   </TouchableOpacity>
@@ -245,6 +250,9 @@ function makeStyles(t: typeof Colors.light) {
     unreadTitle: { color: t.textPrimary },
     unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFCE48', marginLeft: 8 },
     notifMessage: { fontSize: 13, fontFamily: Fonts.poppins, color: t.textSecondary, lineHeight: 18, marginBottom: 6 },
+    bannerImage: {
+      width: '100%', height: 140, borderRadius: 12, marginBottom: 8, backgroundColor: t.inputFilled,
+    },
     timeText: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.poppins, color: t.textMuted },
     emptyState: { alignItems: 'center', justifyContent: 'center', marginTop: 100 },
     emptyIconCircle: {

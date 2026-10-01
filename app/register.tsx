@@ -237,7 +237,15 @@ export default function RegisterScreen() {
   // total instead of permanently blocking the submit button below 100%.
   const calculateProgress = () => {
     let completed = 0;
-    const total = isAddingRole ? 10 : 11; // Professional details (Profession/Skills, Experience, Work Proof), [Password]
+    // National ID Number / ID Document are intentionally NOT counted toward
+    // the required total — the ID section's own subtitle tells the user
+    // they're "Recommended for account recovery," not mandatory. They used
+    // to count here anyway, so Create Account silently stayed disabled
+    // below 100% until a user filled in fields the UI told them were
+    // optional, with no field-level error explaining why the button was
+    // stuck. Still tracked below (idNumberFilled/idDocFilled) so filling
+    // them in nudges the progress bar, just not required to reach 100%.
+    const total = isAddingRole ? 8 : 9; // Professional details (Profession/Skills, Experience, Work Proof), [Password]
     if (formData.fullName) completed++;
     if (isOtpVerified) completed++;
     if (formData.address) completed++;
@@ -245,12 +253,12 @@ export default function RegisterScreen() {
     if (formData.primaryProfession && formData.skills.length > 0) completed++;
     if (formData.experience) completed++;
     if (workProofImage) completed++;
-    if (formData.idNumber) completed++;
-    if (idDocumentImage) completed++;
     if (!isAddingRole && formData.password && formData.password === formData.confirmPassword && formData.password.length >= 6) completed++;
     if (agreedToTerms && agreedToPrivacy) completed++;
 
-    return completed / total;
+    const idNumberFilled = formData.idNumber ? 1 : 0;
+    const idDocFilled = idDocumentImage ? 1 : 0;
+    return Math.min(1, (completed + idNumberFilled + idDocFilled) / total);
   };
 
   useEffect(() => {
@@ -1431,6 +1439,14 @@ export default function RegisterScreen() {
                   style={[styles.modalItem, formData.primaryProfession === name && { backgroundColor: themeColors.brand + '15' }]}
                   onPress={() => {
                     setFormData(prev => ({ ...prev, primaryProfession: name, skills: [] }));
+                    // Every proof-of-skill upload was tagged to a skill under
+                    // the OLD profession — none of them apply anymore. Left
+                    // alone, these were silently uploaded at submit time
+                    // (skill_name is free-text server-side, never validated
+                    // against the provider's actual registered skills) as
+                    // permanent SKILL_PROOF documents tagged to a skill this
+                    // provider never ended up registering.
+                    setProofOfSkillsMedia([]);
                     setShowProfessionModal(false);
                   }}
                 >
@@ -1466,6 +1482,10 @@ export default function RegisterScreen() {
                     onPress={() => {
                       if (isSelected) {
                         setFormData(prev => ({ ...prev, skills: prev.skills.filter(s => s !== skill) }));
+                        // Same reasoning as the profession-change reset
+                        // above, just scoped to this one skill instead of
+                        // all of them.
+                        setProofOfSkillsMedia(prev => prev.filter(m => m.skill !== skill));
                       } else {
                         setFormData(prev => ({ ...prev, skills: [...prev.skills, skill] }));
                       }

@@ -104,9 +104,23 @@ export default function CustomerProfileScreen() {
       try {
         const job: any = await SkoFyApi.jobs.get(jobId);
         const customerId = job.customer_id;
-        const [profileData, allHistory, reviews] = await Promise.all([
+        // getHistory() only ever returns page 1 (20 jobs, across every
+        // customer this provider has ever worked with) — filtering that
+        // single page down to just this customer silently understated any
+        // shared history beyond the provider's most recent 20 jobs overall.
+        // Pages through the provider's full history instead, capped at a
+        // generous 10 pages (200 jobs) so one customer relationship can't
+        // turn this into an unbounded fetch.
+        const MAX_HISTORY_PAGES = 10;
+        const allHistory: any[] = [];
+        for (let page = 1; page <= MAX_HISTORY_PAGES; page++) {
+          const pageResult = await SkoFyApi.jobs.getHistory(page).catch(() => []);
+          const pageJobs = Array.isArray(pageResult) ? pageResult : [];
+          allHistory.push(...pageJobs);
+          if (pageJobs.length < 20) break; // last page
+        }
+        const [profileData, reviews] = await Promise.all([
           SkoFyApi.customers.getDetail(customerId),
-          SkoFyApi.jobs.getHistory(),
           SkoFyApi.customers.getReviews(customerId).catch(() => []),
         ]);
         setProfile(profileData);

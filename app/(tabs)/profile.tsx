@@ -3,6 +3,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { SkoFyApi } from '@/services/api';
 import { AppLock } from '@/services/appLock';
 import { getCurrentVoipToken } from '@/services/callManager';
+import { stopBackgroundLocation } from '@/services/background-location';
+import { disconnectLocationSocket } from '@/services/location-socket';
 import { kmToMiles, milesToKm } from '@/services/schedulingEngine';
 import messaging from '@react-native-firebase/messaging';
 import { StyleSheet, View, TouchableOpacity, ScrollView, Platform, Dimensions, Modal, Switch, TextInput, RefreshControl, SafeAreaView, Pressable, BackHandler, PanResponder, Animated as RNAnimated, ActivityIndicator, Alert, Linking } from 'react-native';
@@ -42,6 +44,7 @@ import {
   ArrowDownLeft,
   Landmark,
   Fingerprint,
+  Sparkles,
 } from 'lucide-react-native';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { Colors, Fonts } from '@/constants/theme';
@@ -249,6 +252,11 @@ export default function ProfileScreen() {
   const [editBio, setEditBio] = useState('');
   const [editCity, setEditCity] = useState('');
   const [editYearsExp, setEditYearsExp] = useState('');
+  // Provider-set (or AI-suggested) pricing — self-typed here, or filled by
+  // "Suggest for me" below, either way still freely editable before saving.
+  const [editVisitingFee, setEditVisitingFee] = useState('');
+  const [editHourlyRate, setEditHourlyRate] = useState('');
+  const [isSuggestingRates, setIsSuggestingRates] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // Change Password state
@@ -333,6 +341,8 @@ export default function ProfileScreen() {
       setEditBio(bio);
       setEditCity(city);
       setEditYearsExp(exp > 0 ? String(exp) : '');
+      setEditVisitingFee(profile?.visiting_fee != null ? String(profile.visiting_fee) : '');
+      setEditHourlyRate(profile?.hourly_rate != null ? String(profile.hourly_rate) : '');
     } catch {
       // non-fatal — keep whatever was last loaded
     }
@@ -1066,6 +1076,28 @@ export default function ProfileScreen() {
       showAlert('error', 'Invalid Email', 'Please enter a valid email address or leave it blank.');
       return;
     }
+    const visitingFeeNum = editVisitingFee ? parseFloat(editVisitingFee) : null;
+    const hourlyRateNum = editHourlyRate ? parseFloat(editHourlyRate) : null;
+    // Rates are optional (a provider can leave them unset for now), but if
+    // either is filled in it has to be a real positive number — same
+    // validation the backend enforces, checked here too so the error shows
+    // up next to the field instead of as a round-trip failure.
+    if ((editVisitingFee && (!visitingFeeNum || visitingFeeNum <= 0)) ||
+        (editHourlyRate && (!hourlyRateNum || hourlyRateNum <= 0))) {
+      showAlert('error', 'Invalid Rate', 'Visiting Fee and Hourly Rate must be greater than 0.');
+      return;
+    }
+    // The backend's rates endpoint takes both fields together — there's no
+    // partial-update path. Filling in just one (most likely: a first-time
+    // provider with neither set yet, since an existing rate pre-fills the
+    // other field automatically) used to fail the `visitingFeeNum &&
+    // hourlyRateNum` check below silently: the rate save was just skipped,
+    // with no error, under a "Profile Updated" success alert that implied
+    // it had gone through.
+    if (!!visitingFeeNum !== !!hourlyRateNum) {
+      showAlert('error', 'Both Rates Required', 'Visiting Fee and Hourly Rate must be set together — fill in both, or leave both blank to skip for now.');
+      return;
+    }
     setIsSavingProfile(true);
     try {
       await SkoFyApi.provider.updateProfile({
@@ -1075,6 +1107,9 @@ export default function ProfileScreen() {
         city: editCity.trim() || undefined,
         years_experience: editYearsExp ? parseInt(editYearsExp, 10) : undefined,
       });
+      if (visitingFeeNum && hourlyRateNum) {
+        await SkoFyApi.provider.setRates(visitingFeeNum, hourlyRateNum);
+      }
       setProviderName(editName.trim());
       setProviderBio(editBio.trim());
       setYearsExperience(editYearsExp ? parseInt(editYearsExp, 10) : 0);
@@ -1084,6 +1119,19 @@ export default function ProfileScreen() {
       showAlert('error', 'Update Failed', e?.message || 'Could not save profile. Try again.');
     } finally {
       setIsSavingProfile(false);
+    }
+  };
+
+  const handleSuggestRates = async () => {
+    setIsSuggestingRates(true);
+    try {
+      const suggestion = await SkoFyApi.provider.suggestRates();
+      setEditVisitingFee(String(suggestion.visiting_fee));
+      setEditHourlyRate(String(suggestion.hourly_rate));
+    } catch (e: any) {
+      showAlert('error', 'Could Not Suggest Rates', e?.message || 'Try again in a moment.');
+    } finally {
+      setIsSuggestingRates(false);
     }
   };
 
@@ -1177,6 +1225,13 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = async () => {
+    // Stop location tracking before anything else — if a job was active,
+    // the background GPS task and its "sharing your location" notification
+    // otherwise kept running after logout (the task itself no-ops once the
+    // token is cleared below, but the OS-level location service and the
+    // misleading notification would persist until the app was killed).
+    await stopBackgroundLocation().catch(() => {});
+    disconnectLocationSocket();
     // Local logout proceeds regardless — this is just telling the server to
     // invalidate the refresh token server-side.
     try {
@@ -2439,6 +2494,43 @@ export default function ProfileScreen() {
                 style={[styles.editableInput, { marginTop: 6 }]}
               />
             </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <ThemedText style={styles.inputLabel}>Pricing</ThemedText>
+              <TouchableOpacity
+                onPress={handleSuggestRates}
+                disabled={isSuggestingRates}
+                style={styles.suggestRatesBtn}
+              >
+                {isSuggestingRates
+                  ? <ActivityIndicator size="small" color="#111827" />
+                  : <Sparkles size={13} color="#111827" />}
+                <ThemedText style={styles.suggestRatesBtnText}>
+                  {isSuggestingRates ? 'Suggesting…' : 'Suggest for me'}
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <ThemedText style={styles.inputSubLabel}>Visiting Fee ($)</ThemedText>
+                <TextInput
+                  value={editVisitingFee}
+                  onChangeText={setEditVisitingFee}
+                  placeholder="e.g. 25"
+                  keyboardType="decimal-pad"
+                  style={[styles.editableInput, { marginTop: 6 }]}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <ThemedText style={styles.inputSubLabel}>Hourly Rate ($/hr)</ThemedText>
+                <TextInput
+                  value={editHourlyRate}
+                  onChangeText={setEditHourlyRate}
+                  placeholder="e.g. 50"
+                  keyboardType="decimal-pad"
+                  style={[styles.editableInput, { marginTop: 6 }]}
+                />
+              </View>
+            </View>
           </ScrollView>
           </KeyboardAvoidingView>
         </ThemedView>
@@ -3138,7 +3230,7 @@ export default function ProfileScreen() {
                         textDayFontFamily: Fonts.poppins,
                         calendarBackground: '#ffffff',
                       }}
-                      minDate={new Date().toISOString().split('T')[0]}
+                      minDate={getLocalISODate(new Date())}
                       style={{ borderRadius: 12, width: '100%' }}
                     />
                     <TouchableOpacity
@@ -4537,6 +4629,27 @@ function makeStyles(t: typeof Colors.light) {
     color: t.textPrimary,
     borderWidth: 1,
     borderColor: t.borderSubtle,
+  },
+  inputSubLabel: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontFamily: Fonts.poppinsSemiBold,
+    color: t.textMuted,
+    marginBottom: 6,
+  },
+  suggestRatesBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#FFCE48',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  suggestRatesBtnText: {
+    fontSize: 12,
+    fontFamily: Fonts.poppinsBold,
+    color: '#111827',
   },
   modalActions: {
     flexDirection: 'row',

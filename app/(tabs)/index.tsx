@@ -58,7 +58,10 @@ import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { ThemedText } from '@/components/themed-text';
 import { checkFeasibility, FeasibilityResult, calculateDistance, kmToMiles } from '@/services/schedulingEngine';
+import { resolveApplyGate } from '@/services/applyErrorGate';
 import { SkoFyApi } from '@/services/api';
+import { readDashboardCache, writeDashboardCache } from '@/services/homeCache';
+import { Skeleton } from '@/components/skeleton';
 import { startBackgroundLocation, stopBackgroundLocation } from '@/services/background-location';
 import { connectLocationSocket, disconnectLocationSocket, sendLocationViaSocket } from '@/services/location-socket';
 import Animated, {
@@ -208,7 +211,44 @@ export default function DashboardScreen() {
       const ongoingJob = activeList[0] ?? null;
       if (ongoingJob) setActiveJobId(ongoingJob.id);
 
-      setJobs([...activeList, ...inboundList]);
+      // Real conflict/feasibility check against this provider's other
+      // confirmed jobs — every inbound job used to hardcode SAFE regardless
+      // of what else was already booked, so overlapping bookings were never
+      // actually caught. Only ON_SITE jobs with real coordinates on both
+      // sides get checked; a REMOTE inbound job (or one missing location)
+      // keeps the SAFE default set in mapInbound rather than feeding null
+      // coordinates into a Haversine distance calc.
+      const existingProviderJobs = activeList
+        .filter(j => j.latitude != null && j.longitude != null)
+        .map(j => ({
+          id: j.id,
+          startTime: j.startTime,
+          endTime: j.endTime,
+          location: { latitude: j.latitude as number, longitude: j.longitude as number },
+        }));
+      const inboundListWithFeasibility = existingProviderJobs.length === 0
+        ? inboundList
+        : inboundList.map(j => {
+            if (j.latitude == null || j.longitude == null) return j;
+            const feasibility = checkFeasibility(
+              { startTime: j.startTime, endTime: j.endTime, location: { latitude: j.latitude, longitude: j.longitude } },
+              existingProviderJobs
+            );
+            return { ...j, feasibility };
+          });
+
+      const allJobs = [...activeList, ...inboundListWithFeasibility];
+      liveDataArrivedRef.current = true;
+      setJobs(allJobs);
+      // Capped so the cache file doesn't grow unbounded for a very busy
+      // provider — this is only ever a bridge to an instant first paint;
+      // the full, uncapped list is always still fetched live right after.
+      // `icon` is a component reference (JSON.stringify silently drops it)
+      // — stripped explicitly rather than relying on the renderer's
+      // `job.icon || Gas` fallback to keep covering for it indefinitely,
+      // since that fallback would stop being harmless the moment icon
+      // ever becomes job-type-specific instead of always just Gas.
+      writeDashboardCache({ jobs: allJobs.slice(0, 30).map(({ icon, ...rest }) => rest) });
     } catch (error) {
       console.error('Failed to load jobs', error);
       setJobs([]);
@@ -335,7 +375,6 @@ export default function DashboardScreen() {
   // to hand over a code, so a photo substitutes for it instead).
   const [pickupPhoto, setPickupPhoto] = useState<{ uri: string; mimeType: string } | null>(null);
   const [confirmingPickup, setConfirmingPickup] = useState(false);
-  const [nowTick, setNowTick] = useState(Date.now());
   const [invoiceAmount, setInvoiceAmount] = useState('');
   const [invoiceNotes, setInvoiceNotes] = useState('');
   const [materials, setMaterials] = useState<Array<{ name: string; quantity: string; unit_cost: string }>>([]);
@@ -352,8 +391,6 @@ export default function DashboardScreen() {
   };
   const [raisingInvoice, setRaisingInvoice] = useState(false);
   const [respondingToCounter, setRespondingToCounter] = useState(false);
-
-  const INSPECTION_MIN_SECONDS = 20 * 60;
 
   useEffect(() => {
     if (!showManageModal || !selectedJob) return;
@@ -391,20 +428,6 @@ export default function DashboardScreen() {
     const interval = setInterval(poll, 3000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [showManageModal, selectedJob?.id, selectedJob?.status]);
-
-  // 1-second tick to drive the 20-minute inspection countdown display.
-  useEffect(() => {
-    if (selectedJob?.status !== 'INSPECTING') return;
-    const t = setInterval(() => setNowTick(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [selectedJob?.status]);
-
-  const inspectionSecondsRemaining = (() => {
-    const startedAt = manageJobDetail?.inspection_started_at;
-    if (!startedAt) return INSPECTION_MIN_SECONDS;
-    const elapsed = (nowTick - new Date(startedAt).getTime()) / 1000;
-    return Math.max(0, Math.round(INSPECTION_MIN_SECONDS - elapsed));
-  })();
 
   const handleRequestInspectionOtp = async () => {
     if (!selectedJob) return;
@@ -493,18 +516,6 @@ export default function DashboardScreen() {
 
   const handleCompleteInspection = async () => {
     if (!selectedJob) return;
-    // Active guard: tapping early gives a direct answer, not just a
-    // silently-disabled button — the button stays tappable the whole time
-    // (see the INSPECTING render branch below) specifically so this fires.
-    if (inspectionSecondsRemaining > 0) {
-      const mins = Math.floor(inspectionSecondsRemaining / 60);
-      const secs = inspectionSecondsRemaining % 60;
-      appAlert.show(
-        'warning', 'Keep Inspecting',
-        `Inspection must last at least 20 minutes — ${mins}:${String(secs).padStart(2, '0')} still remaining.`,
-      );
-      return;
-    }
     setCompletingInspection(true);
     try {
       await SkoFyApi.jobs.completeInspection(selectedJob.id);
@@ -597,13 +608,47 @@ export default function DashboardScreen() {
       .catch(() => {});
   }, []);
 
+  // Set the instant any of this screen's own live fetches (profile, jobs)
+  // actually lands — guards the cache-priming read right below against
+  // overwriting fresh data in the (unlikely but real) case it resolves
+  // after a live response already did. A local file read is effectively
+  // always faster than a network round trip, but isn't guaranteed to be.
+  const liveDataArrivedRef = useRef(false);
+
+  // Cache-first paint: prime whatever was last successfully shown, before
+  // any network call resolves, so a reopen shows the real job list and
+  // header immediately instead of the "Loading jobs..." spinner below —
+  // the splash screen's prefetchDashboardEssentials() already had a head
+  // start on the profile fields. loadJobs() right after this still runs
+  // exactly as it always did and overwrites everything (including the
+  // cache itself) with fresh data the moment it lands.
+  useEffect(() => {
+    readDashboardCache().then(cached => {
+      if (!cached || liveDataArrivedRef.current) return;
+      if (cached.userName) setUserName(cached.userName);
+      if (cached.profileImageUrl) setProfileImageUrl(cached.profileImageUrl);
+      if (typeof cached.isAvailable === 'boolean') setIsAvailable(cached.isAvailable);
+      if (Array.isArray(cached.jobs) && cached.jobs.length > 0) {
+        setJobs(cached.jobs as any[]);
+        setIsLoading(false);
+      }
+    });
+  }, []);
+
   // Load provider profile (name + availability + photo) on mount
   useEffect(() => {
     SkoFyApi.provider.getProfile()
       .then((profile: any) => {
-        if (profile?.name) setUserName(profile.name);
-        if (typeof profile?.is_available === 'boolean') setIsAvailable(profile.is_available);
-        if (profile?.profile_image_url) setProfileImageUrl(profile.profile_image_url);
+        liveDataArrivedRef.current = true;
+        if (profile?.name) { setUserName(profile.name); writeDashboardCache({ userName: profile.name }); }
+        if (typeof profile?.is_available === 'boolean') {
+          setIsAvailable(profile.is_available);
+          writeDashboardCache({ isAvailable: profile.is_available });
+        }
+        if (profile?.profile_image_url) {
+          setProfileImageUrl(profile.profile_image_url);
+          writeDashboardCache({ profileImageUrl: profile.profile_image_url });
+        }
         setIsIdentityVerified(!!profile?.is_identity_verified);
       })
       .catch((err) => console.error('Failed to fetch provider profile:', err));
@@ -741,6 +786,7 @@ export default function DashboardScreen() {
       successScale.value = withSpring(1, { damping: 15 });
       successOpacity.value = withTiming(1, { duration: 400 });
 
+      let chatNotifTimer: ReturnType<typeof setTimeout> | null = null;
       const timer = setTimeout(() => {
         setShowSuccessOverlay(false);
         successScale.value = withTiming(0);
@@ -748,11 +794,14 @@ export default function DashboardScreen() {
         setActiveTab(1); // Switch to Ongoing tab automatically
 
         // Simulate a new message notification after 5 seconds of getting hired
-        setTimeout(() => {
+        chatNotifTimer = setTimeout(() => {
           setShowChatNotification(true);
         }, 5000);
       }, 3000);
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+        if (chatNotifTimer) clearTimeout(chatNotifTimer);
+      };
     }
   }, [showSuccessOverlay]);
 
@@ -811,38 +860,12 @@ const filteredJobs = jobs.filter((job) => {
       const msg = err?.message ?? '';
       const alreadyApplied = msg.toLowerCase().includes('already') || err?.error_code === 'ALREADY_BID';
       if (!alreadyApplied) {
-        if (err?.error_code === 'SKILL_NOT_VERIFIED') {
-          appAlert.show('warning', 'Skill Test Required',
-            msg || 'You need to pass the skill test for this job\'s required skill before applying.',
-            [
-              { text: 'Not Now', variant: 'secondary' },
-              { text: 'Take Test', onPress: () => router.push('/(tabs)/profile') },
-            ]
-          );
-        } else if (err?.error_code === 'IDENTITY_NOT_VERIFIED') {
-          appAlert.show('warning', 'Identity Verification Required',
-            msg || 'Your identity must be verified before you can apply to jobs.',
-            [
-              { text: 'Not Now', variant: 'secondary' },
-              { text: 'Verify Now', onPress: () => router.push('/(tabs)/profile') },
-            ]
-          );
-        } else if (err?.error_code === 'CONNECT_ONBOARDING_INCOMPLETE') {
-          appAlert.show('warning', 'Payout Setup Required',
-            msg || 'You need to finish setting up payouts before you can be hired for jobs.',
-            [
-              { text: 'Not Now', variant: 'secondary' },
-              { text: 'Set Up Now', onPress: () => router.push('/(tabs)/profile') },
-            ]
-          );
-        } else if (err?.error_code === 'BACKGROUND_CHECK_PENDING' || err?.error_code === 'LICENSE_NOT_VERIFIED') {
-          appAlert.show('warning', 'Verification Required',
-            msg || 'This job needs your verification to finish before you can be hired.',
-            [
-              { text: 'Not Now', variant: 'secondary' },
-              { text: 'View Status', onPress: () => router.push('/(tabs)/profile') },
-            ]
-          );
+        const gate = resolveApplyGate(err);
+        if (gate) {
+          appAlert.show('warning', gate.title, gate.message, [
+            { text: 'Not Now', variant: 'secondary' },
+            { text: gate.actionLabel, onPress: () => router.push('/(tabs)/profile') },
+          ]);
         } else {
           appAlert.show('error', 'Bid Failed', msg || 'Failed to submit bid. Please try again.');
         }
@@ -1575,9 +1598,22 @@ const filteredJobs = jobs.filter((job) => {
         }
       >
         {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#FFCE48" />
-            <ThemedText style={styles.loadingText}>Loading jobs...</ThemedText>
+          // Only reachable on a genuine first-ever open (or an unreadable
+          // cache) — the mount effect above primes `jobs` from cache
+          // otherwise, which already skips past this with real content.
+          // Shaped like the real job cards below rather than a bare
+          // spinner, so the list doesn't "pop in" once data arrives.
+          <View style={{ paddingHorizontal: 16, paddingTop: 12, gap: 14 }}>
+            {[0, 1, 2].map(i => (
+              <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 16, borderRadius: 16, backgroundColor: themeColors.card }}>
+                <Skeleton width={44} height={44} borderRadius={22} />
+                <View style={{ flex: 1, gap: 8 }}>
+                  <Skeleton width="70%" height={16} />
+                  <Skeleton width="45%" height={13} />
+                  <Skeleton width="30%" height={13} />
+                </View>
+              </View>
+            ))}
           </View>
         ) : filteredJobs.length === 0 ? (
           <View style={styles.emptyContainer}>
@@ -1991,6 +2027,7 @@ const filteredJobs = jobs.filter((job) => {
                         {requestingOtp ? 'Sending…' : 'Request Inspection Code'}
                       </ThemedText>
                     </TouchableOpacity>
+                    <ThemedText style={styles.otpEntryLabel}>Enter the 4-digit code</ThemedText>
                     <View style={styles.otpContainer}>
                       <Pressable onPress={() => otpInputRef.current?.focus()} style={styles.otpBoxesRow}>
                         {[0, 1, 2, 3].map((idx) => {
@@ -2045,20 +2082,11 @@ const filteredJobs = jobs.filter((job) => {
                   </>
                 ) : selectedJob.status === 'INSPECTING' && !manageJobDetail?.inspection_completed_at ? (
                   <>
-                    {inspectionSecondsRemaining > 0 ? (
-                      <View style={styles.inspectionTimerCard}>
-                        <ThemedText style={styles.inspectionTimerLabel}>Inspection in progress — minimum time remaining</ThemedText>
-                        <ThemedText style={styles.inspectionTimerValue}>
-                          {Math.floor(inspectionSecondsRemaining / 60)}:{String(inspectionSecondsRemaining % 60).padStart(2, '0')}
-                        </ThemedText>
-                      </View>
-                    ) : (
-                      <ThemedText style={styles.completeDisclaimer}>
-                        You've inspected long enough — mark it complete when you're ready.
-                      </ThemedText>
-                    )}
+                    <ThemedText style={styles.completeDisclaimer}>
+                      Mark it complete when you're done inspecting.
+                    </ThemedText>
                     <TouchableOpacity
-                      style={[styles.completeJobBtn, (inspectionSecondsRemaining > 0 || completingInspection) && { opacity: 0.5 }]}
+                      style={[styles.completeJobBtn, completingInspection && { opacity: 0.5 }]}
                       onPress={handleCompleteInspection}
                       disabled={completingInspection}
                     >
@@ -3350,6 +3378,13 @@ const styles = StyleSheet.create({
     // dependency on OS theme defaults.
     backgroundColor: '#fff',
   },
+  otpEntryLabel: {
+    fontSize: 12,
+    fontFamily: Fonts.poppinsSemiBold,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    marginTop: 12,
+  },
   otpContainer: {
     marginVertical: 14,
     alignItems: 'center',
@@ -3375,11 +3410,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   otpBoxFilled: {
-    borderColor: '#7C3AED',
-    backgroundColor: '#F5F3FF',
+    borderColor: '#FDE68A',
+    backgroundColor: '#FFFBEB',
   },
   otpBoxFocused: {
-    borderColor: '#6D28D9',
+    borderColor: '#FFCE48',
     borderWidth: 2,
     backgroundColor: '#FFFFFF',
   },
@@ -3392,7 +3427,7 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   otpDigitFilled: {
-    color: '#6D28D9',
+    color: '#111827',
   },
   hiddenOtpInput: {
     position: 'absolute',
@@ -3402,35 +3437,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     opacity: 0,
     color: 'transparent',
-  },
-  inspectionTimerCard: {
-    alignItems: 'center',
-    backgroundColor: '#F5F3FF',
-    borderRadius: 16,
-    paddingVertical: 20,
-    marginBottom: 14,
-  },
-  inspectionTimerLabel: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: '#6D28D9',
-    fontFamily: Fonts.poppinsSemiBold,
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  inspectionTimerValue: {
-    fontSize: 40,
-    fontFamily: Fonts.poppinsBold,
-    letterSpacing: 4,
-    color: '#6D28D9',
-    // Missing textAlign meant the block rendered left-leaning inside the
-    // centered card; letterSpacing's trailing space on Android also isn't
-    // always included in the Text element's measured width, clipping the
-    // last character against the edge without this padding to give it room.
-    textAlign: 'center',
-    paddingHorizontal: 8,
-    lineHeight: 52,
-    includeFontPadding: false,
   },
   closeModalBtn: {
     alignItems: 'center',

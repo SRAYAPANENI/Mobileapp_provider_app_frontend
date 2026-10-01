@@ -214,8 +214,17 @@ async function _refreshAccessToken(): Promise<string | null> {
       if (!response.ok) return null;
       const json = await response.json();
       const newToken: string = json.data?.access_token;
+      // The backend now rotates the refresh token on every use (consumes
+      // the one just presented, issues a fresh one) — this MUST be stored
+      // in place of the old one, or the next refresh attempt replays an
+      // already-rotated-away token, which the backend now treats as a
+      // stolen-token signal and revokes every session for this role.
+      const newRefreshToken: string | undefined = json.data?.refresh_token;
       if (newToken) {
         await SecureStore.setItemAsync(TOKEN_KEY, newToken);
+      }
+      if (newRefreshToken) {
+        await SecureStore.setItemAsync(REFRESH_KEY, newRefreshToken);
       }
       return newToken ?? null;
     } catch {
@@ -417,6 +426,19 @@ export const SkoFyApi = {
         method: 'PATCH',
         body: JSON.stringify({ preferred_radius_km: preferredRadiusKm }),
       }),
+
+    setRates: async (visitingFee: number, hourlyRate: number) =>
+      request('/providers/me/rates', {
+        method: 'PATCH',
+        body: JSON.stringify({ visiting_fee: visitingFee, hourly_rate: hourlyRate }),
+      }),
+
+    suggestRates: async (): Promise<{
+      visiting_fee: number;
+      hourly_rate: number;
+      based_on: 'market_average' | 'category_default';
+      sample_size: number;
+    }> => request('/providers/me/rates/suggest'),
 
     updateLocation: async (lat: number, lng: number) =>
       request('/providers/me/location', {
@@ -697,11 +719,6 @@ export const SkoFyApi = {
     }) => request(`/jobs/${jobId}/customer-review`, { method: 'POST', body: JSON.stringify(review) }),
   },
 
-  // ── Customers (public profile — checking who posted a job) ────────────────
-  customers: {
-    getDetail: async (customerId: string) => request(`/customers/${customerId}`),
-  },
-
   // ── HCI Score ─────────────────────────────────────────────────────────────
   hci: {
     getMyScore: async (): Promise<HCIScore> =>
@@ -755,6 +772,33 @@ export const SkoFyApi = {
     },
   },
 
+  // ── Support tickets ──────────────────────────────────────────────────────
+  // Not the same thing as the "Support AI" namespace below (an unrelated,
+  // currently-unused AI chat endpoint) — this is the real ticket system the
+  // admin panel's Support Tickets page reads from. No WebSocket for this
+  // one; screens polling for new admin replies do so on a plain interval.
+  supportTickets: {
+    create: async (subject: string, message: string, jobId?: string) =>
+      request('/support-tickets', {
+        method: 'POST',
+        body: JSON.stringify({ subject, message, job_id: jobId }),
+      }),
+    list: async () => request('/support-tickets'),
+    get: async (ticketId: string) => request(`/support-tickets/${ticketId}`),
+    addMessage: async (ticketId: string, message: string) =>
+      request(`/support-tickets/${ticketId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ message }),
+      }),
+    addSystemMessage: async (ticketId: string, message: string) =>
+      request(`/support-tickets/${ticketId}/system-message`, {
+        method: 'POST',
+        body: JSON.stringify({ message }),
+      }),
+    selfResolve: async (ticketId: string) =>
+      request(`/support-tickets/${ticketId}/self-resolve`, { method: 'PATCH' }),
+  },
+
   // ── Push notifications ──────────────────────────────────────────────────
   fcm: {
     registerToken: async (token: string, platform: 'IOS' | 'ANDROID', tokenType: 'FCM' | 'VOIP' = 'FCM') =>
@@ -804,6 +848,7 @@ export const SkoFyApi = {
       job_id: string | null;
       is_read: boolean;
       created_at: string;
+      image_url: string | null;
     }>> => request('/notifications'),
     unreadCount: async (): Promise<number> => {
       const data: any = await request('/notifications/unread-count');

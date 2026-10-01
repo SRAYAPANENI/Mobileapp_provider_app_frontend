@@ -23,7 +23,7 @@ import {
   Briefcase,
   CheckCircle2,
   Play,
-  IndianRupee,
+  DollarSign,
   Calendar,
   AlertTriangle,
 } from 'lucide-react-native';
@@ -63,6 +63,7 @@ function statusInfo(s: string): { label: string; color: string } {
     case 'COMPLETED':   return { label: 'Completed', color: '#10B981' };
     case 'CANCELLED':   return { label: 'Cancelled', color: '#EF4444' };
     case 'DISPUTED':    return { label: 'Disputed', color: '#DC2626' };
+    case 'EXPIRED':     return { label: 'Deadline Passed', color: '#9CA3AF' };
     default:            return { label: s, color: '#9CA3AF' };
   }
 }
@@ -76,7 +77,7 @@ function formatBudget(job: ProviderJob): string {
   if (job.budget_min && job.budget_max) return `$${job.budget_min} – $${job.budget_max}`;
   if (job.budget_min) return `From $${job.budget_min}`;
   if (job.budget_max) return `Up to $${job.budget_max}`;
-  if (job.inspection_fee > 0) return `$${job.inspection_fee} inspection`;
+  if (job.inspection_fee > 0) return `$${job.inspection_fee} visiting fee`;
   return 'Negotiable';
 }
 
@@ -84,10 +85,12 @@ function JobCard({
   job,
   index,
   onAction,
+  onDispute,
 }: {
   job: ProviderJob;
   index: number;
   onAction: (jobId: string) => void;
+  onDispute: (jobId: string) => void;
 }) {
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
@@ -104,7 +107,7 @@ function JobCard({
   const isHistory = !isAccepted && !isInProgress && !isMidFlow;
 
   const scheduledDate = job.scheduled_at
-    ? new Date(job.scheduled_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    ? new Date(job.scheduled_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
     : null;
 
   return (
@@ -139,7 +142,7 @@ function JobCard({
       {/* Meta row */}
       <View style={styles.metaRow}>
         <View style={styles.metaItem}>
-          <IndianRupee size={13} color="#059669" />
+          <DollarSign size={13} color="#059669" />
           <ThemedText style={styles.budgetText}>{formatBudget(job)}</ThemedText>
         </View>
         {scheduledDate && (
@@ -189,6 +192,30 @@ function JobCard({
               <ThemedText style={styles.actionBtnText}>Mark Complete</ThemedText>
             </TouchableOpacity>
           )}
+        </View>
+      )}
+
+      {/* Backend only accepts a dispute for IN_PROGRESS or COMPLETED — this
+          modal used to exist with no way to ever open it (openDispute was
+          defined but never wired to a button anywhere in this screen). */}
+      {isInProgress && (
+        <TouchableOpacity style={styles.reportIssueLink} onPress={() => onDispute(job.job_id.toString())}>
+          <AlertTriangle size={13} color="#EF4444" />
+          <ThemedText style={styles.reportIssueLinkText}>Report an Issue</ThemedText>
+        </TouchableOpacity>
+      )}
+      {job.job_status === 'COMPLETED' && (
+        <View style={styles.historyActionsRow}>
+          <TouchableOpacity
+            style={styles.historyActionBtn}
+            onPress={() => router.push({ pathname: '/support-chat', params: { jobId: job.job_id.toString() } } as any)}
+          >
+            <ThemedText style={styles.historyActionBtnText}>Get Help</ThemedText>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.historyActionBtn} onPress={() => onDispute(job.job_id.toString())}>
+            <AlertTriangle size={13} color="#EF4444" />
+            <ThemedText style={[styles.historyActionBtnText, { color: '#EF4444' }]}>Report an Issue</ThemedText>
+          </TouchableOpacity>
         </View>
       )}
     </Animated.View>
@@ -282,8 +309,12 @@ export default function JobsScreen() {
   };
 
   const submitDispute = async () => {
-    if (!disputeJobId || !disputeReason.trim()) {
-      appAlert.show('info', 'Description Required', 'Please describe the issue before submitting.');
+    // Matches the backend's own DisputeJobRequest validator (min 5 chars) —
+    // checked here so the specific, helpful message shows instead of the
+    // generic "Request validation failed." the global 422 handler falls
+    // back to for any Pydantic validation error caught only at submit time.
+    if (!disputeJobId || disputeReason.trim().length < 5) {
+      appAlert.show('info', 'Description Required', 'Please describe the issue in at least 5 characters.');
       return;
     }
     setIsDisputing(true);
@@ -341,7 +372,7 @@ export default function JobsScreen() {
         data={displayJobs}
         keyExtractor={item => item.job_id.toString()}
         renderItem={({ item, index }) => (
-          <JobCard job={item} index={index} onAction={handleAction} />
+          <JobCard job={item} index={index} onAction={handleAction} onDispute={openDispute} />
         )}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
@@ -511,6 +542,21 @@ function makeStyles(t: typeof Colors.light) {
       borderRadius: 12,
     },
     actionBtnText: { fontSize: 13, lineHeight: 17, fontFamily: Fonts.poppinsBold, color: '#fff' },
+
+    reportIssueLink: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      marginTop: 8, paddingVertical: 8,
+    },
+    reportIssueLinkText: { fontSize: 12.5, lineHeight: 16, fontFamily: Fonts.poppinsSemiBold, color: '#EF4444' },
+    historyActionsRow: {
+      flexDirection: 'row', gap: 10, marginTop: 14,
+      borderTopWidth: 1, borderTopColor: t.borderSubtle, paddingTop: 14,
+    },
+    historyActionBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      paddingVertical: 10, borderRadius: 12, backgroundColor: t.inputFilled,
+    },
+    historyActionBtnText: { fontSize: 12.5, lineHeight: 16, fontFamily: Fonts.poppinsSemiBold, color: t.textSecondary },
 
     emptyWrap: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 32 },
     emptyTitle: { fontSize: 18, lineHeight: 22, fontFamily: Fonts.poppinsBold, color: t.textSecondary, marginTop: 20, textAlign: 'center' },
