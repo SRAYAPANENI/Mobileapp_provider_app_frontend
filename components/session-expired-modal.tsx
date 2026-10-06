@@ -1,16 +1,17 @@
 import { ThemedText } from '@/components/themed-text';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { AlertTriangle } from 'lucide-react-native';
+import { LogOut } from 'lucide-react-native';
 import React from 'react';
 import { Modal, StyleSheet, TouchableOpacity, View } from 'react-native';
+import Animated, { FadeInUp } from 'react-native-reanimated';
 
-// Matches (tabs)/profile.tsx's own "Custom Alert Modal" error styling — a
-// plain native Alert.alert() here looked jarringly out of place against the
-// rest of the app's branded modals right when a user is already unsettled
-// by getting signed out unexpectedly. Mirrors
-// skofy-customer-app/components/session-expired-modal.tsx (colors differ —
-// this app's error alerts use amber, not red).
+// Matches login.tsx's own exit-confirmation modal — same card shape, shadow
+// and spring-in entrance — rather than a flat, un-animated amber "warning"
+// alert. A session expiring isn't a destructive action the user took, so it
+// uses the app's actual brand color (same as every primary CTA elsewhere)
+// instead of a generic warning treatment that clashed with the rest of the
+// app's look. Mirrors skofy-customer-app/components/session-expired-modal.tsx.
 export default function SessionExpiredModal({
   visible,
   onDismiss,
@@ -25,16 +26,16 @@ export default function SessionExpiredModal({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
       <View style={styles.overlay}>
-        <View style={styles.container}>
+        <Animated.View entering={FadeInUp.duration(400)} style={styles.container}>
           <View style={styles.iconCircle}>
-            <AlertTriangle size={32} color="#F59E0B" />
+            <LogOut size={30} color={themeColors.brand} />
           </View>
           <ThemedText style={styles.title}>Signed Out</ThemedText>
           <ThemedText style={styles.message}>Your session has ended. Please log in again.</ThemedText>
-          <TouchableOpacity style={styles.button} onPress={onDismiss}>
-            <ThemedText style={styles.buttonText}>Got it!</ThemedText>
+          <TouchableOpacity style={[styles.button, { backgroundColor: themeColors.brand }]} onPress={onDismiss}>
+            <ThemedText style={styles.buttonText}>OK</ThemedText>
           </TouchableOpacity>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -46,39 +47,42 @@ function makeStyles(t: typeof Colors.light) {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.5)',
       justifyContent: 'center',
-      padding: 20,
+      padding: 24,
     },
     container: {
       backgroundColor: t.card,
-      width: '85%',
       borderRadius: 32,
-      padding: 24,
+      padding: 32,
       alignItems: 'center',
-      alignSelf: 'center',
+      shadowColor: '#000',
+      shadowOpacity: 0.1,
+      shadowRadius: 20,
+      elevation: 5,
     },
     iconCircle: {
-      width: 64,
-      height: 64,
-      borderRadius: 32,
+      width: 72,
+      height: 72,
+      borderRadius: 36,
       backgroundColor: '#FFFBEB',
       justifyContent: 'center',
       alignItems: 'center',
       marginBottom: 20,
     },
     title: {
-      fontSize: 20,
-      lineHeight: 26,
+      fontSize: 22,
+      lineHeight: 28,
       fontFamily: Fonts.poppinsBold,
       color: t.textPrimary,
       marginBottom: 8,
+      textAlign: 'center',
     },
     message: {
-      fontSize: 14,
+      fontSize: 15,
       fontFamily: Fonts.poppins,
       color: t.textSecondary,
       textAlign: 'center',
-      marginBottom: 24,
-      lineHeight: 20,
+      marginBottom: 28,
+      lineHeight: 22,
     },
     button: {
       width: '100%',
@@ -86,13 +90,17 @@ function makeStyles(t: typeof Colors.light) {
       borderRadius: 16,
       justifyContent: 'center',
       alignItems: 'center',
-      backgroundColor: '#F59E0B',
+      shadowColor: '#FFCE48',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.4,
+      shadowRadius: 12,
+      elevation: 8,
     },
     buttonText: {
       fontSize: 16,
       lineHeight: 22,
       fontFamily: Fonts.poppinsBold,
-      color: '#fff',
+      color: '#000',
     },
   });
 }

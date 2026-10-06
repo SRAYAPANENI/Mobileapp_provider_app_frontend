@@ -6,7 +6,7 @@ import { SkoFyApi } from '@/services/api';
 import { GOOGLE_PLACES_API_KEY } from '@/services/google-places';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Location from 'expo-location';
-import { ChevronLeft, Navigation, MapPin, LocateFixed } from 'lucide-react-native';
+import { ChevronLeft, Navigation, MapPin, LocateFixed, MessageSquare, Phone } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Linking,
@@ -86,7 +86,25 @@ export default function NavigateToSiteScreen() {
   const themeColors = Colors[colorScheme];
   const styles = React.useMemo(() => makeStyles(themeColors), [colorScheme]);
 
-  const { lat, lng, title, jobId } = useLocalSearchParams<{ lat: string; lng: string; title: string; jobId?: string }>();
+  const { lat, lng, title, jobId, customerName } = useLocalSearchParams<{
+    lat: string; lng: string; title: string; jobId?: string; customerName?: string;
+  }>();
+
+  // Call / Chat without leaving the map (e.g. "which gate?", "5 min away").
+  // Pushed on top, so Back returns here; both use the in-app chat and call,
+  // so neither side's phone number is shared — same as the Service Room.
+  const openChat = (autoCall: boolean) => {
+    if (!jobId) return;
+    router.push({
+      pathname: '/chat' as any,
+      params: {
+        jobId,
+        name: customerName || 'Customer',
+        jobTitle: title ?? '',
+        ...(autoCall ? { autoCall: 'true' } : {}),
+      },
+    });
+  };
   // Memoized on the underlying primitives — this used to be a fresh object
   // literal every render, which made the [gpsLoc, destination] effect below
   // see a "changed" dependency every render (same values, new reference),
@@ -393,6 +411,31 @@ export default function NavigateToSiteScreen() {
             </View>
           </View>
 
+          {!!jobId && (
+            <View style={styles.contactRow}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <ThemedText style={styles.contactLabel}>Customer</ThemedText>
+                <ThemedText style={styles.contactName} numberOfLines={1}>{customerName || 'Customer'}</ThemedText>
+              </View>
+              <TouchableOpacity
+                style={[styles.contactBtn, { backgroundColor: '#DCFCE7' }]}
+                onPress={() => openChat(true)}
+                accessibilityRole="button"
+                accessibilityLabel={`Call ${customerName || 'customer'}`}
+              >
+                <Phone size={18} color="#16A34A" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.contactBtn, { backgroundColor: '#DBEAFE' }]}
+                onPress={() => openChat(false)}
+                accessibilityRole="button"
+                accessibilityLabel={`Chat with ${customerName || 'customer'}`}
+              >
+                <MessageSquare size={18} color="#2563EB" />
+              </TouchableOpacity>
+            </View>
+          )}
+
           <View style={styles.divider} />
 
           {isNearSite ? (
@@ -515,6 +558,30 @@ function makeStyles(t: typeof Colors.light) {
       justifyContent: 'space-between',
       alignItems: 'center',
       gap: 12,
+    },
+    // Call / Chat row — same 40x40 buttons and colours as the Service Room's.
+    contactRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 16,
+    },
+    contactLabel: {
+      fontSize: 12, lineHeight: 16,
+      fontFamily: Fonts.poppins,
+      color: t.textSecondary,
+    },
+    contactName: {
+      fontSize: 15, lineHeight: 19,
+      fontFamily: Fonts.poppinsSemiBold,
+      color: t.textPrimary,
+    },
+    contactBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     panelTitle: {
       fontSize: 15, lineHeight: 19,

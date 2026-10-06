@@ -15,9 +15,14 @@
         "NSLocationWhenInUseUsageDescription": "This app needs access to your location to show nearby customers.",
         "NSLocationAlwaysUsageDescription": "This app needs access to your location to show nearby customers.",
         "NSMicrophoneUsageDescription": "This app needs access to your microphone for voice calls with customers.",
-        "NSCameraUsageDescription": "Skofy needs camera access so you can take your profile photo and document photos.",
-        "NSPhotoLibraryUsageDescription": "Skofy needs photo library access so you can attach documents and skill-proof media.",
-        "UIBackgroundModes": ["voip", "audio", "location", "remote-notification"]
+        "NSCameraUsageDescription": "Dodorez Pro needs camera access so you can take your profile photo and document photos.",
+        "NSPhotoLibraryUsageDescription": "Dodorez Pro needs photo library access so you can attach documents and skill-proof media.",
+        "UIBackgroundModes": [
+          "voip",
+          "audio",
+          "location",
+          "remote-notification"
+        ]
       },
       "entitlements": {
         "aps-environment": "development"
@@ -28,6 +33,7 @@
         "backgroundColor": "#ffffff",
         "foregroundImage": "./assets/images/logo.png"
       },
+      "allowBackup": false,
       "softwareKeyboardLayoutMode": "resize",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -63,7 +69,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow Skofy Service Provider to use your location to show nearby customers.",
+          "locationAlwaysAndWhenInUsePermission": "Allow Dodorez Pro to use your location to show nearby customers.",
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }
@@ -86,8 +92,8 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "Skofy needs camera access so you can take your profile photo and document photos.",
-          "photosPermission": "Skofy needs photo library access so you can attach documents and skill-proof media."
+          "cameraPermission": "Dodorez Pro needs camera access so you can take your profile photo and document photos.",
+          "photosPermission": "Dodorez Pro needs photo library access so you can attach documents and skill-proof media."
         }
       ],
       "./plugins/with-notification-sounds.js",
@@ -100,7 +106,9 @@
         {
           "faceIDPermission": "Allow Dodorez Pro to use Face ID to unlock the app."
         }
-      ]
+      ],
+      "./plugins/with-call-foreground-service.js",
+      "./plugins/with-call-ringtone-channel.js"
     ],
     "experiments": {
       "typedRoutes": true,

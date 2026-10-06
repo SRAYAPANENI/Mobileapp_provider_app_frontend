@@ -10,7 +10,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import FaceDetection from '@react-native-ml-kit/face-detection';
 import * as ExpoLocation from 'expo-location';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import {
   AlertTriangle,
   Briefcase,
@@ -105,10 +105,24 @@ export default function RegisterScreen() {
   const [professionsList, setProfessionsList] = useState<string[]>(PROFESSIONS_DATA.map(p => p.name));
   const [profSkills, setProfSkills] = useState<Record<string, { id: string; name: string }[]>>({});
 
+  // Set by login.tsx when it redirects here after finding no Provider
+  // profile for a number (is_new_role) — see that screen's own comment.
+  // THIS screen's own verifyOTP call, moments later for the same number,
+  // will always see is_new_user=false by then (the identity row was
+  // already created by login.tsx's call) regardless of whether this is a
+  // genuinely brand-new person or an existing Customer adding a Provider
+  // role — the two cases are indistinguishable from this call alone.
+  // resumedIsNewUser carries the ORIGINAL, authoritative answer captured
+  // before any of that happened, so isAddingRole (which controls whether
+  // the password step is skipped) still comes out correct for a
+  // brand-new person instead of being misread as "existing account,
+  // adding a role" just because Login happened to touch it first.
+  const { prefillPhone, resumedIsNewUser } = useLocalSearchParams<{ prefillPhone?: string; resumedIsNewUser?: string }>();
+
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
-    mobileNumber: '',
+    mobileNumber: prefillPhone ?? '',
     otp: '',
     address: '',
     idNumber: '',
@@ -259,6 +273,25 @@ export default function RegisterScreen() {
     const idNumberFilled = formData.idNumber ? 1 : 0;
     const idDocFilled = idDocumentImage ? 1 : 0;
     return Math.min(1, (completed + idNumberFilled + idDocFilled) / total);
+  };
+
+  // Mirrors calculateProgress()'s own required checks exactly — surfaced to
+  // the user when they tap a not-yet-complete Create Account button, since
+  // a silently-disabled button with no explanation left them guessing which
+  // of several sections they'd missed.
+  const getMissingSteps = (): string[] => {
+    const missing: string[] = [];
+    if (!formData.fullName) missing.push('Full Name');
+    if (!isOtpVerified) missing.push('Mobile Number Verification (tap "Verify with OTP")');
+    if (!formData.address) missing.push('Address');
+    if (!(formData.primaryProfession && formData.skills.length > 0)) missing.push('Profession & Skills');
+    if (!formData.experience) missing.push('Years of Experience');
+    if (!workProofImage) missing.push('Work Proof document');
+    if (!isAddingRole && !(formData.password && formData.password === formData.confirmPassword && formData.password.length >= 6)) {
+      missing.push('Password (at least 6 characters, matching in both fields)');
+    }
+    if (!(agreedToTerms && agreedToPrivacy)) missing.push('Agree to Terms & Conditions and Privacy Policy');
+    return missing;
   };
 
   useEffect(() => {
@@ -419,7 +452,7 @@ export default function RegisterScreen() {
       } else {
         Alert.alert(
           'Camera Access Needed',
-          'Camera access is turned off for Skofy. Enable it in Settings to take your profile photo.',
+          'Camera access is turned off for Dodorez Pro. Enable it in Settings to take your profile photo.',
           [{ text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
         );
       }
@@ -568,13 +601,26 @@ export default function RegisterScreen() {
         // there's a Provider profile left to fill in — is_new_user alone
         // can't distinguish "brand-new account" from "this phone already
         // has a Customer account and just got a Provider profile added"
-        // (dual-role support, same identity/phone). Only a phone that
-        // already has a Provider profile is genuinely "already registered."
-        if (!user.is_new_role) {
+        // (dual-role support, same identity/phone).
+        //
+        // !is_new_role alone isn't enough to mean "already registered,"
+        // though — verify_otp auto-creates a bare account for ANY phone
+        // that completes OTP, including via the Login screen (which now
+        // redirects here on is_new_role, see login.tsx). Re-verifying the
+        // SAME number here afterward would see is_new_role=false (that
+        // bare account now exists) and, without the profile_complete
+        // check, incorrectly bounce back to Login as "already
+        // registered" — Login says no account, Register says already
+        // registered, forever. profile_complete distinguishes a genuinely
+        // finished registration from a bare shell still named "New
+        // Provider" with nothing else filled in yet, which is exactly the
+        // case that belongs here, not back at Login.
+        if (!user.is_new_role && user.profile_complete) {
           showAlert('error', 'Already Registered', 'This mobile number already has an account. Please use "Login here" below instead.');
           return;
         }
-        setIsAddingRole(!user.is_new_user);
+        const isNewUser = resumedIsNewUser != null ? resumedIsNewUser === '1' : user.is_new_user;
+        setIsAddingRole(!isNewUser);
         setIsOtpVerified(true);
         setIsOtpSent(false);
         showAlert('success', 'Verified', 'Mobile number verified successfully! ✨');
@@ -1298,6 +1344,11 @@ export default function RegisterScreen() {
               style={[styles.createButton, { backgroundColor: themeColors.brand, opacity: (calculateProgress() === 1 && !isSubmitting) ? 1 : 0.7 }]}
               onPress={async () => {
                 if (isSubmitting) return;
+                const missing = getMissingSteps();
+                if (missing.length > 0) {
+                  showAlert('error', 'Almost There', `Please complete: ${missing.join(', ')}.`);
+                  return;
+                }
                 if (formData.email && !formData.email.includes('@')) {
                   showAlert('error', 'Invalid Email', 'Please enter a valid email address or leave it blank.');
                   return;
@@ -1407,7 +1458,7 @@ export default function RegisterScreen() {
                   setIsSubmitting(false);
                 }
               }}
-              disabled={calculateProgress() < 1 || isSubmitting}
+              disabled={isSubmitting}
             >
               <ThemedText style={styles.createButtonText}>{isSubmitting ? 'Creating Account...' : 'Create Account'}</ThemedText>
             </TouchableOpacity>

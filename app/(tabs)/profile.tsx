@@ -5,6 +5,7 @@ import { AppLock } from '@/services/appLock';
 import { getCurrentVoipToken } from '@/services/callManager';
 import { stopBackgroundLocation } from '@/services/background-location';
 import { disconnectLocationSocket } from '@/services/location-socket';
+import { clearDashboardCache } from '@/services/homeCache';
 import { kmToMiles, milesToKm } from '@/services/schedulingEngine';
 import messaging from '@react-native-firebase/messaging';
 import { StyleSheet, View, TouchableOpacity, ScrollView, Platform, Dimensions, Modal, Switch, TextInput, RefreshControl, SafeAreaView, Pressable, BackHandler, PanResponder, Animated as RNAnimated, ActivityIndicator, Alert, Linking } from 'react-native';
@@ -45,6 +46,8 @@ import {
   Landmark,
   Fingerprint,
   Sparkles,
+  Eye,
+  EyeOff,
 } from 'lucide-react-native';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { Colors, Fonts } from '@/constants/theme';
@@ -200,6 +203,16 @@ export default function ProfileScreen() {
   // setTestFeedback/setFinalTestResult/pendingNextQuestionRef and could
   // stomp a since-started new test's state with the old one's result.
   const activeSessionIdRef = React.useRef<string | null>(null);
+  // Guards startTest's own initial getTestQuestion() fetch specifically —
+  // activeSessionIdRef can't be reused for this since it isn't populated
+  // until AFTER that fetch succeeds. Opening the modal immediately (not
+  // only once the fetch resolves) made it possible to tap the X and close
+  // it WHILE a slow first-ever-test AI question-generation call is still in
+  // flight; without this, that call resolving afterward would still apply
+  // its result and silently reopen/overwrite the modal the user already
+  // dismissed. A fresh object per call, not a boolean, so two rapid
+  // taps/starts can't be confused with each other either.
+  const pendingStartTestRef = React.useRef<object | null>(null);
   const [testTimer, setTestTimer] = useState(30);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(false);
@@ -260,6 +273,9 @@ export default function ProfileScreen() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // Change Password state
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -574,7 +590,12 @@ export default function ProfileScreen() {
         if (isViewAllOpen) { setIsViewAllOpen(false); return true; }
         if (isViewerOpen) { setIsViewerOpen(false); return true; }
         if (isJobHistoryOpen) { setIsJobHistoryOpen(false); return true; }
-        if (isAssessmentOpen) { setIsAssessmentOpen(false); return true; }
+        // closeTest(), not a bare setIsAssessmentOpen(false) — this must run
+        // the same cleanup the X button does (clearing timeoutAutoAdvanceRef,
+        // activeSessionIdRef, and pendingStartTestRef), or a slow in-flight
+        // test-start fetch dismissed via the back button instead of the X
+        // could still land afterward and reopen the modal.
+        if (isAssessmentOpen) { closeTest(); return true; }
         if (isSettingsOpen) { setIsSettingsOpen(false); return true; }
         if (isPasswordOpen) { setIsPasswordOpen(false); return true; }
         if (isTermsOpen) { setIsTermsOpen(false); return true; }
@@ -611,9 +632,28 @@ export default function ProfileScreen() {
       showAlert('error', 'Not Eligible', getEligibilityMessage(eligibility));
       return;
     }
+    // Opens the modal immediately, before the fetch, instead of only after
+    // it resolves — a first-ever test for a skill with no seeded question
+    // bank yet triggers a live AI question-generation call that can take a
+    // genuinely long time, and previously nothing on screen indicated
+    // anything was happening during that wait. The modal's own loading
+    // spinner below (isLoadingQuestion) already existed for this but was
+    // effectively dead code on this path, since the modal never opened
+    // until after the slow part was already over.
+    const requestToken = {};
+    pendingStartTestRef.current = requestToken;
+    setTestQuestion(null);
+    setFinalTestResult(null);
+    setShowResultsScreen(false);
     setIsLoadingQuestion(true);
+    setIsAssessmentOpen(true);
+    setIsTestMinimized(false);
+    pan.setValue({ x: 0, y: 50 });
     try {
       const q = await SkoFyApi.skills.getTestQuestion(skillId);
+      // Closed (or a new test started) while this was in flight — applying
+      // it now would silently reopen the modal the user already dismissed.
+      if (pendingStartTestRef.current !== requestToken) return;
       activeSessionIdRef.current = q.session_id;
       setTestSkillId(skillId);
       setTestSkillName(skillName);
@@ -627,16 +667,18 @@ export default function ProfileScreen() {
       });
       setSelectedAnswer(null);
       setTestFeedback(null);
-      setFinalTestResult(null);
-      setShowResultsScreen(false);
       setTestTimer(30);
-      setIsAssessmentOpen(true);
-      setIsTestMinimized(false);
-      pan.setValue({ x: 0, y: 50 });
     } catch (e: any) {
+      if (pendingStartTestRef.current !== requestToken) return;
+      // Must close the modal on failure, not just stop loading — testQuestion
+      // is still null at this point, and the spinner branch below shows
+      // whenever (!testQuestion || isLoadingQuestion), so leaving the modal
+      // open here would swap the spinner for an indefinitely stuck one
+      // instead of the error alert actually being seen.
+      setIsAssessmentOpen(false);
       showAlert('error', 'Could Not Start Test', e?.message || 'Please try again.');
     } finally {
-      setIsLoadingQuestion(false);
+      if (pendingStartTestRef.current === requestToken) setIsLoadingQuestion(false);
     }
   };
 
@@ -732,6 +774,9 @@ export default function ProfileScreen() {
   };
 
   const closeTest = () => {
+    // Invalidates startTest's own in-flight fetch guard — see
+    // pendingStartTestRef's declaration for why this matters.
+    pendingStartTestRef.current = null;
     // Otherwise a still-pending auto-advance from a timeout right before
     // closing could fire after a new test session has already started,
     // forcing that new session straight to the results screen.
@@ -1193,6 +1238,9 @@ export default function ProfileScreen() {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      setShowCurrentPassword(false);
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
       setIsPasswordOpen(false);
       showAlert('success', 'Password Updated', 'Your password has been changed successfully. Please log in again on any other device.');
     } catch (e: any) {
@@ -1232,6 +1280,11 @@ export default function ProfileScreen() {
     // misleading notification would persist until the app was killed).
     await stopBackgroundLocation().catch(() => {});
     disconnectLocationSocket();
+    // The dashboard cache is stamped with this account's userId and
+    // already won't be read back for a DIFFERENT account — this is
+    // defense in depth, clearing it outright rather than leaving a
+    // deleted/logged-out account's data sitting on disk indefinitely.
+    await clearDashboardCache().catch(() => {});
     // Local logout proceeds regardless — this is just telling the server to
     // invalidate the refresh token server-side.
     try {
@@ -1268,7 +1321,7 @@ export default function ProfileScreen() {
       } else {
         Alert.alert(
           'Camera Access Needed',
-          'Camera access is turned off for Skofy. Enable it in Settings to update your photo.',
+          'Camera access is turned off for Dodorez Pro. Enable it in Settings to update your photo.',
           [{ text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
         );
       }
@@ -2624,34 +2677,60 @@ export default function ProfileScreen() {
             <ThemedText style={[styles.modalTitle, { marginBottom: 20 }]}>Security Update</ThemedText>
             <View style={styles.inputStack}>
               <ThemedText style={styles.inputLabel}>Current Password</ThemedText>
-              <TextInput
-                placeholder="Enter current password"
-                secureTextEntry
-                style={styles.editableInput}
-                value={currentPassword}
-                onChangeText={setCurrentPassword}
-              />
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TextInput
+                  placeholder="Enter current password"
+                  placeholderTextColor={themeColors.icon}
+                  secureTextEntry={!showCurrentPassword}
+                  style={[styles.editableInput, { flex: 1, paddingRight: 44 }]}
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                />
+                <TouchableOpacity style={{ position: 'absolute', right: 12 }} onPress={() => setShowCurrentPassword(v => !v)}>
+                  {showCurrentPassword ? <EyeOff size={18} color={themeColors.icon} /> : <Eye size={18} color={themeColors.icon} />}
+                </TouchableOpacity>
+              </View>
               <ThemedText style={[styles.inputLabel, { marginTop: 16 }]}>New Password</ThemedText>
-              <TextInput
-                placeholder="Min 8 characters, 1 letter + 1 number"
-                secureTextEntry
-                style={styles.editableInput}
-                value={newPassword}
-                onChangeText={setNewPassword}
-              />
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TextInput
+                  placeholder="Min 8 characters, 1 letter + 1 number"
+                  placeholderTextColor={themeColors.icon}
+                  secureTextEntry={!showNewPassword}
+                  style={[styles.editableInput, { flex: 1, paddingRight: 44 }]}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                />
+                <TouchableOpacity style={{ position: 'absolute', right: 12 }} onPress={() => setShowNewPassword(v => !v)}>
+                  {showNewPassword ? <EyeOff size={18} color={themeColors.icon} /> : <Eye size={18} color={themeColors.icon} />}
+                </TouchableOpacity>
+              </View>
               <ThemedText style={[styles.inputLabel, { marginTop: 16 }]}>Confirm New Password</ThemedText>
-              <TextInput
-                placeholder="Repeat password"
-                secureTextEntry
-                style={styles.editableInput}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-              />
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TextInput
+                  placeholder="Repeat password"
+                  placeholderTextColor={themeColors.icon}
+                  secureTextEntry={!showConfirmPassword}
+                  style={[styles.editableInput, { flex: 1, paddingRight: 44 }]}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                />
+                <TouchableOpacity style={{ position: 'absolute', right: 12 }} onPress={() => setShowConfirmPassword(v => !v)}>
+                  {showConfirmPassword ? <EyeOff size={18} color={themeColors.icon} /> : <Eye size={18} color={themeColors.icon} />}
+                </TouchableOpacity>
+              </View>
             </View>
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={[styles.actionBtn, styles.cancelBtn]}
-                onPress={() => { setIsPasswordOpen(false); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); }}
+                onPress={() => {
+                  setIsPasswordOpen(false);
+                  setCurrentPassword('');
+                  setNewPassword('');
+                  setConfirmPassword('');
+                  setShowCurrentPassword(false);
+                  setShowNewPassword(false);
+                  setShowConfirmPassword(false);
+                }}
               >
                 <ThemedText style={styles.cancelBtnText}>Cancel</ThemedText>
               </TouchableOpacity>

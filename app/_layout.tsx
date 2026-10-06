@@ -19,6 +19,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AppProvider } from '@/context/AppContext';
 import { initCallManager, registerFcmToken } from '@/services/callManager';
 import { TokenStore, setSessionExpiredHandler } from '@/services/api';
+import { clearDashboardCache } from '@/services/homeCache';
 import { NetworkStatusBanner } from '@/components/network-status-banner';
 import AppLockGate from '@/components/app-lock-gate';
 import SessionExpiredModal from '@/components/session-expired-modal';
@@ -72,6 +73,14 @@ export default function RootLayout() {
       if (token) registerFcmToken();
     });
     setSessionExpiredHandler(() => {
+      // The dashboard cache is keyed to the account that was logged in —
+      // a session dying here (token revoked, or the account itself no
+      // longer exists) means whatever's cached no longer has a confirmed
+      // owner. Cleared outright rather than waiting for the next read's
+      // userId check to discard it, so a login right after this doesn't
+      // still have a stale file sitting there if something about that
+      // check were ever wrong.
+      clearDashboardCache().catch(() => {});
       // A stale leftover token can 401 a background call (e.g. FCM
       // registration on launch) seconds after the user already landed on
       // /login themselves. Redirecting to /login again in that case still

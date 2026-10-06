@@ -41,7 +41,7 @@ import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import MapView, { Marker, PROVIDER_GOOGLE, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { checkFeasibility, FeasibilityResult, calculateDistance, kmToMiles } from '@/services/schedulingEngine';
+import { checkFeasibility, FeasibilityResult, calculateDistance, kmToMiles, estimateDriveMinutes, formatDriveTime } from '@/services/schedulingEngine';
 import { resolveApplyGate } from '@/services/applyErrorGate';
 import { SkoFyApi } from '@/services/api';
 import Animated, { FadeInUp, FadeInRight } from 'react-native-reanimated';
@@ -395,7 +395,7 @@ export default function JobDetailsScreen() {
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Check out this ${job.title} job on SkoFy! It pays ${job.rate}.`,
+        message: `Check out this ${job.title} job on Dodorez! It pays ${job.rate}.`,
       });
     } catch (error) {
       // Most rejections here are just the user dismissing the share sheet,
@@ -582,7 +582,11 @@ export default function JobDetailsScreen() {
             <View style={[styles.feasibilityInfoRowTop, { backgroundColor: getFeasibilityColor(feasibility.status) + '15' }]}>
               <Zap size={12} color={getFeasibilityColor(feasibility.status)} />
               <Text style={[styles.feasibilityDetailTextSmall, { color: getFeasibilityColor(feasibility.status) }]}>
-                {feasibility.travelTime} min travel {'\u2022'} {feasibility.score < 0 ? 'Conflict' : `${feasibility.score} min gap`} {'\u2022'} {feasibility.reason}
+                {/* Travel is from where the provider is now \u2014 feasibility.travelTime
+                    is measured from their nearest OTHER job (0 when they have none). */}
+                {userLocation && job.coordinates
+                  ? `~${formatDriveTime(estimateDriveMinutes(calculateDistance(userLocation, job.coordinates)))} drive`
+                  : `${feasibility.travelTime} min travel`} {'\u2022'} {feasibility.score < 0 ? 'Conflict' : `${feasibility.score} min gap`} {'\u2022'} {feasibility.reason}
               </Text>
             </View>
           )}

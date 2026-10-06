@@ -13,4 +13,8 @@ const DEV_LAN_IP = '192.168.1.6';
 // const NGROK_URL = 'https://underrate-snowfield-chemist.ngrok-free.dev/v1';
 // const NGROK_URL = 'https://lavender-strife-monopoly.ngrok-free.dev/v1';
 const NGROK_URL = 'https://dill-unstirred-amply.ngrok-free.dev/v1';
-export const API_BASE_URL = NGROK_URL;
+// Dodorez API on AWS (Mumbai) — see skofy-backend/deploy/README.md.
+// No laptop or ngrok tunnel needed. Switch back to NGROK_URL to test
+// against a local backend. Must match the customer app's BASE_URL.
+const AWS_URL = 'https://16-4-28-180.sslip.io/v1';
+export const API_BASE_URL = AWS_URL;

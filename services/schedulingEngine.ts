@@ -25,10 +25,6 @@ export interface ProviderSettings {
   minGapMinutes: number;
 }
 
-// Simple Haversine distance based travel time estimation
-// Average speed in urban areas: 30 km/h = 0.5 km/min
-const AVG_SPEED_KM_MIN = 0.4; // Slightly slower for traffic
-
 export const calculateDistance = (loc1: JobLocation, loc2: JobLocation): number => {
   const R = 6371; // Earth's radius in km
   const dLat = (loc2.latitude - loc1.latitude) * Math.PI / 180;
@@ -41,16 +37,26 @@ export const calculateDistance = (loc1: JobLocation, loc2: JobLocation): number 
   return R * c;
 };
 
-// calculateDistance stays in km internally — calculateTravelTime depends on
-// it being consistent with AVG_SPEED_KM_MIN. This is purely for display,
-// since SkoFy launches in the US where customers/providers expect miles.
+// calculateDistance stays in km internally — miles are purely for display,
+// since Dodorez launches in the US where customers/providers expect miles.
 export const kmToMiles = (km: number): number => km * 0.621371;
 export const milesToKm = (miles: number): number => miles / 0.621371;
 
-export const calculateTravelTime = (loc1: JobLocation, loc2: JobLocation): number => {
-  const distance = calculateDistance(loc1, loc2);
-  return Math.round(distance / AVG_SPEED_KM_MIN);
-};
+// The ONE drive-time model — used both for what providers see ("~25 min
+// drive") and for the booking-clash check below, so the two can never
+// disagree. Straight-line distance understates real roads (~1.35x in a city
+// grid), and average city driving including traffic is ~22 km/h.
+const ROAD_DISTANCE_FACTOR = 1.35;
+const CITY_DRIVING_SPEED_KMH = 22;
+
+export const estimateDriveMinutes = (distanceKm: number): number =>
+  Math.max(1, Math.round((distanceKm * ROAD_DISTANCE_FACTOR) / CITY_DRIVING_SPEED_KMH * 60));
+
+export const calculateTravelTime = (loc1: JobLocation, loc2: JobLocation): number =>
+  estimateDriveMinutes(calculateDistance(loc1, loc2));
+
+export const formatDriveTime = (minutes: number): string =>
+  minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} hr${minutes % 60 ? ` ${minutes % 60} min` : ''}`;
 
 export const checkFeasibility = (
   newJob: { startTime: number; endTime: number; location: JobLocation },

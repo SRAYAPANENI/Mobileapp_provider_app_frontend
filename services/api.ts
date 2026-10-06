@@ -16,6 +16,7 @@
 
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import { File, Paths } from 'expo-file-system';
 import { API_BASE_URL } from './api-config';
 
 // ─── CONFIG ─────────────────────────────────────────────────────────────────
@@ -52,6 +53,42 @@ export const TokenStore = {
     await SecureStore.deleteItemAsync(USER_KEY);
   },
 };
+
+// ─── STALE SESSION ON REINSTALL ──────────────────────────────────────────────
+// iOS Keychain (what SecureStore is backed by) is explicitly NOT cleared when
+// an app is deleted — standard platform behavior, not a bug here. Android's
+// auto-backup can similarly restore SecureStore's encrypted prefs across a
+// reinstall. Either way, a token issued to a before-uninstall install can
+// still be sitting in SecureStore after a fresh install, read back by the
+// splash screen as "logged in", and then rejected by the backend a moment
+// later (session_version mismatch / revoked refresh token) as a "Signed Out"
+// the user never actually triggered. The document directory, unlike
+// SecureStore/Keychain, IS wiped on uninstall on both platforms, so the
+// absence of this marker file is a reliable "this is a fresh install" signal
+// regardless of platform-specific token-persistence quirks.
+let installMarkerFile: File | null | undefined;
+function getInstallMarkerFile(): File | null {
+  if (installMarkerFile === undefined) {
+    try {
+      installMarkerFile = new File(Paths.document, 'install_marker.txt');
+    } catch {
+      installMarkerFile = null;
+    }
+  }
+  return installMarkerFile;
+}
+
+export async function clearStaleSessionAfterReinstall(): Promise<void> {
+  try {
+    const marker = getInstallMarkerFile();
+    if (!marker || marker.exists) return;
+    await TokenStore.clear();
+    marker.write('1');
+  } catch {
+    // Best-effort — worst case a stale session survives one extra launch
+    // and gets caught by the normal "Signed Out" rejection instead.
+  }
+}
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 export interface AuthUser {
@@ -161,7 +198,23 @@ async function request<T = any>(
 }
 
 async function _parseResponse<T>(response: Response): Promise<T> {
-  const json = await response.json();
+  let json: any;
+  try {
+    json = await response.json();
+  } catch {
+    // The server didn't return valid JSON at all — most often a proxy/
+    // tunnel's own error page (e.g. ngrok's branded HTML page when the
+    // tunnel is down or over its bandwidth cap) instead of our API's JSON
+    // error shape. Unguarded, response.json() throws a raw SyntaxError
+    // ("Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON") straight
+    // into whatever alert the caller shows — exactly the kind of internals
+    // leaking into the UI this was meant to stop.
+    throw {
+      success: false,
+      error_code: 'INVALID_RESPONSE',
+      message: "Couldn't reach the server. Please check your connection and try again.",
+    } as ApiError;
+  }
   if (!response.ok) {
     throw json as ApiError;
   }
@@ -237,7 +290,35 @@ async function _refreshAccessToken(): Promise<string | null> {
   return refreshPromise;
 }
 
+// ─── TOKEN FOR LIVE CONNECTIONS ──────────────────────────────────────────────
+// request() refreshes on a 401, but a WebSocket gets no 401 — the server just
+// closes it (4401) when the token in the auth message has expired (access
+// tokens live 15 minutes). Screens that opened their socket with the stored,
+// expired token silently lost live chat and calls: offers were never
+// delivered and nothing rang. Every socket gets its token from here.
+export async function getFreshAccessToken(): Promise<string | null> {
+  const token = await TokenStore.getAccessToken();
+  if (token && !_expiresWithin(token, 60)) return token;
+  return (await _refreshAccessToken()) ?? token;
+}
+
+function _expiresWithin(token: string, seconds: number): boolean {
+  try {
+    const part = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const { exp } = JSON.parse(atob(part.padEnd(Math.ceil(part.length / 4) * 4, '=')));
+    return typeof exp !== 'number' || exp * 1000 - Date.now() < seconds * 1000;
+  } catch {
+    return true;
+  }
+}
+
 // ─── API SURFACE ─────────────────────────────────────────────────────────────
+export interface RTCIceServerConfig {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+}
+
 export const SkoFyApi = {
 
   // ── Auth ──────────────────────────────────────────────────────────────────
@@ -296,11 +377,23 @@ export const SkoFyApi = {
     /** Set or update password for the logged-in provider. currentPassword is
      * required when actually changing an existing password (not needed for
      * first-time setup, e.g. right after registration). */
-    setPassword: async (password: string, currentPassword?: string) =>
-      request('/auth/set-password', {
+    /** A real password change revokes the calling session's own token
+     * server-side (along with every other device's, as a security measure)
+     * and returns a fresh pair in its place — stored here so the user isn't
+     * immediately bounced to "Signed Out" by the very change they just made. */
+    setPassword: async (password: string, currentPassword?: string) => {
+      const data = await request<{
+        message: string;
+        tokens?: { access_token: string; refresh_token: string };
+      }>('/auth/set-password', {
         method: 'POST',
         body: JSON.stringify({ password, current_password: currentPassword }),
-      }),
+      });
+      if (data.tokens) {
+        await TokenStore.setTokens(data.tokens.access_token, data.tokens.refresh_token);
+      }
+      return data;
+    },
 
     /**
      * Forgot password, step 1 — separate from sendOTP (shared with login/
@@ -439,6 +532,40 @@ export const SkoFyApi = {
       based_on: 'market_average' | 'category_default';
       sample_size: number;
     }> => request('/providers/me/rates/suggest'),
+
+    /** Customers who've booked this provider more than once, most-booked
+     * first — Repeat Customers dashboard feature. */
+    getRepeatCustomers: async (): Promise<Array<{
+      customer_id: string;
+      name: string;
+      profile_image_url: string | null;
+      avg_payment_rating: number | null;
+      avg_behaviour_rating: number | null;
+      avg_negotiation_rating: number | null;
+      avg_environment_rating: number | null;
+      jobs_with_you_count: number;
+    }>> => request('/providers/me/repeat-customers'),
+
+    /** This provider's full completed-job history with one specific repeat
+     * customer, both review directions attached. */
+    getCustomerJobHistory: async (customerId: string): Promise<Array<{
+      job_id: string;
+      title: string;
+      completed_at: string | null;
+      final_amount: number | null;
+      review_overall_rating: number | null;
+      review_skill_rating: number | null;
+      review_punctuality_rating: number | null;
+      review_behaviour_rating: number | null;
+      review_communication_rating: number | null;
+      review_comment: string | null;
+      customer_review_overall_rating: number | null;
+      customer_review_behaviour_rating: number | null;
+      customer_review_negotiation_rating: number | null;
+      customer_review_payment_rating: number | null;
+      customer_review_environment_rating: number | null;
+      customer_review_comment: string | null;
+    }>> => request(`/providers/me/repeat-customers/${customerId}/jobs`),
 
     updateLocation: async (lat: number, lng: number) =>
       request('/providers/me/location', {
@@ -717,6 +844,10 @@ export const SkoFyApi = {
       environment_rating: number;
       comment?: string;
     }) => request(`/jobs/${jobId}/customer-review`, { method: 'POST', body: JSON.stringify(review) }),
+
+    // Finished jobs (completed or disputed) the provider hasn't rated the customer for yet.
+    pendingRatings: async (): Promise<{ job_id: string; title: string; counterpart_name: string; status: string }[]> =>
+      request('/jobs/pending-ratings') as any,
   },
 
   // ── HCI Score ─────────────────────────────────────────────────────────────
@@ -778,10 +909,12 @@ export const SkoFyApi = {
   // admin panel's Support Tickets page reads from. No WebSocket for this
   // one; screens polling for new admin replies do so on a plain interval.
   supportTickets: {
-    create: async (subject: string, message: string, jobId?: string) =>
+    // openingIsSystem: the message is an automatic note (e.g. which FAQs were
+    // viewed), not something the user typed — shown as from support.
+    create: async (subject: string, message: string, jobId?: string, openingIsSystem = false) =>
       request('/support-tickets', {
         method: 'POST',
-        body: JSON.stringify({ subject, message, job_id: jobId }),
+        body: JSON.stringify({ subject, message, job_id: jobId, opening_is_system: openingIsSystem }),
       }),
     list: async () => request('/support-tickets'),
     get: async (ticketId: string) => request(`/support-tickets/${ticketId}`),
@@ -858,6 +991,12 @@ export const SkoFyApi = {
   },
 
   // ── Job rating status ─────────────────────────────────────────────────────
+  calls: {
+    /** STUN/TURN servers for in-app calls, with short-lived credentials for
+     * Dodorez's own relay (see backend app/services/ice_servers.py). */
+    iceServers: async (): Promise<RTCIceServerConfig[]> => request('/calls/ice-servers') as any,
+  },
+
   ratingStatus: {
     get: async (jobId: string): Promise<{ customer_has_rated: boolean; provider_has_rated: boolean }> =>
       request(`/jobs/${jobId}/rating-status`),

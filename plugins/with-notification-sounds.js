@@ -41,6 +41,12 @@ function withAndroidNotificationSound(config) {
         path.join(config.modRequest.projectRoot, SOUND_SOURCE),
         path.join(rawDir, ANDROID_RAW_FILENAME),
       );
+      // The incoming-call channel (callManager.ts) uses sound 'ringtone' —
+      // without this file Android had no such sound and calls rang silently.
+      fs.copyFileSync(
+        path.join(config.modRequest.projectRoot, SOUND_SOURCE),
+        path.join(rawDir, 'ringtone.wav'),
+      );
 
       const drawableDir = path.join(config.modRequest.platformProjectRoot, 'app/src/main/res/drawable');
       fs.mkdirSync(drawableDir, { recursive: true });

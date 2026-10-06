@@ -57,9 +57,10 @@ import notifee from '@notifee/react-native';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { ThemedText } from '@/components/themed-text';
-import { checkFeasibility, FeasibilityResult, calculateDistance, kmToMiles } from '@/services/schedulingEngine';
+import { checkFeasibility, FeasibilityResult, calculateDistance, kmToMiles, estimateDriveMinutes, formatDriveTime } from '@/services/schedulingEngine';
 import { resolveApplyGate } from '@/services/applyErrorGate';
 import { SkoFyApi } from '@/services/api';
+import { markRatingSkipped, nextPendingRating } from '@/services/ratingReminders';
 import { readDashboardCache, writeDashboardCache } from '@/services/homeCache';
 import { Skeleton } from '@/components/skeleton';
 import { startBackgroundLocation, stopBackgroundLocation } from '@/services/background-location';
@@ -267,6 +268,29 @@ export default function DashboardScreen() {
   const [address, setAddress] = useState('Locating...');
   const [userName, setUserName] = useState('');
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
+  // Repeat Customers dashboard section — who's booked this provider more
+  // than once, so the provider has a reason to see repeat bookings happen
+  // through the app instead of a customer just texting them directly.
+  const [repeatCustomers, setRepeatCustomers] = useState<Array<{
+    customer_id: string;
+    name: string;
+    profile_image_url: string | null;
+    avg_payment_rating: number | null;
+    avg_behaviour_rating: number | null;
+    avg_negotiation_rating: number | null;
+    avg_environment_rating: number | null;
+    jobs_with_you_count: number;
+  }>>([]);
+  // Reloaded every time this tab comes into focus — it used to load once at
+  // app start, so a customer who just became a repeat customer (2nd
+  // completed job together) didn't appear until the app was restarted.
+  useFocusEffect(
+    React.useCallback(() => {
+      SkoFyApi.provider.getRepeatCustomers()
+        .then((data) => setRepeatCustomers(Array.isArray(data) ? data : []))
+        .catch(() => { /* dashboard still works without this section */ });
+    }, [])
+  );
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [isLocating, setIsLocating] = useState(true);
   const [userCoords, setUserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -355,6 +379,10 @@ export default function DashboardScreen() {
   });
   const [comment, setComment] = useState('');
   const [pendingRatingJobId, setPendingRatingJobId] = useState<string | null>(null);
+  // Set when the rating sheet was opened by the "you still owe a rating"
+  // reminder (not straight after completing a job) — names the customer and
+  // skips the "Job Completed!" celebration, which wouldn't make sense then.
+  const [ratingReminder, setRatingReminder] = useState<{ customerName: string } | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [jobs, setJobs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -1019,6 +1047,44 @@ const filteredJobs = jobs.filter((job) => {
     }
   };
 
+  const resetRatingForm = () => {
+    setRatings({ behaviour: 0, negotiation: 0, payment: 0, environment: 0 });
+    setComment('');
+  };
+
+  // "Maybe later" — the rating is still owed, so the reminder below brings
+  // it back next time the app is opened. The sheet used to have no way to
+  // close it at all.
+  const skipRating = () => {
+    if (pendingRatingJobId) markRatingSkipped(pendingRatingJobId);
+    setShowRatingModal(false);
+    setPendingRatingJobId(null);
+    setRatingReminder(null);
+    resetRatingForm();
+  };
+
+  // Ask for any finished job (completed or disputed) the provider still owes
+  // the customer a rating for — previously the only prompts were right after
+  // the provider tapped "complete" themselves, or on opening the job chat.
+  // Checked only when the screen comes into focus (same as the customer
+  // app) — not again straight after "Maybe later" or a submit. The ref lets
+  // the focus callback see whether a rating sheet is already open without
+  // re-running every time that state changes.
+  const ratingSheetBusyRef = useRef(false);
+  ratingSheetBusyRef.current = showRatingModal || !!pendingRatingJobId;
+  useFocusEffect(
+    React.useCallback(() => {
+      let active = true;
+      nextPendingRating().then(next => {
+        if (!active || !next || ratingSheetBusyRef.current) return;
+        setPendingRatingJobId(next.job_id);
+        setRatingReminder({ customerName: next.counterpart_name });
+        setShowRatingModal(true);
+      });
+      return () => { active = false; };
+    }, [])
+  );
+
   const submitRating = async () => {
     if (!pendingRatingJobId) return;
     if (Object.values(ratings).some(v => v === 0)) {
@@ -1038,15 +1104,20 @@ const filteredJobs = jobs.filter((job) => {
         environment_rating: ratings.environment,
         comment: comment || undefined,
       });
+      const fromReminder = !!ratingReminder;
       setPendingRatingJobId(null);
       setSelectedJobId(null);
       setShowRatingModal(false);
-      setRatings({ behaviour: 0, negotiation: 0, payment: 0, environment: 0 });
-      setComment('');
+      setRatingReminder(null);
+      resetRatingForm();
 
-      setTimeout(() => {
-        setShowFinalSuccess(true);
-      }, 400);
+      if (fromReminder) {
+        appAlert.show('success', 'Thanks!', 'Your rating has been submitted.');
+      } else {
+        setTimeout(() => {
+          setShowFinalSuccess(true);
+        }, 400);
+      }
     } catch (error) {
       console.error('Failed to submit customer review:', error);
       appAlert.show('error', 'Rating Failed', 'Failed to submit rating. Please try again.');
@@ -1062,7 +1133,11 @@ const filteredJobs = jobs.filter((job) => {
       setShowManageModal(false);
       router.push({
         pathname: '/navigate-to-site' as any,
-        params: { lat: String(latitude), lng: String(longitude), title: title ?? 'Job Site', jobId: selectedJob.id },
+        params: {
+          lat: String(latitude), lng: String(longitude), title: title ?? 'Job Site', jobId: selectedJob.id,
+          // Shown on the map screen's Call / Chat row.
+          customerName: selectedJob.employer?.name || 'Customer',
+        },
       });
     }
   };
@@ -1323,8 +1398,7 @@ const filteredJobs = jobs.filter((job) => {
                 // because 0 is falsy.
                 if (userCoords && job.latitude != null && job.longitude != null) {
                   const distKm = calculateDistance(userCoords, { latitude: job.latitude, longitude: job.longitude });
-                  const mins = Math.max(1, Math.round(distKm / 40 * 60));
-                  return `${mins} min travel`;
+                  return `~${formatDriveTime(estimateDriveMinutes(distKm))} drive`;
                 }
                 return `${feasibility.travelTime} min travel`;
               })()} {'•'} {feasibility.score < 0 ? 'Conflict' : `${feasibility.score} min gap`} {'•'} {feasibility.reason}
@@ -1554,6 +1628,51 @@ const filteredJobs = jobs.filter((job) => {
             </View>
           </View>
         </View>
+
+        {repeatCustomers.length > 0 && (
+          <View style={styles.repeatCustomersSection}>
+            <ThemedText style={styles.repeatCustomersSectionLabel}>Repeat Customers</ThemedText>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.repeatCustomersRow}>
+              {repeatCustomers.map((c) => {
+                const ratings = [c.avg_payment_rating, c.avg_behaviour_rating, c.avg_negotiation_rating, c.avg_environment_rating].filter(
+                  (v): v is number => v != null,
+                );
+                const avgOverall = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null;
+                return (
+                  <TouchableOpacity
+                    key={c.customer_id}
+                    style={styles.repeatCustomerCard}
+                    activeOpacity={0.85}
+                    onPress={() => router.push({
+                      pathname: '/customer-profile' as any,
+                      params: { customerId: c.customer_id },
+                    })}
+                  >
+                    <View style={styles.repeatCustomerTopRow}>
+                      {c.profile_image_url ? (
+                        <Image source={{ uri: c.profile_image_url }} style={styles.repeatCustomerAvatar} />
+                      ) : (
+                        <View style={[styles.repeatCustomerAvatar, styles.repeatCustomerAvatarFallback]}>
+                          <Text style={styles.repeatCustomerAvatarInitial}>{(c.name[0] ?? '?').toUpperCase()}</Text>
+                        </View>
+                      )}
+                      <View style={styles.repeatCustomerBadge}>
+                        <Text style={styles.repeatCustomerBadgeText} numberOfLines={1}>{c.jobs_with_you_count}x booked</Text>
+                      </View>
+                    </View>
+                    <ThemedText style={styles.repeatCustomerName} numberOfLines={1}>{c.name}</ThemedText>
+                    {avgOverall != null && (
+                      <View style={styles.repeatCustomerStatsRow}>
+                        <Star size={12} color="#FFCE48" fill="#FFCE48" />
+                        <Text style={styles.repeatCustomerStatsText}>{avgOverall.toFixed(1)}</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
 
         <View style={styles.sliderContainer}>
           {tabs.map((tab, index) => {
@@ -2317,7 +2436,7 @@ const filteredJobs = jobs.filter((job) => {
         <View style={styles.exitModalOverlay}>
           <View style={styles.exitModalContent}>
             <View style={styles.exitIconContainer}><AlertTriangle size={36} color="#F59E0B" /></View>
-            <ThemedText style={styles.exitTitle}>Exit SkoFy?</ThemedText>
+            <ThemedText style={styles.exitTitle}>Exit Dodorez Pro?</ThemedText>
             <ThemedText style={styles.exitMessage}>Are you sure you want to close the app?</ThemedText>
             <View style={styles.exitActionRow}>
               <TouchableOpacity style={[styles.exitButton, styles.exitCancelButton]} onPress={() => setIsExitModalVisible(false)}>
@@ -2381,13 +2500,15 @@ const filteredJobs = jobs.filter((job) => {
         visible={showRatingModal}
         transparent
         animationType="slide"
-        onRequestClose={() => {}}
+        onRequestClose={skipRating}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.ratingSheet}>
             <View style={styles.dragHandle} />
             <ThemedText style={styles.ratingTitle}>Rate Your Experience</ThemedText>
-            <ThemedText style={styles.ratingSubtitle}>How was the customer?</ThemedText>
+            <ThemedText style={styles.ratingSubtitle}>
+              {ratingReminder ? `How was ${ratingReminder.customerName}?` : 'How was the customer?'}
+            </ThemedText>
 
             {(['behaviour', 'negotiation', 'payment', 'environment'] as const).map((cat) => (
               <View key={cat} style={styles.ratingRow}>
@@ -2430,6 +2551,10 @@ const filteredJobs = jobs.filter((job) => {
                 ? <ActivityIndicator size="small" color="#111827" />
                 : <ThemedText style={styles.submitRatingText}>Submit Rating</ThemedText>
               }
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.skipRatingBtn} onPress={skipRating} disabled={isSubmittingRating}>
+              <ThemedText style={styles.skipRatingText}>Maybe later</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -2622,6 +2747,52 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
   },
+  // ── Repeat Customers strip ────────────────────────────────────────────────
+  repeatCustomersSection: { marginBottom: 14 },
+  repeatCustomersSectionLabel: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontFamily: Fonts.poppinsBold,
+    color: '#111827',
+    marginBottom: 10,
+  },
+  repeatCustomersRow: { gap: 10, paddingRight: 8 },
+  repeatCustomerCard: {
+    width: 140,
+    borderRadius: 16,
+    padding: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#F1F2F4',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  repeatCustomerTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  repeatCustomerAvatar: { width: 36, height: 36, borderRadius: 18 },
+  repeatCustomerAvatarFallback: {
+    backgroundColor: '#FFCE48',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  repeatCustomerAvatarInitial: { fontSize: 14, fontFamily: Fonts.poppinsBold, color: '#000' },
+  repeatCustomerBadge: {
+    backgroundColor: '#FFF9E6',
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  repeatCustomerBadgeText: { fontSize: 10, lineHeight: 14, fontFamily: Fonts.poppinsBold, color: '#B45309' },
+  repeatCustomerName: { fontSize: 13, fontFamily: Fonts.poppinsBold, color: '#111827', marginBottom: 6 },
+  repeatCustomerStatsRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  repeatCustomerStatsText: { fontSize: 11.5, fontFamily: Fonts.poppinsSemiBold, color: '#111827' },
   sliderContainer: {
     flexDirection: 'row',
     height: 46,
@@ -3512,6 +3683,18 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
+  },
+  skipRatingBtn: {
+    alignSelf: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginTop: 4,
+  },
+  skipRatingText: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontFamily: Fonts.poppinsSemiBold,
+    color: '#6B7280',
   },
 
   // Final success modal

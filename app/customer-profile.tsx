@@ -29,6 +29,22 @@ interface JobHistoryItem {
   date: string;
   price: string;
   status: 'Completed' | 'Cancelled' | string;
+  // "Rating From Customer" (reviews table, customer→provider) — the actual
+  // Repeat Customers trust signal: what this customer rated this provider.
+  reviewOverallRating: number | null;
+  reviewSkillRating: number | null;
+  reviewPunctualityRating: number | null;
+  reviewBehaviourRating: number | null;
+  reviewCommunicationRating: number | null;
+  reviewComment: string | null;
+  // "Your Rating Of Customer" (customer_reviews table, provider→customer) —
+  // already shown here before this fix.
+  customerReviewOverallRating: number | null;
+  customerReviewBehaviourRating: number | null;
+  customerReviewNegotiationRating: number | null;
+  customerReviewPaymentRating: number | null;
+  customerReviewEnvironmentRating: number | null;
+  customerReviewComment: string | null;
 }
 
 function formatDate(iso?: string): string {
@@ -86,62 +102,56 @@ export default function CustomerProfileScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
   const styles2 = React.useMemo(() => makeStyles(themeColors), [colorScheme]);
-  const { jobId } = useLocalSearchParams<{ jobId?: string }>();
+  // customerId is the direct, preferred route in — e.g. from the Repeat
+  // Customers dashboard section, which already knows exactly who it's
+  // linking to. jobId stays supported as a fallback (fetches the job just
+  // to read its customer_id) for any future caller that only has a job in
+  // hand, though nothing in the app uses that path today.
+  const { jobId, customerId: customerIdParam } = useLocalSearchParams<{ jobId?: string; customerId?: string }>();
 
   const [profile, setProfile] = useState<any>(null);
   const [history, setHistory] = useState<JobHistoryItem[]>([]);
-  const [customerReviews, setCustomerReviews] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
-    if (!jobId) {
+    if (!customerIdParam && !jobId) {
       setLoading(false);
       setLoadError(true);
       return;
     }
     (async () => {
       try {
-        const job: any = await SkoFyApi.jobs.get(jobId);
-        const customerId = job.customer_id;
-        // getHistory() only ever returns page 1 (20 jobs, across every
-        // customer this provider has ever worked with) — filtering that
-        // single page down to just this customer silently understated any
-        // shared history beyond the provider's most recent 20 jobs overall.
-        // Pages through the provider's full history instead, capped at a
-        // generous 10 pages (200 jobs) so one customer relationship can't
-        // turn this into an unbounded fetch.
-        const MAX_HISTORY_PAGES = 10;
-        const allHistory: any[] = [];
-        for (let page = 1; page <= MAX_HISTORY_PAGES; page++) {
-          const pageResult = await SkoFyApi.jobs.getHistory(page).catch(() => []);
-          const pageJobs = Array.isArray(pageResult) ? pageResult : [];
-          allHistory.push(...pageJobs);
-          if (pageJobs.length < 20) break; // last page
-        }
-        const [profileData, reviews] = await Promise.all([
+        const customerId = customerIdParam || (await SkoFyApi.jobs.get(jobId as string) as any).customer_id;
+
+        const [profileData, jobHistory] = await Promise.all([
           SkoFyApi.customers.getDetail(customerId),
-          SkoFyApi.customers.getReviews(customerId).catch(() => []),
+          // Scoped server-side to exactly (this provider, this customer),
+          // both review directions attached per job — replaces the old
+          // approach of paging through this provider's ENTIRE job history
+          // (capped at 10 pages) and filtering client-side, which silently
+          // understated shared history beyond that cap.
+          SkoFyApi.provider.getCustomerJobHistory(customerId),
         ]);
         setProfile(profileData);
-        // Index reviews by job_id for O(1) lookup
-        const reviewMap: Record<string, any> = {};
-        if (Array.isArray(reviews)) {
-          for (const r of reviews) { if (r.job_id) reviewMap[r.job_id] = r; }
-        }
-        setCustomerReviews(reviewMap);
-        const filtered = (Array.isArray(allHistory) ? allHistory : []).filter(
-          (h: any) => h.customer_id === customerId
-        );
-        setHistory(filtered.map((h: any) => ({
+        setHistory((Array.isArray(jobHistory) ? jobHistory : []).map((h) => ({
           id: h.job_id,
           title: h.title,
-          date: formatDate(h.created_at),
-          // Bidding is retired — final_amount (the settled, post-inspection-
-          // invoice price) is the real number; proposed_fee only survives on
-          // pre-migration applications.
-          price: `$${(h.final_amount ?? h.proposed_fee ?? h.inspection_fee ?? 0).toLocaleString()}`,
-          status: h.job_status === 'COMPLETED' ? 'Completed' : h.job_status === 'CANCELLED' ? 'Cancelled' : h.job_status,
+          date: formatDate(h.completed_at ?? undefined),
+          price: `$${(h.final_amount ?? 0).toLocaleString()}`,
+          status: 'Completed', // this endpoint only ever returns COMPLETED jobs
+          reviewOverallRating: h.review_overall_rating,
+          reviewSkillRating: h.review_skill_rating,
+          reviewPunctualityRating: h.review_punctuality_rating,
+          reviewBehaviourRating: h.review_behaviour_rating,
+          reviewCommunicationRating: h.review_communication_rating,
+          reviewComment: h.review_comment,
+          customerReviewOverallRating: h.customer_review_overall_rating,
+          customerReviewBehaviourRating: h.customer_review_behaviour_rating,
+          customerReviewNegotiationRating: h.customer_review_negotiation_rating,
+          customerReviewPaymentRating: h.customer_review_payment_rating,
+          customerReviewEnvironmentRating: h.customer_review_environment_rating,
+          customerReviewComment: h.customer_review_comment,
         })));
       } catch {
         setLoadError(true);
@@ -149,7 +159,7 @@ export default function CustomerProfileScreen() {
         setLoading(false);
       }
     })();
-  }, [jobId]);
+  }, [jobId, customerIdParam]);
 
   if (loading) {
     return (
@@ -238,7 +248,7 @@ export default function CustomerProfileScreen() {
           <Text style={styles2.sectionTitle}>About Customer</Text>
           <View style={styles2.aboutRow}>
             <Briefcase size={16} color="#6B7280" />
-            <Text style={styles2.aboutText}>{profile.jobs_posted} jobs posted on SkoFy</Text>
+            <Text style={styles2.aboutText}>{profile.jobs_posted} jobs posted on Dodorez</Text>
           </View>
           <View style={styles2.aboutRow}>
             <Clock size={16} color="#6B7280" />
@@ -284,31 +294,69 @@ export default function CustomerProfileScreen() {
               <Text style={styles2.priceText}>{item.price}</Text>
             </View>
 
-            {customerReviews[item.id] && (() => {
-              const r = customerReviews[item.id];
-              const dims: Array<{ key: string; label: string }> = [
-                { key: 'behaviour_rating', label: 'Behaviour' },
-                { key: 'negotiation_rating', label: 'Negotiation' },
-                { key: 'payment_rating', label: 'Payment' },
-                { key: 'environment_rating', label: 'Environment' },
-              ];
-              return (
-                <View style={styles2.metricsContainer}>
-                  {dims.map(({ key, label }) => (
-                    <View key={key} style={styles2.metricItem}>
-                      <Text style={styles2.metricLabel}>{label}</Text>
-                      <View style={styles2.metricBar}>
-                        <View style={[styles2.metricFill, { width: `${((r[key] ?? 0) / 5) * 100}%` as any }]} />
-                      </View>
-                      <Text style={{ fontSize: 11, fontFamily: Fonts.poppinsBold, color: '#FFCE48', width: 24, textAlign: 'right' }}>
-                        {(r[key] ?? 0).toFixed(1)}
-                      </Text>
-                    </View>
-                  ))}
-                  {r.comment ? <Text style={styles2.commentText}>"{r.comment}"</Text> : null}
+            {/* "Rating From Customer" — what THIS customer rated THIS
+                provider on this job (reviews table). The actual Repeat
+                Customers trust signal; previously not fetched or shown at
+                all on this screen. Amber, matching profile.tsx's own
+                renderJobHistoryItem convention for the same direction. */}
+            {item.reviewOverallRating != null && (
+              <View style={styles2.metricsContainer}>
+                <View style={styles2.metricsHeaderRow}>
+                  <Star size={13} color="#FFCE48" fill="#FFCE48" />
+                  <Text style={[styles2.metricsHeaderText, { color: '#B45309' }]}>
+                    Rating From Customer · {item.reviewOverallRating.toFixed(1)}
+                  </Text>
                 </View>
-              );
-            })()}
+                {([
+                  ['Skill', item.reviewSkillRating],
+                  ['Punctuality', item.reviewPunctualityRating],
+                  ['Behaviour', item.reviewBehaviourRating],
+                  ['Communication', item.reviewCommunicationRating],
+                ] as const).map(([label, value]) => (
+                  <View key={label} style={styles2.metricItem}>
+                    <Text style={styles2.metricLabel}>{label}</Text>
+                    <View style={styles2.metricBar}>
+                      <View style={[styles2.metricFill, { width: `${((value ?? 0) / 5) * 100}%` as any }]} />
+                    </View>
+                    <Text style={{ fontSize: 11, fontFamily: Fonts.poppinsBold, color: '#FFCE48', width: 24, textAlign: 'right' }}>
+                      {(value ?? 0).toFixed(1)}
+                    </Text>
+                  </View>
+                ))}
+                {item.reviewComment ? <Text style={styles2.commentText}>"{item.reviewComment}"</Text> : null}
+              </View>
+            )}
+
+            {/* "Your Rating Of Customer" — this provider's own past rating
+                of the customer (customer_reviews table). Indigo, same
+                convention as profile.tsx's renderJobHistoryItem. */}
+            {item.customerReviewOverallRating != null && (
+              <View style={styles2.metricsContainer}>
+                <View style={styles2.metricsHeaderRow}>
+                  <Star size={13} color="#6366F1" fill="#6366F1" />
+                  <Text style={[styles2.metricsHeaderText, { color: '#6366F1' }]}>
+                    Your Rating Of Customer · {item.customerReviewOverallRating.toFixed(1)}
+                  </Text>
+                </View>
+                {([
+                  ['Behaviour', item.customerReviewBehaviourRating],
+                  ['Negotiation', item.customerReviewNegotiationRating],
+                  ['Payment', item.customerReviewPaymentRating],
+                  ['Environment', item.customerReviewEnvironmentRating],
+                ] as const).map(([label, value]) => (
+                  <View key={label} style={styles2.metricItem}>
+                    <Text style={styles2.metricLabel}>{label}</Text>
+                    <View style={styles2.metricBar}>
+                      <View style={[styles2.metricFill, { width: `${((value ?? 0) / 5) * 100}%` as any, backgroundColor: '#6366F1' }]} />
+                    </View>
+                    <Text style={{ fontSize: 11, fontFamily: Fonts.poppinsBold, color: '#6366F1', width: 24, textAlign: 'right' }}>
+                      {(value ?? 0).toFixed(1)}
+                    </Text>
+                  </View>
+                ))}
+                {item.customerReviewComment ? <Text style={styles2.commentText}>"{item.customerReviewComment}"</Text> : null}
+              </View>
+            )}
 
           </Animated.View>
         ))}
@@ -458,7 +506,9 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     marginBottom: 10,
     lineHeight: 18,
   },
-  metricsContainer: { gap: 8 },
+  metricsContainer: { gap: 8, marginTop: 10 },
+  metricsHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  metricsHeaderText: { fontSize: 12, lineHeight: 16, fontFamily: Fonts.poppinsBold },
   metricItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   metricLabel: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.poppinsSemiBold, color: t.textMuted, width: 80 },
   metricBar: {

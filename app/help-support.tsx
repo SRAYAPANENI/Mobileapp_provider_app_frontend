@@ -34,7 +34,7 @@ const FAQS = [
   {
     id: '2',
     question: 'What is the platform fee?',
-    answer: 'SkoFy takes a 12% platform fee from each job payout. The rest is transferred to your connected bank account once the job is complete.',
+    answer: 'Dodorez takes a 12% platform fee from each job payout. The rest is transferred to your connected bank account once the job is complete.',
   },
   {
     id: '3',

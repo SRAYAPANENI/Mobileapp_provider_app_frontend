@@ -1,5 +1,5 @@
 import { API_BASE_URL } from './api-config';
-import { TokenStore } from './api';
+import { getFreshAccessToken } from './api';
 
 // Convert https://host/v1 → wss://host/v1
 const WS_BASE = API_BASE_URL
@@ -40,7 +40,7 @@ export function disconnectLocationSocket(): void {
 
 async function _connect(): Promise<void> {
   if (!_jobId) return;
-  const token = await TokenStore.getAccessToken();
+  const token = await getFreshAccessToken();
   if (!token) return;
 
   // A prior socket can still be open or mid-handshake if this fires again
