@@ -9,7 +9,6 @@ import {
   MapPin,
   Phone,
   Send,
-  Star,
   XCircle
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -40,7 +39,8 @@ import {
   RTCSessionDescription,
 } from 'react-native-webrtc';
 import { Audio } from 'expo-av';
-import { isRatingSkipped, markRatingSkipped } from '@/services/ratingReminders';
+import { isRatingSkipped } from '@/services/ratingReminders';
+import { CustomerRatingSheet } from '@/components/customer-rating-sheet';
 import { RTCIceServerConfig, SkoFyApi, TokenStore, getFreshAccessToken } from '@/services/api';
 import { CallOverlay } from '@/components/call-overlay';
 import InCallManager from 'react-native-incall-manager';
@@ -233,9 +233,6 @@ export default function ChatScreen() {
 
   // Rating modal — shown once per session when opening a COMPLETED job chat
   const [ratingVisible, setRatingVisible] = useState(false);
-  const [ratings, setRatings] = useState({ behaviour: 0, negotiation: 0, payment: 0, environment: 0 });
-  const [ratingComment, setRatingComment] = useState('');
-  const [ratingSubmitting, setRatingSubmitting] = useState(false);
 
   const clearDisconnectTimer = () => {
     if (disconnectTimerRef.current) { clearTimeout(disconnectTimerRef.current); disconnectTimerRef.current = null; }
@@ -985,70 +982,12 @@ export default function ChatScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Mutual rating modal — shown once when opening a completed job chat */}
-      <Modal visible={ratingVisible} transparent animationType="fade" onRequestClose={() => { markRatingSkipped(jobId); setRatingVisible(false); }}>
-        <View style={styles.ratingOverlay}>
-          <View style={styles.ratingSheet}>
-            <Text style={styles.ratingTitle}>Rate this customer</Text>
-            <Text style={styles.ratingSubtitle}>How did the job go?</Text>
-            <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
-              {(['behaviour', 'negotiation', 'payment', 'environment'] as const).map((dim) => (
-                <View key={dim} style={styles.ratingRow}>
-                  <Text style={styles.ratingDimLabel}>{dim.charAt(0).toUpperCase() + dim.slice(1)}</Text>
-                  <View style={styles.starsRow}>
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <TouchableOpacity key={star} onPress={() => setRatings(r => ({ ...r, [dim]: star }))} style={styles.starBtn}>
-                        <Star size={28} color={ratings[dim] >= star ? '#FFCE48' : '#D1D5DB'} fill={ratings[dim] >= star ? '#FFCE48' : 'transparent'} />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              ))}
-              <TextInput
-                style={styles.ratingCommentInput}
-                placeholder="Add a comment (optional)"
-                placeholderTextColor="#9CA3AF"
-                value={ratingComment}
-                onChangeText={setRatingComment}
-                multiline
-                numberOfLines={3}
-              />
-            </ScrollView>
-            <View style={styles.ratingActions}>
-              <TouchableOpacity style={styles.ratingSkipBtn} onPress={() => { markRatingSkipped(jobId); setRatingVisible(false); }}>
-                <Text style={styles.ratingSkipText}>Skip</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.ratingSubmitBtn, ratingSubmitting && { opacity: 0.6 }]}
-                disabled={ratingSubmitting}
-                onPress={async () => {
-                  if (Object.values(ratings).some(v => v === 0)) {
-                    Alert.alert('Incomplete', 'Please rate all dimensions before submitting.');
-                    return;
-                  }
-                  setRatingSubmitting(true);
-                  try {
-                    await SkoFyApi.jobs.submitCustomerReview(jobId, {
-                      behaviour_rating: ratings.behaviour,
-                      negotiation_rating: ratings.negotiation,
-                      payment_rating: ratings.payment,
-                      environment_rating: ratings.environment,
-                      comment: ratingComment,
-                    });
-                    setRatingVisible(false);
-                  } catch {
-                    Alert.alert('Error', 'Failed to submit rating. Please try again.');
-                  } finally {
-                    setRatingSubmitting(false);
-                  }
-                }}
-              >
-                <Text style={styles.ratingSubmitText}>{ratingSubmitting ? 'Submitting…' : 'Submit Rating'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* Shown once when opening a finished job's chat the provider hasn't rated */}
+      <CustomerRatingSheet
+        jobId={ratingVisible ? jobId : null}
+        customerName={name}
+        onClose={() => setRatingVisible(false)}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -1250,51 +1189,6 @@ function makeStyles(t: typeof Colors.light) {
     },
     sendButtonDisabled: {
       backgroundColor: t.inputFilled,
-    },
-    ratingOverlay: {
-      flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
-      justifyContent: 'flex-end', alignItems: 'center',
-    },
-    ratingSheet: {
-      width: '100%', backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-      padding: 24, paddingBottom: 40, alignItems: 'center', maxHeight: '85%',
-    },
-    ratingTitle: {
-      fontSize: 20, fontFamily: Fonts.poppinsBold, color: '#111827', marginBottom: 4,
-    },
-    ratingSubtitle: {
-      fontSize: 14, fontFamily: Fonts.poppins, color: '#6B7280', marginBottom: 20,
-    },
-    ratingRow: {
-      width: '100%', flexDirection: 'row', justifyContent: 'space-between',
-      alignItems: 'center', marginBottom: 16,
-    },
-    ratingDimLabel: {
-      fontSize: 14, fontFamily: Fonts.poppinsMedium, color: '#374151', width: 110,
-    },
-    starsRow: { flexDirection: 'row', gap: 4 },
-    starBtn: { padding: 2 },
-    ratingCommentInput: {
-      width: '100%', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12,
-      padding: 12, fontSize: 14, fontFamily: Fonts.poppins, color: '#111827',
-      minHeight: 72, textAlignVertical: 'top', marginBottom: 20,
-    },
-    ratingActions: {
-      flexDirection: 'row', gap: 12, width: '100%',
-    },
-    ratingSkipBtn: {
-      flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1,
-      borderColor: '#E5E7EB', alignItems: 'center',
-    },
-    ratingSkipText: {
-      fontSize: 15, fontFamily: Fonts.poppinsMedium, color: '#6B7280',
-    },
-    ratingSubmitBtn: {
-      flex: 2, paddingVertical: 14, borderRadius: 12,
-      backgroundColor: '#FFCE48', alignItems: 'center',
-    },
-    ratingSubmitText: {
-      fontSize: 15, fontFamily: Fonts.poppinsBold, color: '#111827',
     },
   });
 }

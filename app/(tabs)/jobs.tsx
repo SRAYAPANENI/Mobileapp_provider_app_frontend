@@ -15,7 +15,8 @@ import { ThemedView } from '@/components/themed-view';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { SkoFyApi } from '@/services/api';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import { CustomerRatingSheet } from '@/components/customer-rating-sheet';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useAppAlert } from '@/components/app-alert';
@@ -26,6 +27,7 @@ import {
   DollarSign,
   Calendar,
   AlertTriangle,
+  Star,
 } from 'lucide-react-native';
 
 interface ProviderJob {
@@ -86,11 +88,14 @@ function JobCard({
   index,
   onAction,
   onDispute,
+  onRate,
 }: {
   job: ProviderJob;
   index: number;
   onAction: (jobId: string) => void;
   onDispute: (jobId: string) => void;
+  /** Set only for a finished job whose customer the provider hasn't rated. */
+  onRate?: () => void;
 }) {
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
@@ -204,6 +209,12 @@ function JobCard({
           <ThemedText style={styles.reportIssueLinkText}>Report an Issue</ThemedText>
         </TouchableOpacity>
       )}
+      {onRate && (
+        <TouchableOpacity style={styles.rateCustomerBtn} onPress={onRate} activeOpacity={0.85}>
+          <Star size={14} color="#111827" fill="#111827" />
+          <ThemedText style={styles.rateCustomerBtnText}>Rate customer</ThemedText>
+        </TouchableOpacity>
+      )}
       {job.job_status === 'COMPLETED' && (
         <View style={styles.historyActionsRow}>
           <TouchableOpacity
@@ -258,14 +269,21 @@ export default function JobsScreen() {
   const appAlert = useAppAlert();
   const [isDisputing, setIsDisputing] = useState(false);
 
+  // Finished jobs whose customer still needs a rating (job id → customer
+  // name). Popups ask once; this is where a provider can always find it.
+  const [unrated, setUnrated] = useState<Record<string, string>>({});
+  const [ratingJob, setRatingJob] = useState<{ id: string; customerName: string } | null>(null);
+
   const load = useCallback(async () => {
     try {
-      const [active, history] = await Promise.all([
+      const [active, history, pendingRatings] = await Promise.all([
         SkoFyApi.jobs.getActive().catch(() => []),
         SkoFyApi.jobs.getHistory().catch(() => []),
+        SkoFyApi.jobs.pendingRatings().catch(() => []),
       ]);
       setActiveJobs(Array.isArray(active) ? active : []);
       setHistoryJobs(Array.isArray(history) ? history : []);
+      setUnrated(Object.fromEntries((Array.isArray(pendingRatings) ? pendingRatings : []).map(p => [p.job_id, p.counterpart_name])));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -273,6 +291,8 @@ export default function JobsScreen() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  // Refresh when coming back to this tab — a job may have finished or been rated elsewhere.
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   // Starting a job is handled entirely in the Service Room now (on-site
   // inspection gated by an OTP) — this only ever completes an already
@@ -372,7 +392,15 @@ export default function JobsScreen() {
         data={displayJobs}
         keyExtractor={item => item.job_id.toString()}
         renderItem={({ item, index }) => (
-          <JobCard job={item} index={index} onAction={handleAction} onDispute={openDispute} />
+          <JobCard
+            job={item}
+            index={index}
+            onAction={handleAction}
+            onDispute={openDispute}
+            onRate={tab === 'history' && unrated[item.job_id] !== undefined
+              ? () => setRatingJob({ id: item.job_id, customerName: unrated[item.job_id] })
+              : undefined}
+          />
         )}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
@@ -385,6 +413,19 @@ export default function JobsScreen() {
           />
         }
         ListEmptyComponent={<EmptyState tab={tab} />}
+      />
+
+      <CustomerRatingSheet
+        jobId={ratingJob?.id ?? null}
+        customerName={ratingJob?.customerName}
+        onClose={(submitted) => {
+          if (submitted && ratingJob) {
+            const { id } = ratingJob;
+            setUnrated(prev => { const next = { ...prev }; delete next[id]; return next; });
+            appAlert.show('success', 'Thanks!', 'Your rating has been submitted.');
+          }
+          setRatingJob(null);
+        }}
       />
 
       {/* Dispute modal */}
@@ -548,6 +589,11 @@ function makeStyles(t: typeof Colors.light) {
       marginTop: 8, paddingVertical: 8,
     },
     reportIssueLinkText: { fontSize: 12.5, lineHeight: 16, fontFamily: Fonts.poppinsSemiBold, color: '#EF4444' },
+    rateCustomerBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      marginTop: 14, paddingVertical: 11, borderRadius: 12, backgroundColor: '#FFCE48',
+    },
+    rateCustomerBtnText: { fontSize: 13, lineHeight: 17, fontFamily: Fonts.poppinsSemiBold, color: '#111827' },
     historyActionsRow: {
       flexDirection: 'row', gap: 10, marginTop: 14,
       borderTopWidth: 1, borderTopColor: t.borderSubtle, paddingTop: 14,

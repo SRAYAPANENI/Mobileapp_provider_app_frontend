@@ -52,6 +52,7 @@ import {
   AlertTriangle,
   LogOut,
   Camera,
+  Repeat as RepeatIcon,
 } from 'lucide-react-native';
 import notifee from '@notifee/react-native';
 import { Colors, Fonts } from '@/constants/theme';
@@ -60,7 +61,7 @@ import { ThemedText } from '@/components/themed-text';
 import { checkFeasibility, FeasibilityResult, calculateDistance, kmToMiles, estimateDriveMinutes, formatDriveTime } from '@/services/schedulingEngine';
 import { resolveApplyGate } from '@/services/applyErrorGate';
 import { SkoFyApi } from '@/services/api';
-import { markRatingSkipped, nextPendingRating } from '@/services/ratingReminders';
+import { markRatingSkipped, nextPendingRating, markRatingSubmitted } from '@/services/ratingReminders';
 import { readDashboardCache, writeDashboardCache } from '@/services/homeCache';
 import { Skeleton } from '@/components/skeleton';
 import { startBackgroundLocation, stopBackgroundLocation } from '@/services/background-location';
@@ -162,6 +163,10 @@ export default function DashboardScreen() {
         // ignored) and worth surfacing ahead of the regular browsable list,
         // not folded in indistinguishably.
         isDirectRequest: j.is_direct_request ?? false,
+        // A new request from a customer this provider has already worked
+        // for — shown first, with a badge, and counted in the banner.
+        isRepeatCustomer: j.is_repeat_customer ?? false,
+        jobsWithCustomer: j.jobs_with_customer ?? 0,
       });
 
       const mapActive = (j: any) => ({
@@ -268,29 +273,6 @@ export default function DashboardScreen() {
   const [address, setAddress] = useState('Locating...');
   const [userName, setUserName] = useState('');
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
-  // Repeat Customers dashboard section — who's booked this provider more
-  // than once, so the provider has a reason to see repeat bookings happen
-  // through the app instead of a customer just texting them directly.
-  const [repeatCustomers, setRepeatCustomers] = useState<Array<{
-    customer_id: string;
-    name: string;
-    profile_image_url: string | null;
-    avg_payment_rating: number | null;
-    avg_behaviour_rating: number | null;
-    avg_negotiation_rating: number | null;
-    avg_environment_rating: number | null;
-    jobs_with_you_count: number;
-  }>>([]);
-  // Reloaded every time this tab comes into focus — it used to load once at
-  // app start, so a customer who just became a repeat customer (2nd
-  // completed job together) didn't appear until the app was restarted.
-  useFocusEffect(
-    React.useCallback(() => {
-      SkoFyApi.provider.getRepeatCustomers()
-        .then((data) => setRepeatCustomers(Array.isArray(data) ? data : []))
-        .catch(() => { /* dashboard still works without this section */ });
-    }, [])
-  );
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [isLocating, setIsLocating] = useState(true);
   const [userCoords, setUserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -866,9 +848,14 @@ const filteredJobs = jobs.filter((job) => {
     // the customer's shortlist if ignored) — surface them ahead of the
     // regular browsable list instead of mixed in at whatever position they'd
     // otherwise fall in.
-    if (!!a.isDirectRequest === !!b.isDirectRequest) return 0;
-    return a.isDirectRequest ? -1 : 1;
+    // Repeat customers come next: someone who already chose this provider
+    // once is the request most worth answering quickly.
+    const rank = (j: any) => (j.isDirectRequest ? 0 : j.isRepeatCustomer ? 1 : 2);
+    return rank(a) - rank(b);
   });
+
+  // Open requests from repeat customers (they live in All Jobs).
+  const repeatRequestCount = jobs.filter((j: any) => j.isRepeatCustomer && !j.isOngoing && j.applicationId == null).length;
 
   const handleApplyJob = async (jobId: string) => {
     if (pendingRatingJobId) {
@@ -1104,6 +1091,7 @@ const filteredJobs = jobs.filter((job) => {
         environment_rating: ratings.environment,
         comment: comment || undefined,
       });
+      markRatingSubmitted(pendingRatingJobId);
       const fromReminder = !!ratingReminder;
       setPendingRatingJobId(null);
       setSelectedJobId(null);
@@ -1341,6 +1329,13 @@ const filteredJobs = jobs.filter((job) => {
               {job.isDirectRequest && (
                 <View style={styles.directRequestBadge}>
                   <ThemedText style={styles.directRequestText}>DIRECT REQUEST</ThemedText>
+                </View>
+              )}
+              {job.isRepeatCustomer && !job.isOngoing && (
+                <View style={styles.repeatRequestBadge}>
+                  <ThemedText style={styles.repeatRequestBadgeText}>
+                    REPEAT CUSTOMER · {job.jobsWithCustomer} {job.jobsWithCustomer === 1 ? 'JOB' : 'JOBS'} WITH YOU
+                  </ThemedText>
                 </View>
               )}
               {!job.isOngoing && (
@@ -1629,49 +1624,21 @@ const filteredJobs = jobs.filter((job) => {
           </View>
         </View>
 
-        {repeatCustomers.length > 0 && (
-          <View style={styles.repeatCustomersSection}>
-            <ThemedText style={styles.repeatCustomersSectionLabel}>Repeat Customers</ThemedText>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.repeatCustomersRow}>
-              {repeatCustomers.map((c) => {
-                const ratings = [c.avg_payment_rating, c.avg_behaviour_rating, c.avg_negotiation_rating, c.avg_environment_rating].filter(
-                  (v): v is number => v != null,
-                );
-                const avgOverall = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null;
-                return (
-                  <TouchableOpacity
-                    key={c.customer_id}
-                    style={styles.repeatCustomerCard}
-                    activeOpacity={0.85}
-                    onPress={() => router.push({
-                      pathname: '/customer-profile' as any,
-                      params: { customerId: c.customer_id },
-                    })}
-                  >
-                    <View style={styles.repeatCustomerTopRow}>
-                      {c.profile_image_url ? (
-                        <Image source={{ uri: c.profile_image_url }} style={styles.repeatCustomerAvatar} />
-                      ) : (
-                        <View style={[styles.repeatCustomerAvatar, styles.repeatCustomerAvatarFallback]}>
-                          <Text style={styles.repeatCustomerAvatarInitial}>{(c.name[0] ?? '?').toUpperCase()}</Text>
-                        </View>
-                      )}
-                      <View style={styles.repeatCustomerBadge}>
-                        <Text style={styles.repeatCustomerBadgeText} numberOfLines={1}>{c.jobs_with_you_count}x booked</Text>
-                      </View>
-                    </View>
-                    <ThemedText style={styles.repeatCustomerName} numberOfLines={1}>{c.name}</ThemedText>
-                    {avgOverall != null && (
-                      <View style={styles.repeatCustomerStatsRow}>
-                        <Star size={12} color="#FFCE48" fill="#FFCE48" />
-                        <Text style={styles.repeatCustomerStatsText}>{avgOverall.toFixed(1)}</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
+        {isAvailable && repeatRequestCount > 0 && (
+          <TouchableOpacity
+            style={styles.repeatRequestsBanner}
+            activeOpacity={0.85}
+            onPress={() => setActiveTab(0)}
+            accessibilityRole="button"
+          >
+            <RepeatIcon size={18} color="#B45309" />
+            <ThemedText style={styles.repeatRequestsBannerText}>
+              {repeatRequestCount === 1
+                ? '1 request from a repeat customer'
+                : `${repeatRequestCount} requests from repeat customers`}
+            </ThemedText>
+            <ThemedText style={styles.repeatRequestsBannerAction}>View</ThemedText>
+          </TouchableOpacity>
         )}
 
         <View style={styles.sliderContainer}>
@@ -2748,51 +2715,33 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   // ── Repeat Customers strip ────────────────────────────────────────────────
-  repeatCustomersSection: { marginBottom: 14 },
-  repeatCustomersSectionLabel: {
-    fontSize: 15,
-    lineHeight: 20,
-    fontFamily: Fonts.poppinsBold,
-    color: '#111827',
-    marginBottom: 10,
-  },
-  repeatCustomersRow: { gap: 10, paddingRight: 8 },
-  repeatCustomerCard: {
-    width: 140,
-    borderRadius: 16,
-    padding: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#F1F2F4',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
-  },
-  repeatCustomerTopRow: {
+  repeatRequestsBanner: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  repeatCustomerAvatar: { width: 36, height: 36, borderRadius: 18 },
-  repeatCustomerAvatarFallback: {
-    backgroundColor: '#FFCE48',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 10,
+    marginBottom: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
   },
-  repeatCustomerAvatarInitial: { fontSize: 14, fontFamily: Fonts.poppinsBold, color: '#000' },
-  repeatCustomerBadge: {
-    backgroundColor: '#FFF9E6',
-    borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
+  repeatRequestsBannerText: { flex: 1, fontSize: 13.5, lineHeight: 18, fontFamily: Fonts.poppinsSemiBold, color: '#92400E' },
+  repeatRequestsBannerAction: { fontSize: 13, lineHeight: 18, fontFamily: Fonts.poppinsBold, color: '#B45309' },
+  repeatRequestBadge: {
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
-  repeatCustomerBadgeText: { fontSize: 10, lineHeight: 14, fontFamily: Fonts.poppinsBold, color: '#B45309' },
-  repeatCustomerName: { fontSize: 13, fontFamily: Fonts.poppinsBold, color: '#111827', marginBottom: 6 },
-  repeatCustomerStatsRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  repeatCustomerStatsText: { fontSize: 11.5, fontFamily: Fonts.poppinsSemiBold, color: '#111827' },
+  repeatRequestBadgeText: {
+    fontSize: 9,
+    lineHeight: 15,
+    fontFamily: Fonts.poppinsBold,
+    color: '#fff',
+    letterSpacing: 0.3,
+  },
   sliderContainer: {
     flexDirection: 'row',
     height: 46,
