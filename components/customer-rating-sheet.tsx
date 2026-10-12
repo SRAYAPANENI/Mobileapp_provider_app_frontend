@@ -70,7 +70,7 @@ export function CustomerRatingSheet({
         <View style={styles.sheet}>
           <Text style={styles.title}>{customerName ? `Rate ${customerName}` : 'Rate this customer'}</Text>
           <Text style={styles.subtitle}>How did the job go?</Text>
-          <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
             {DIMENSIONS.map((dim) => (
               <View key={dim} style={styles.row}>
                 <Text style={styles.dimLabel}>{dim.charAt(0).toUpperCase() + dim.slice(1)}</Text>

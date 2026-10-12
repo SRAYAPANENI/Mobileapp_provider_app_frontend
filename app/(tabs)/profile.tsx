@@ -1630,7 +1630,7 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled"
         ref={profileScrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -1823,7 +1823,7 @@ export default function ProfileScreen() {
         <>
         {/* Stats Section */}
         <ThemedText style={[styles.sectionTitle, { marginTop: 32, marginLeft: 20 }]}>Work Samples</ThemedText>
-        <ScrollView
+        <ScrollView keyboardShouldPersistTaps="handled"
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.statsScroll}
@@ -1912,7 +1912,7 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingLeft: 20, gap: 12 }}>
+        <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingLeft: 20, gap: 12 }}>
           {activeSlots.length === 0 ? (
             <ThemedText style={{ color: '#6B7280', fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppins, marginTop: 10 }}>No slots added. Tap Manage to schedule.</ThemedText>
           ) : (
@@ -1996,7 +1996,7 @@ export default function ProfileScreen() {
               No skills added yet. Tap "Add" to get started.
             </ThemedText>
           ) : (
-            <ScrollView
+            <ScrollView keyboardShouldPersistTaps="handled"
               style={{ maxHeight: 320 }}
               nestedScrollEnabled
               showsVerticalScrollIndicator
@@ -2209,7 +2209,7 @@ export default function ProfileScreen() {
               No work proof added yet. Tap "Add Skill Proof" below to upload photos or videos.
             </ThemedText>
           )}
-          <ScrollView
+          <ScrollView keyboardShouldPersistTaps="handled"
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.mediaHorizontalScroll}
@@ -2603,7 +2603,7 @@ export default function ProfileScreen() {
               </ThemedText>
             </TouchableOpacity>
           </View>
-          <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 16 }}>
             <View>
               <ThemedText style={styles.inputLabel}>Maximum Travel Distance</ThemedText>
               <ThemedText style={{ fontSize: 12, lineHeight: 18, color: '#9CA3AF', fontFamily: Fonts.poppins, marginTop: 4, marginBottom: 12 }}>
@@ -2641,7 +2641,7 @@ export default function ProfileScreen() {
             <ThemedText style={styles.modalHeaderTitle}>Terms & Conditions</ThemedText>
             <View style={{ width: 40 }} />
           </View>
-          <ScrollView contentContainerStyle={styles.termsContent}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.termsContent}>
             <ThemedText style={styles.termsTitle}>1. Provider Agreement</ThemedText>
             <ThemedText style={styles.termsText}>
               As a Dodorez Pro, you agree to represent yourself accurately, maintain
@@ -2817,7 +2817,7 @@ export default function ProfileScreen() {
                       making it scroll, while keeping the button as a
                       sibling *after* it (not inside), keeps the button
                       always visible/pinned regardless of content length. */}
-                  <ScrollView
+                  <ScrollView keyboardShouldPersistTaps="handled"
                     // Fixed chrome around this area (widget's top offset 50 +
                     // drag handle 30 + header ~45 + footer/button ~76) is
                     // ~201px — verified against the actual style values, not
@@ -3007,7 +3007,7 @@ export default function ProfileScreen() {
             <View style={{ width: 28 }} />
           </View>
 
-          <ScrollView contentContainerStyle={styles.viewAllGrid}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.viewAllGrid}>
             <View style={styles.gridRow}>
               {proofs.map((item) => (
                 <TouchableOpacity
@@ -3060,7 +3060,7 @@ export default function ProfileScreen() {
                   <ThemedText style={{ fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: '#9CA3AF', marginBottom: 10 }}>
                     {pendingMediaBatch.length} file{pendingMediaBatch.length !== 1 ? 's' : ''} selected
                   </ThemedText>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false}>
                     <View style={{ flexDirection: 'row', gap: 10 }}>
                       {pendingMediaBatch.map((item, idx) => (
                         <View key={idx} style={{ width: 90, height: 90, borderRadius: 12, backgroundColor: '#000', overflow: 'hidden' }}>
@@ -3167,7 +3167,7 @@ export default function ProfileScreen() {
             <ThemedText style={styles.viewAllTitle}>Complete Job History</ThemedText>
             <View style={{ width: 28 }} />
           </View>
-          <ScrollView contentContainerStyle={{ paddingTop: 16, paddingBottom: 40 }}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingTop: 16, paddingBottom: 40 }}>
             {jobHistory.length === 0 ? (
               <ThemedText style={{ color: '#6B7280', fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppins, textAlign: 'center', paddingVertical: 40, paddingHorizontal: 24 }}>
                 No job history yet. Completed jobs will appear here.
@@ -3190,7 +3190,7 @@ export default function ProfileScreen() {
             <View style={{ width: 28 }} />
           </View>
 
-          <ScrollView style={{ padding: 20 }}>
+          <ScrollView keyboardShouldPersistTaps="handled" style={{ padding: 20 }}>
             <View style={styles.slotAddContainer}>
               <ThemedText style={styles.slotFormTitle}>Add New Slot</ThemedText>
               <ThemedText style={styles.slotFormSub}>Declare your working hours so customers can book you.</ThemedText>
@@ -3324,7 +3324,7 @@ export default function ProfileScreen() {
                     <View style={styles.timePickerContainer}>
                       <View style={styles.timeColumn}>
                         <ThemedText style={styles.timeColumnTitle}>Hour</ThemedText>
-                        <ScrollView style={styles.timePickerScroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+                        <ScrollView keyboardShouldPersistTaps="handled" style={styles.timePickerScroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
                           {Array.from({ length: 24 }, (_, i) => i).map(h => {
                             const currentVal = pickerMode === 'start' ? newSlotStart : newSlotEnd;
                             const isSelected = currentVal && currentVal.getHours() === h;
@@ -3351,7 +3351,7 @@ export default function ProfileScreen() {
                       <View style={styles.timeColumnDivider} />
                       <View style={styles.timeColumn}>
                         <ThemedText style={styles.timeColumnTitle}>Minute</ThemedText>
-                        <ScrollView style={styles.timePickerScroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+                        <ScrollView keyboardShouldPersistTaps="handled" style={styles.timePickerScroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
                           {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(m => {
                             const currentVal = pickerMode === 'start' ? newSlotStart : newSlotEnd;
                             const isSelected = currentVal && currentVal.getMinutes() === m;
@@ -3403,7 +3403,7 @@ export default function ProfileScreen() {
             <View style={{ width: 40 }} />
           </View>
 
-          <ScrollView style={styles.walletContentArea}>
+          <ScrollView keyboardShouldPersistTaps="handled" style={styles.walletContentArea}>
             <View style={styles.walletBalanceCardLarge}>
               <ThemedText style={styles.walletBalanceLabelLarge}>Total Paid Out</ThemedText>
               <ThemedText style={styles.walletBalanceValueLarge}>${earnings.totalEarned.toLocaleString(undefined, { minimumFractionDigits: 2 })}</ThemedText>
@@ -3476,7 +3476,7 @@ export default function ProfileScreen() {
             </View>
 
             {!addSkillProfession ? (
-              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
+              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
                 {/* "Personal Errands" is excluded here — it's gated on identity
                     verification via the dedicated Pickup & Delivery toggle
                     above, not addable/testable through this generic flow. */}
@@ -3492,7 +3492,7 @@ export default function ProfileScreen() {
                 ))}
               </ScrollView>
             ) : (
-              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
+              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
                 <TouchableOpacity
                   onPress={() => { setAddSkillProfession(''); setAddSkillList([]); }}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16 }}

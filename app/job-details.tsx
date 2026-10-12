@@ -549,7 +549,7 @@ export default function JobDetailsScreen() {
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Main Job Info Card */}
         <Animated.View entering={FadeInUp.delay(100).springify()} style={styles.mainCard}>
           {/* Badges row — mirrors dashboard card */}
@@ -731,7 +731,7 @@ export default function JobDetailsScreen() {
         {job.hasMedia && (
           <Animated.View entering={FadeInUp.delay(400).springify()} style={styles.customerDetailsSection}>
             <Text style={styles.sectionTitle}>Customer Attachments</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mediaScroll}>
+            <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} style={styles.mediaScroll}>
               {job.media.map((item: any, index: number) => (
                 <TouchableOpacity
                   key={index}

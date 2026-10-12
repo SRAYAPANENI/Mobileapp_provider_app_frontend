@@ -388,7 +388,7 @@ export default function JobsScreen() {
         </View>
       </View>
 
-      <FlatList
+      <FlatList keyboardShouldPersistTaps="handled"
         data={displayJobs}
         keyExtractor={item => item.job_id.toString()}
         renderItem={({ item, index }) => (

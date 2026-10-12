@@ -102,7 +102,7 @@ export default function HelpSupportScreen() {
         <Headphones size={24} color="#111827" />
       </View>
 
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={

@@ -17,14 +17,17 @@ import {
   ActivityIndicator,
   FlatList,
   Keyboard,
-  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
+// The keyboard-controller version: works with KeyboardProvider (app/_layout.tsx)
+// on Android — React Native's own one shifted the layout as the keyboard
+// closed, so a tap meant for a button could miss it.
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Animated, { FadeInLeft, FadeInRight } from 'react-native-reanimated';
 
 interface Message {
@@ -328,7 +331,7 @@ export default function SupportChatScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior="padding"
     >
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
@@ -364,7 +367,7 @@ export default function SupportChatScreen() {
           <ActivityIndicator color={themeColors.textPrimary} />
         </View>
       ) : (
-        <FlatList
+        <FlatList keyboardShouldPersistTaps="handled"
           ref={flatListRef}
           data={messages}
           renderItem={renderMessage}
@@ -388,7 +391,7 @@ export default function SupportChatScreen() {
       ) : stage === 'faq' ? (
         <View style={styles.categoryContainer}>
           <ThemedText style={styles.categoryPrompt}>Common questions</ThemedText>
-          <ScrollView style={styles.faqList} contentContainerStyle={{ gap: 8 }}>
+          <ScrollView keyboardShouldPersistTaps="handled" style={styles.faqList} contentContainerStyle={{ gap: 8 }}>
             {faqs.map(faq => (
               <TouchableOpacity key={faq.question} style={styles.faqChip} onPress={() => handleFaqTap(faq)} activeOpacity={0.8}>
                 <HelpCircle size={16} color={themeColors.textSecondary} />

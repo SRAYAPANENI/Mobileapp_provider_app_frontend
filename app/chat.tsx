@@ -18,7 +18,6 @@ import {
   BackHandler,
   FlatList,
   Keyboard,
-  KeyboardAvoidingView,
   Linking,
   Modal,
   Platform,
@@ -28,8 +27,12 @@ import {
   TextInput,
   TouchableOpacity,
   Vibration,
-  View
+  View,
 } from 'react-native';
+// The keyboard-controller version: works with KeyboardProvider (app/_layout.tsx)
+// on Android — React Native's own one shifted the layout as the keyboard
+// closed, so a tap meant for a button could miss it.
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Animated, { FadeInLeft, FadeInRight } from 'react-native-reanimated';
 import {
   mediaDevices,
@@ -1067,7 +1070,7 @@ export default function ChatScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior="padding"
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
     >
       <View style={styles.header}>
@@ -1114,7 +1117,7 @@ export default function ChatScreen() {
         onToggleSpeaker={toggleSpeaker}
       />
 
-      <FlatList
+      <FlatList keyboardShouldPersistTaps="handled"
         ref={flatListRef}
         data={messages}
         renderItem={renderMessage}

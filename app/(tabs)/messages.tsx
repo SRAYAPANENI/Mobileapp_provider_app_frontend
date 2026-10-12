@@ -19,7 +19,7 @@ export default function MessagesScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={

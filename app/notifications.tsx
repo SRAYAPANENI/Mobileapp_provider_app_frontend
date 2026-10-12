@@ -158,7 +158,7 @@ export default function NotificationsScreen() {
           <ActivityIndicator size="large" color="#FFCE48" />
         </View>
       ) : (
-        <ScrollView
+        <ScrollView keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           refreshControl={

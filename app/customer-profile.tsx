@@ -196,7 +196,7 @@ export default function CustomerProfileScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles2.scrollContent}>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles2.scrollContent}>
         {/* Profile Section */}
         <Animated.View entering={FadeInUp.duration(600)} style={styles2.profileSection}>
           <View style={styles2.avatarContainer}>

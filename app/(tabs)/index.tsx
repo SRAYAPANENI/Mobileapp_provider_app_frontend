@@ -1670,7 +1670,7 @@ const filteredJobs = jobs.filter((job) => {
         </View>
       </View>
 
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled"
         style={styles.jobsList}
         contentContainerStyle={styles.jobsListContent}
         showsVerticalScrollIndicator={false}

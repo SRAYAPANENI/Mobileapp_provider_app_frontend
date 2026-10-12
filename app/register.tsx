@@ -1483,7 +1483,7 @@ export default function RegisterScreen() {
                 <X size={24} color={themeColors.icon} />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalScroll}>
+            <ScrollView keyboardShouldPersistTaps="handled" style={styles.modalScroll}>
               {professionsList.map((name) => (
                 <TouchableOpacity
                   key={name}
@@ -1523,7 +1523,7 @@ export default function RegisterScreen() {
                 <X size={24} color={themeColors.icon} />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalScroll}>
+            <ScrollView keyboardShouldPersistTaps="handled" style={styles.modalScroll}>
               {availableSkills.map((skill) => {
                 const isSelected = formData.skills.includes(skill);
                 return (
@@ -1579,7 +1579,7 @@ export default function RegisterScreen() {
                   <ThemedText style={{ fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: themeColors.icon, marginBottom: 10 }}>
                     {pendingMediaBatch.length} file{pendingMediaBatch.length !== 1 ? 's' : ''} selected
                   </ThemedText>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false}>
                     <View style={{ flexDirection: 'row', gap: 10 }}>
                       {pendingMediaBatch.map((item, idx) => (
                         <View key={idx} style={{ width: 90, height: 90, borderRadius: 12, backgroundColor: '#000', overflow: 'hidden', position: 'relative' }}>
