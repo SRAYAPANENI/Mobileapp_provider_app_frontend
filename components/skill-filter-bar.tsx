@@ -1,7 +1,8 @@
 import { Fonts } from '@/constants/theme';
 import { Bell, BellRing, Check, Lock } from 'lucide-react-native';
 import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text } from '@/components/scaled-text';
 
 export interface SkillRef { skill_id: string; name: string }
 export interface MySkill { skill_id: string; name: string; is_verified: boolean }

@@ -5,7 +5,8 @@ import {
 } from '@/services/skillAssessment';
 import { Search, X } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text, TextInput } from '@/components/scaled-text';
 
 // How many rows are drawn at first, and per "Show more". Drawing every row
 // at once (hundreds, for a provider with many skills) froze the Verification

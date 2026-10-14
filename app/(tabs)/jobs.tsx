@@ -1,15 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  RefreshControl,
-  ActivityIndicator,
-  Platform,
-  Modal,
-  TextInput,
-} from 'react-native';
+import { View, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Platform, Modal } from 'react-native';
+import { TextInput } from '@/components/scaled-text';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors, Fonts } from '@/constants/theme';

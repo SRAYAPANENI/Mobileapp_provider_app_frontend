@@ -1,19 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  SafeAreaView,
-  Platform,
-  Dimensions,
-  ActivityIndicator,
-  Share,
-  Modal,
-  Pressable,
-  TextInput,
-} from 'react-native';
+import { StyleSheet, View, ScrollView, TouchableOpacity, SafeAreaView, Platform, Dimensions, ActivityIndicator, Share, Modal, Pressable } from 'react-native';
+import { Text, TextInput } from '@/components/scaled-text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ChevronLeft,

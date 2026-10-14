@@ -7,7 +7,8 @@ import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { TokenStore, clearStaleSessionAfterReinstall } from '@/services/api';
 import { handleInitialCallAction, handleInitialNotification } from '@/services/callManager';
 import { prefetchDashboardEssentials } from '@/services/homeCache';
-import { Dimensions, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, StyleSheet, View } from 'react-native';
+import { Text } from '@/components/scaled-text';
 import Animated, {
   Easing,
   interpolate,

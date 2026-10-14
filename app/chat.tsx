@@ -13,23 +13,8 @@ import {
   XCircle
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  BackHandler,
-  FlatList,
-  Keyboard,
-  Linking,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  Vibration,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, BackHandler, FlatList, Keyboard, Linking, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, Vibration, View } from 'react-native';
+import { Text, TextInput } from '@/components/scaled-text';
 // The keyboard-controller version: works with KeyboardProvider (app/_layout.tsx)
 // on Android — React Native's own one shifted the layout as the keyboard
 // closed, so a tap meant for a button could miss it.
@@ -66,6 +51,19 @@ const MESSAGE_PAGE_SIZE = 50;
 // trip (caller already gave up, transient network blip, etc.) left the user
 // stuck on "Connecting…" forever with no offer ever arriving and no way out
 // (the back button is intentionally blocked while a call is active).
+// The microphone for a call, with WebRTC's voice processing asked for
+// explicitly (it used to rely on defaults): echo cancellation, noise
+// suppression, automatic volume and a filter for low hum.
+const CALL_AUDIO = {
+  audio: {
+    googEchoCancellation: true,
+    googNoiseSuppression: true,
+    googAutoGainControl: true,
+    googHighpassFilter: true,
+  } as any,
+  video: false,
+};
+
 const CONNECTING_TIMEOUT_MS = 15000;
 // How often "Connecting…" asks the caller again for the call (call_ready).
 const CALL_READY_RETRY_MS = 3000;
@@ -524,7 +522,7 @@ export default function ChatScreen() {
     sentIceRef.current = [];
     try {
       InCallManager.start({ media: 'audio' });
-      const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
+      const stream = await mediaDevices.getUserMedia(CALL_AUDIO);
       localStreamRef.current = stream;
       await waitForIceServers();
       const pc = makePeerConnection();
@@ -585,7 +583,7 @@ export default function ChatScreen() {
     if (jobId) cancelIncomingCallNotification(jobId);
     try {
       InCallManager.start({ media: 'audio' });
-      const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
+      const stream = await mediaDevices.getUserMedia(CALL_AUDIO);
       localStreamRef.current = stream;
       await waitForIceServers();
       const pc = makePeerConnection();

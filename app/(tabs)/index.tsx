@@ -1,26 +1,7 @@
 import AnimatedBrandMark from '@/components/animated-brand-mark';
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  AppState,
-  BackHandler,
-  StyleSheet,
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  Switch,
-  Platform,
-  SafeAreaView,
-  ActivityIndicator,
-  Modal,
-  PanResponder,
-  Animated as RNAnimated,
-  useWindowDimensions,
-  Linking,
-  TextInput as RNTextInput,
-  RefreshControl,
-  Pressable,
-} from 'react-native';
+import { AppState, BackHandler, StyleSheet, View, ScrollView, TouchableOpacity, Switch, Platform, SafeAreaView, ActivityIndicator, Modal, PanResponder, Animated as RNAnimated, useWindowDimensions, Linking, RefreshControl, Pressable } from 'react-native';
+import { Text, TextInput as RNTextInput } from '@/components/scaled-text';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppAlert } from '@/components/app-alert';
@@ -1740,11 +1721,16 @@ const filteredJobs = jobs.filter((job) => {
                 onPress={() => setActiveTab(index)}
                 style={[styles.sliderTab, { width: tabWidth }, activeTab === index && styles.sliderTabActive]}
               >
-                <Animated.View style={[{ flexDirection: 'row', alignItems: 'center', gap: 4 }, pulseStyle]}>
-                  <ThemedText style={[
-                    styles.sliderTabText,
-                    activeTab === index && styles.sliderTabTextActive,
-                  ]}>
+                <Animated.View style={[{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4, maxWidth: '100%' }, pulseStyle]}>
+                  {/* One line on every screen width: on a narrow phone (or a
+                      larger Display size) "Booked Slots" wrapped onto two
+                      lines and pushed the tabs out of line. */}
+                  <ThemedText
+                    style={[styles.sliderTabText, activeTab === index && styles.sliderTabTextActive, { flexShrink: 1 }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.75}
+                  >
                     {tab}
                   </ThemedText>
                   {count > 0 && (

@@ -3,7 +3,8 @@ import { SkoFyApi } from '@/services/api';
 import { markRatingSkipped, markRatingSubmitted } from '@/services/ratingReminders';
 import { Star } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text, TextInput } from '@/components/scaled-text';
 
 const DIMENSIONS = ['behaviour', 'negotiation', 'payment', 'environment'] as const;
 type Dimension = typeof DIMENSIONS[number];

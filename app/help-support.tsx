@@ -13,17 +13,8 @@ import {
   Search
 } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Platform,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  View,
-  RefreshControl
-} from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View, RefreshControl } from 'react-native';
+import { TextInput } from '@/components/scaled-text';
 
 const FAQS = [
   {
