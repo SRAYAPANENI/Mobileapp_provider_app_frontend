@@ -283,7 +283,9 @@ export default function JobDetailsScreen() {
             budgetMax: j.budget_max,
             rate: budgetStr,
             duration: 'project',
-            fee: j.inspection_fee > 0 ? `$${j.inspection_fee}` : '$0 (No Visiting Fee)',
+            fee: j.inspection_fee > 0
+              ? `$${j.inspection_fee}`
+              : j.job_type === 'PICKUP_DROPOFF' ? '$0 (No Delivery Fee)' : '$0 (No Visiting Fee)',
             skills: requiredSkills.map(s => s.name),
             requiredSkills,
             requirements: j.notes ? [j.notes] : [],

@@ -178,7 +178,19 @@ function JobCard({
               <ThemedText style={styles.actionBtnText}>Enter Service Room</ThemedText>
             </TouchableOpacity>
           )}
-          {isInProgress && (
+          {isInProgress && (job as any).job_type === 'PICKUP_DROPOFF' && !(job as any).delivered_at ? (
+            // A delivery is completed after the customer's drop-off code,
+            // which is entered in the service room — the server refuses a
+            // plain "complete" before it.
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: '#10B981' }]}
+              onPress={() => router.push({ pathname: '/(tabs)', params: { openServiceRoom: 'true', jobId: job.job_id.toString() } } as any)}
+              activeOpacity={0.82}
+            >
+              <CheckCircle2 size={14} color="#fff" />
+              <ThemedText style={styles.actionBtnText}>Hand Over Order</ThemedText>
+            </TouchableOpacity>
+          ) : isInProgress && (
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: '#10B981' }]}
               onPress={() => onAction(job.job_id.toString())}

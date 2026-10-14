@@ -40,6 +40,8 @@ import {
 import * as SecureStore from 'expo-secure-store';
 import { SkillFilterBar, type MySkill, type SkillRef } from '@/components/skill-filter-bar';
 import { JobAlertsSheet } from '@/components/job-alerts-sheet';
+import { DeliveryHandover } from '@/components/delivery-handover';
+import { isDelivered, isDelivery, navigationTarget, purchaseSummary } from '@/services/pickupDelivery';
 import notifee from '@notifee/react-native';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -414,7 +416,8 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     if (!showManageModal || !selectedJob) return;
-    if (!['ACCEPTED', 'INSPECTING', 'INVOICE_PENDING'].includes(selectedJob.status)) return;
+    const deliveryOnItsWay = selectedJob.status === 'IN_PROGRESS' && isDelivery(selectedJob);
+    if (!['ACCEPTED', 'INSPECTING', 'INVOICE_PENDING'].includes(selectedJob.status) && !deliveryOnItsWay) return;
     let cancelled = false;
     const poll = async () => {
       try {
@@ -1171,13 +1174,14 @@ const filteredJobs = jobs.filter((job) => {
 
   const handleNavigateToSite = () => {
     if (!selectedJob) return;
-    const { latitude, longitude, title } = selectedJob;
-    if (latitude && longitude) {
+    // A delivery goes to the store first, then to the customer's drop-off.
+    const target = navigationTarget(selectedJob, manageJobDetail);
+    if (target) {
       setShowManageModal(false);
       router.push({
         pathname: '/navigate-to-site' as any,
         params: {
-          lat: String(latitude), lng: String(longitude), title: title ?? 'Job Site', jobId: selectedJob.id,
+          lat: String(target.lat), lng: String(target.lng), title: target.title, jobId: selectedJob.id,
           // Shown on the map screen's Call / Chat row.
           customerName: selectedJob.employer?.name || 'Customer',
         },
@@ -1975,10 +1979,27 @@ const filteredJobs = jobs.filter((job) => {
 
                 {/* Navigate button — a remote job has no physical site to
                     navigate to at all. */}
+                {isDelivery(selectedJob) && manageJobDetail && (
+                  <View style={styles.deliveryInfo}>
+                    {!!purchaseSummary(manageJobDetail) && (
+                      <ThemedText style={styles.deliveryInfoStrong}>{purchaseSummary(manageJobDetail)}</ThemedText>
+                    )}
+                    {!!manageJobDetail.dropoff_address && (
+                      <ThemedText style={styles.deliveryInfoText}>Deliver to: {manageJobDetail.dropoff_address}</ThemedText>
+                    )}
+                    {!!manageJobDetail.dropoff_notes && (
+                      <ThemedText style={styles.deliveryInfoText}>Instructions: {manageJobDetail.dropoff_notes}</ThemedText>
+                    )}
+                  </View>
+                )}
                 {selectedJob.serviceMode !== 'REMOTE' && (
                   <TouchableOpacity style={styles.navigateBtn} onPress={handleNavigateToSite}>
                     <NavIcon size={20} color="#fff" />
-                    <ThemedText style={styles.navigateBtnText}>Navigate to Site (Maps)</ThemedText>
+                    <ThemedText style={styles.navigateBtnText}>
+                      {navigationTarget(selectedJob, manageJobDetail)?.title === 'Drop-off'
+                        ? 'Navigate to Drop-off (Maps)'
+                        : 'Navigate to Site (Maps)'}
+                    </ThemedText>
                   </TouchableOpacity>
                 )}
 
@@ -1987,7 +2008,12 @@ const filteredJobs = jobs.filter((job) => {
                     passed) — until then this is a Start Job button instead,
                     so completing a job you never actually started/reached is
                     no longer possible from this screen. */}
-                {selectedJob.status === 'IN_PROGRESS' ? (
+                {selectedJob.status === 'IN_PROGRESS' && isDelivery(selectedJob) && !isDelivered(manageJobDetail) ? (
+                  <DeliveryHandover
+                    jobId={selectedJob.id}
+                    onDelivered={() => setManageJobDetail((prev: any) => ({ ...prev, delivered_at: new Date().toISOString() }))}
+                  />
+                ) : selectedJob.status === 'IN_PROGRESS' ? (
                   <>
                     <ThemedText style={styles.completeDisclaimer}>
                       Please ensure you have finished all tasks before marking as completed.
@@ -2086,6 +2112,9 @@ const filteredJobs = jobs.filter((job) => {
                   <>
                     <ThemedText style={styles.completeDisclaimer}>
                       Pickup confirmed. Add any items/costs, then send the customer your invoice.
+                      {manageJobDetail?.pickup_purchase === 'BUY_FOR_ME' && manageJobDetail?.purchase_limit != null
+                        ? ` Items can't come to more than the customer's limit of $${Number(manageJobDetail.purchase_limit).toFixed(2)}.`
+                        : ''}
                     </ThemedText>
                     {materials.map((m, idx) => (
                       <View key={idx} style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
@@ -3039,6 +3068,9 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.poppinsMedium,
     color: '#92400E',
   },
+  deliveryInfo: { backgroundColor: '#F0F9FF', borderRadius: 14, padding: 12, gap: 4, marginBottom: 10 },
+  deliveryInfoStrong: { fontSize: 13, lineHeight: 18, fontFamily: Fonts.poppinsSemiBold, color: '#0C4A6E' },
+  deliveryInfoText: { fontSize: 13, lineHeight: 18, fontFamily: Fonts.poppins, color: '#0F172A' },
   skillBadgeLocked: { backgroundColor: '#F9FAFB', borderColor: '#E5E7EB' },
   skillTextLocked: { color: '#9CA3AF' },
   matchLine: { fontSize: 12, lineHeight: 16, fontFamily: Fonts.poppinsSemiBold, color: '#B45309', marginTop: -4, marginBottom: 10 },

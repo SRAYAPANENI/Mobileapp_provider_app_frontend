@@ -790,6 +790,17 @@ export const SkoFyApi = {
 
     // ── On-site inspection + invoice ────────────────────────────────────
 
+    // ── Pickup & Drop: hand-over at the drop-off ─────────────────────────
+
+    requestDeliveryCode: async (jobId: string) =>
+      request(`/jobs/${jobId}/delivery/request-code`, { method: 'POST' }),
+
+    verifyDeliveryCode: async (jobId: string, code: string, lat: number, lng: number) =>
+      request(`/jobs/${jobId}/delivery/verify`, {
+        method: 'POST',
+        body: JSON.stringify({ otp: code, lat, lng }),
+      }),
+
     requestInspectionOtp: async (jobId: string) =>
       request(`/jobs/${jobId}/inspection/request-otp`, { method: 'POST' }),
 
