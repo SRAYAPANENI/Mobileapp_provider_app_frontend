@@ -27,6 +27,7 @@ import { useAppAlert } from '@/components/app-alert';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import { callTapAllowed } from '@/services/callManager';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   Clock,
@@ -53,7 +54,11 @@ import {
   LogOut,
   Camera,
   Repeat as RepeatIcon,
+  Lock,
 } from 'lucide-react-native';
+import * as SecureStore from 'expo-secure-store';
+import { SkillFilterBar, type MySkill, type SkillRef } from '@/components/skill-filter-bar';
+import { JobAlertsSheet } from '@/components/job-alerts-sheet';
 import notifee from '@notifee/react-native';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -140,6 +145,7 @@ export default function DashboardScreen() {
         budgetMax: j.budget_max,
         fee: j.budget_min && j.budget_max ? `$${j.budget_min}–$${j.budget_max}` : j.budget_min ? `From $${j.budget_min}` : 'Negotiable',
         skills: j.skills ?? [],
+        skillRefs: j.skill_refs ?? [],
         // Previously hardcoded false — ProviderJobView didn't carry images
         // at all until now, so this "+ Photos" badge already existed in the
         // card but could never actually show for any job.
@@ -269,6 +275,29 @@ export default function DashboardScreen() {
 
   const appAlert = useAppAlert();
   const [activeTab, setActiveTab] = useState(0); // 0: All, 1: Ongoing, 2: Booked, 3: Applied
+  // All Jobs narrowed to one skill (null = every job), remembered between visits.
+  const SKILL_FILTER_KEY = 'dodorez_jobs_skill_filter';
+  const [skillFilter, setSkillFilter] = useState<string | null>(null);
+  const [mySkills, setMySkills] = useState<MySkill[]>([]);
+  // Skills "New job" alerts are limited to ([] = all), and its sheet.
+  const [alertSkillIds, setAlertSkillIds] = useState<string[]>([]);
+  const [alertsSheetOpen, setAlertsSheetOpen] = useState(false);
+  useEffect(() => {
+    SecureStore.getItemAsync(SKILL_FILTER_KEY).then(v => { if (v) setSkillFilter(v); }).catch(() => {});
+  }, []);
+  const chooseSkillFilter = (skill: string | null) => {
+    setSkillFilter(skill);
+    (skill ? SecureStore.setItemAsync(SKILL_FILTER_KEY, skill) : SecureStore.deleteItemAsync(SKILL_FILTER_KEY)).catch(() => {});
+  };
+  const verifiedSkillNames = React.useMemo(
+    () => new Set(mySkills.filter(sk => sk.is_verified).map(sk => sk.name)),
+    [mySkills],
+  );
+  // A remembered filter for a skill they no longer have would hide every
+  // job with no chip lit to turn it off.
+  useEffect(() => {
+    if (skillFilter && mySkills.length > 0 && !verifiedSkillNames.has(skillFilter)) chooseSkillFilter(null);
+  }, [mySkills, skillFilter]);
   const [now, setNow] = useState(Date.now());
   const [address, setAddress] = useState('Locating...');
   const [userName, setUserName] = useState('');
@@ -692,8 +721,12 @@ export default function DashboardScreen() {
       .catch(() => {});
     SkoFyApi.skills.getMySkills()
       .then((skills: any[]) => {
+        setMySkills(skills || []);
         setPickupDropoffEnabled((skills || []).some(s => s.name === 'Pickup & Delivery Errands' && s.is_verified));
       })
+      .catch(() => {});
+    SkoFyApi.skills.getJobAlerts()
+      .then(r => setAlertSkillIds(r?.skill_ids ?? []))
       .catch(() => {});
   }, []);
   useFocusEffect(React.useCallback(() => { refreshPickupDropoffStatus(); }, [refreshPickupDropoffStatus]));
@@ -838,7 +871,10 @@ const filteredJobs = jobs.filter((job) => {
     // still coming in". Browsable/unapplied jobs hide entirely while
     // offline; already-ongoing or already-applied jobs still need managing
     // regardless of availability, so those two tabs are unaffected.
-    if (activeTab === 0) return isAvailable && !job.isOngoing && !alreadyApplied;
+    if (activeTab === 0) {
+      return isAvailable && !job.isOngoing && !alreadyApplied
+        && (!skillFilter || (job.skills || []).includes(skillFilter));
+    }
     if (activeTab === 1) return job.isOngoing && !isBookSlotType;
     if (activeTab === 2) return job.isOngoing && isBookSlotType;
     if (activeTab === 3) return alreadyApplied && !job.isOngoing;
@@ -856,6 +892,44 @@ const filteredJobs = jobs.filter((job) => {
 
   // Open requests from repeat customers (they live in All Jobs).
   const repeatRequestCount = jobs.filter((j: any) => j.isRepeatCustomer && !j.isOngoing && j.applicationId == null).length;
+
+  // What the skill chips count: the open jobs All Jobs would show unfiltered.
+  const browsableJobs = jobs.filter((j: any) => isAvailable && !j.isOngoing && j.applicationId == null);
+
+  // A skill nearby jobs need that this provider hasn't verified: offer the test.
+  const onLockedSkill = (ref: SkillRef, count: number) => {
+    appAlert.show(
+      'info',
+      `Unlock ${ref.name} jobs`,
+      `${count} job${count === 1 ? '' : 's'} near you need ${ref.name}. Take the 5-minute skill test to unlock ${count === 1 ? 'it' : 'them'}.`,
+      [
+        { text: 'Later', variant: 'secondary' },
+        {
+          text: 'Take test',
+          onPress: async () => {
+            try {
+              if (!mySkills.some(sk => sk.skill_id === ref.skill_id)) await SkoFyApi.skills.addSkill(ref.skill_id);
+            } catch { /* already on the profile */ }
+            router.push({ pathname: '/(tabs)/profile', params: { testSkillId: ref.skill_id, testSkillName: ref.name } } as any);
+          },
+        },
+      ],
+    );
+  };
+
+  const saveJobAlerts = async (skillIds: string[]) => {
+    try {
+      const saved = await SkoFyApi.skills.setJobAlerts(skillIds);
+      setAlertSkillIds(saved?.skill_ids ?? skillIds);
+      appAlert.show('success', 'Job alerts saved',
+        skillIds.length === 0
+          ? "You'll be notified about every job you qualify for."
+          : `You'll be notified only about jobs for ${skillIds.length} skill${skillIds.length === 1 ? '' : 's'}. Other jobs still show in All Jobs.`);
+    } catch (err) {
+      appAlert.show('error', 'Not saved', "Couldn't save your job alerts. Check your connection and try again.");
+      throw err;
+    }
+  };
 
   const handleApplyJob = async (jobId: string) => {
     if (pendingRatingJobId) {
@@ -1402,18 +1476,33 @@ const filteredJobs = jobs.filter((job) => {
         )}
 
         <View style={styles.skillsRow}>
-          {(job.skills || []).map((skill: string, idx: number) => (
-            <View key={idx} style={styles.skillBadge}>
-              <CheckCircle2 size={12} color="#D97706" />
-              <ThemedText style={styles.skillText}>{skill}</ThemedText>
-            </View>
-          ))}
+          {(job.skills || []).map((skill: string, idx: number) => {
+            // Skills they've verified in green, the rest locked (until their
+            // skills have loaded, every pill looks the same as before).
+            const have = mySkills.length === 0 || verifiedSkillNames.has(skill);
+            return (
+              <View key={idx} style={[styles.skillBadge, !have && styles.skillBadgeLocked]}>
+                {have ? <CheckCircle2 size={12} color="#10B981" /> : <Lock size={11} color="#9CA3AF" />}
+                <ThemedText style={[styles.skillText, !have && styles.skillTextLocked]}>{skill}</ThemedText>
+              </View>
+            );
+          })}
           {job.hasMedia && (
             <View style={[styles.skillBadge, { backgroundColor: '#F3F4F6', borderColor: '#E5E7EB' }]}>
               <Text style={[styles.skillText, { color: '#666' }]}>+ Photos</Text>
             </View>
           )}
         </View>
+
+        {!job.isOngoing && mySkills.length > 0 && (job.skills || []).length > 0 && (() => {
+          const total = job.skills.length;
+          const matched = job.skills.filter((sk: string) => verifiedSkillNames.has(sk)).length;
+          return (
+            <Text style={[styles.matchLine, matched === total && styles.matchLineFull]}>
+              {matched === total ? `You match all ${total} skill${total === 1 ? '' : 's'}` : `You match ${matched} of ${total} skills`}
+            </Text>
+          );
+        })()}
 
         {/* Customer Meter — reverse of the Skill-O-Meter customers see about
             providers: same review-derived trust signal, but rating the
@@ -1668,6 +1757,24 @@ const filteredJobs = jobs.filter((job) => {
             );
           })}
         </View>
+        {activeTab === 0 && isAvailable && (
+          <SkillFilterBar
+            jobs={browsableJobs}
+            mySkills={mySkills}
+            selected={skillFilter}
+            onSelect={chooseSkillFilter}
+            onLockedPress={onLockedSkill}
+            alertCount={alertSkillIds.length}
+            onAlertsPress={() => setAlertsSheetOpen(true)}
+          />
+        )}
+        <JobAlertsSheet
+          visible={alertsSheetOpen}
+          mySkills={mySkills}
+          chosen={alertSkillIds}
+          onClose={() => setAlertsSheetOpen(false)}
+          onSave={saveJobAlerts}
+        />
       </View>
 
       <ScrollView keyboardShouldPersistTaps="handled"
@@ -1712,6 +1819,7 @@ const filteredJobs = jobs.filter((job) => {
             </ThemedText>
             <ThemedText style={styles.emptySubText}>
               {activeTab === 0 && !isAvailable ? 'Turn on availability at the top of the dashboard to see new jobs.'
+                : activeTab === 0 && skillFilter ? `No ${skillFilter} jobs right now. Tap All to see every job you qualify for.`
                 : activeTab === 0 ? 'Jobs posted by customers will appear here once assigned to you.'
                 : ''}
             </ThemedText>
@@ -1845,6 +1953,7 @@ const filteredJobs = jobs.filter((job) => {
                         // the device's native dialer — switched to the in-app VoIP
                         // call so it actually goes through our calling system
                         // (push notifications, call logs, etc.) like everywhere else.
+                        if (!callTapAllowed()) return;
                         setShowManageModal(false);
                         router.push({
                           pathname: '/chat' as any,
@@ -2944,6 +3053,10 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.poppinsMedium,
     color: '#92400E',
   },
+  skillBadgeLocked: { backgroundColor: '#F9FAFB', borderColor: '#E5E7EB' },
+  skillTextLocked: { color: '#9CA3AF' },
+  matchLine: { fontSize: 12, lineHeight: 16, fontFamily: Fonts.poppinsSemiBold, color: '#B45309', marginTop: -4, marginBottom: 10 },
+  matchLineFull: { color: '#047857' },
   jobDetails: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -4,6 +4,7 @@ import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { SkoFyApi } from '@/services/api';
 import { GOOGLE_PLACES_API_KEY } from '@/services/google-places';
+import { callTapAllowed } from '@/services/callManager';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Location from 'expo-location';
 import { ChevronLeft, Navigation, MapPin, LocateFixed, MessageSquare, Phone } from 'lucide-react-native';
@@ -94,7 +95,7 @@ export default function NavigateToSiteScreen() {
   // Pushed on top, so Back returns here; both use the in-app chat and call,
   // so neither side's phone number is shared — same as the Service Room.
   const openChat = (autoCall: boolean) => {
-    if (!jobId) return;
+    if (!jobId || (autoCall && !callTapAllowed())) return;
     router.push({
       pathname: '/chat' as any,
       params: {

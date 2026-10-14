@@ -667,6 +667,20 @@ export const SkoFyApi = {
     getMySkills: async () =>
       request('/providers/me/skills'),
 
+    /** Every skill's test status in one request: { [skill_id]: eligibility }. */
+    getAllTestEligibility: async (): Promise<Record<string, any>> =>
+      request('/skills/test/eligibility'),
+
+    /** Skills the provider gets "New job" alerts for — [] = every job. */
+    getJobAlerts: async (): Promise<{ skill_ids: string[] }> =>
+      request('/providers/me/job-alerts'),
+
+    setJobAlerts: async (skillIds: string[]): Promise<{ skill_ids: string[] }> =>
+      request('/providers/me/job-alerts', {
+        method: 'PUT',
+        body: JSON.stringify({ skill_ids: skillIds }),
+      }),
+
     addSkill: async (skillId: string) =>
       request('/providers/me/skills', {
         method: 'POST',

@@ -1,5 +1,7 @@
 import AnimatedBrandMark from '@/components/animated-brand-mark';
 import React, { useState, useEffect, useMemo } from 'react';
+import { SkillAssessmentList } from '@/components/skill-assessment-list';
+import { AssessableSkill, SkillEligibility, TestButtonState, eligibilityMessage } from '@/services/skillAssessment';
 import { SkoFyApi } from '@/services/api';
 import { AppLock } from '@/services/appLock';
 import { getCurrentVoipToken } from '@/services/callManager';
@@ -52,7 +54,7 @@ import {
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import FaceDetection from '@react-native-ml-kit/face-detection';
@@ -373,17 +375,15 @@ export default function ProfileScreen() {
   // fully remounted.
   const refreshSkills = React.useCallback(async () => {
     try {
-      const skills: any[] = await SkoFyApi.skills.getMySkills();
+      // Skills and every skill's test status (Take Test / Upgrade Test /
+      // Verified) in two requests — it used to be one request per skill,
+      // hundreds for a provider with many skills, on every visit.
+      const [skills, eligibility] = await Promise.all([
+        SkoFyApi.skills.getMySkills(),
+        SkoFyApi.skills.getAllTestEligibility().catch(() => ({})),
+      ]);
       setApiSkills(skills || []);
-      // Fetch test eligibility for each skill in parallel — drives the Take Test / Upgrade Test / Verified button states
-      const results = await Promise.all((skills || []).map((s: any) =>
-        SkoFyApi.skills.getTestEligibility(s.skill_id).then(e => [s.skill_id, e] as const).catch(() => null)
-      ));
-      const map: typeof skillEligibility = {};
-      for (const r of results) {
-        if (r) map[r[0]] = r[1];
-      }
-      setSkillEligibility(map);
+      setSkillEligibility(eligibility as typeof skillEligibility);
     } catch (err) {
       console.error('Failed to fetch skills:', err);
     }
@@ -607,24 +607,24 @@ export default function ProfileScreen() {
     }, [showTagModal, isViewAllOpen, isViewerOpen, isJobHistoryOpen, isAssessmentOpen, isSettingsOpen, isPasswordOpen, isTermsOpen, isPhotoSheetOpen])
   );
 
-  const getEligibilityMessage = (e?: { reason: string; jobs_completed: number; jobs_required: number; retry_after_minutes?: number | null }) => {
-    if (!e) return 'You are not eligible to take this test right now.';
-    if (e.reason === 'cooldown') return `Please wait ${e.retry_after_minutes} more minute(s) before retaking this test.`;
-    if (e.reason === 'needs_more_jobs') return `Complete ${e.jobs_required - e.jobs_completed} more job(s) in this skill before retesting for an upgrade.`;
-    return 'You are not eligible to take this test right now.';
-  };
+  const getEligibilityMessage = eligibilityMessage;
 
   const refreshSkillsAndEligibility = async () => {
     const skills: any[] | null = await SkoFyApi.skills.getMySkills().catch(() => null);
     if (!skills) return;
     setApiSkills(skills);
-    const entries = await Promise.all(skills.map((s: any) =>
-      SkoFyApi.skills.getTestEligibility(s.skill_id).then(e => [s.skill_id, e] as const).catch(() => null)
-    ));
-    const map: typeof skillEligibility = {};
-    for (const r of entries) if (r) map[r[0]] = r[1];
-    setSkillEligibility(map);
+    const eligibility = await SkoFyApi.skills.getAllTestEligibility().catch(() => null);
+    if (eligibility) setSkillEligibility(eligibility as typeof skillEligibility);
   };
+
+  // Opened from a locked skill on the dashboard: start that skill's test.
+  const { testSkillId: requestedTestSkillId, testSkillName: requestedTestSkillName } =
+    useLocalSearchParams<{ testSkillId?: string; testSkillName?: string }>();
+  useEffect(() => {
+    if (!requestedTestSkillId || !requestedTestSkillName) return;
+    router.setParams({ testSkillId: undefined, testSkillName: undefined } as any);
+    startTest(requestedTestSkillId, requestedTestSkillName);
+  }, [requestedTestSkillId]);
 
   const startTest = async (skillId: string, skillName: string) => {
     const eligibility = skillEligibility[skillId];
@@ -888,6 +888,24 @@ export default function ProfileScreen() {
     }
   };
 
+  // The skill rows are memoized: they get stable callbacks that always
+  // run the latest handlers (which close over current state).
+  const skillActionRef = React.useRef<(skill: AssessableSkill, state: TestButtonState, eligibility?: SkillEligibility) => void>(() => {});
+  skillActionRef.current = (skill, state, eligibility) => {
+    if (state === 'maxed') return;
+    if (state === 'verified_locked' || state === 'locked') {
+      showAlert('error', eligibility?.reason === 'cooldown' ? 'Cooling Period Active' : 'Not Eligible Yet', eligibilityMessage(eligibility));
+      return;
+    }
+    startTest(skill.skill_id, skill.name);
+  };
+  const onSkillAction = React.useCallback(
+    (skill: AssessableSkill, state: TestButtonState, eligibility?: SkillEligibility) => skillActionRef.current(skill, state, eligibility),
+    [],
+  );
+  const removeSkillRef = React.useRef<(skillId: string) => void>(() => {});
+  const onRemoveSkill = React.useCallback((skillId: string) => removeSkillRef.current(skillId), []);
+
   const handleRemoveSkill = async (skillId: string) => {
     const prevSkills = apiSkills;
     setApiSkills(prev => prev.filter(s => s.skill_id !== skillId));
@@ -899,6 +917,7 @@ export default function ProfileScreen() {
       showAlert('error', 'Could Not Remove Skill', 'Something went wrong. Please try again.');
     }
   };
+  removeSkillRef.current = handleRemoveSkill;
 
   const handleDeleteProof = async (docId: string) => {
     const prevProofs = proofs;
@@ -1991,105 +2010,12 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {assessableSkills.length === 0 ? (
-            <ThemedText style={{ color: '#6B7280', fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppins, textAlign: 'center', paddingVertical: 16 }}>
-              No skills added yet. Tap "Add" to get started.
-            </ThemedText>
-          ) : (
-            <ScrollView keyboardShouldPersistTaps="handled"
-              style={{ maxHeight: 320 }}
-              nestedScrollEnabled
-              showsVerticalScrollIndicator
-              contentContainerStyle={styles.skillsListFull}
-            >
-              {assessableSkills.map((skillItem, index) => {
-                const skill = skillItem.name;
-                const verified = skillItem.is_verified;
-                const eligibility = skillEligibility[skillItem.skill_id];
-                const isEligible = eligibility ? eligibility.eligible : false;
-
-                // skill_o_meter: 0–1 → map to level label
-                const meterPct = skillItem.skill_o_meter * 100;
-                const isMaxed = meterPct >= 100;
-                const levelLabel = meterPct >= 70 ? 'Expert' : meterPct >= 35 ? 'Intermediate' : 'Beginner';
-                const levelBg = levelLabel === 'Expert' ? '#FEF2F2' : levelLabel === 'Intermediate' ? '#F0F9FF' : '#F9FAFB';
-                const levelBorder = levelLabel === 'Expert' ? '#FCA5A5' : levelLabel === 'Intermediate' ? '#BAE6FD' : '#E5E7EB';
-                const levelColor = levelLabel === 'Expert' ? '#DC2626' : levelLabel === 'Intermediate' ? '#0284C7' : '#6B7280';
-
-                // Button state: verified+maxed (done) | verified+upgrade available | verified+locked (needs jobs/cooldown) | take test | locked (cooldown on first attempt)
-                const buttonState = verified
-                  ? (isMaxed ? 'maxed' : isEligible ? 'upgrade' : 'verified_locked')
-                  : (isEligible ? 'take_test' : 'locked');
-
-                return (
-                  <View key={skillItem.skill_id} style={styles.skillItemFull}>
-                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <View style={styles.skillMainInfo}>
-                      <ThemedText style={styles.skillMainLabel}>{skill}</ThemedText>
-                      <ThemedText style={{ fontSize: 11, lineHeight: 17, color: '#9CA3AF', fontFamily: Fonts.poppins }}>{skillItem.profession}</ThemedText>
-                      <View style={styles.skillBadgeRow}>
-                        <View style={[styles.levelBadgeMini, { backgroundColor: levelBg, borderColor: levelBorder }]}>
-                          <ThemedText style={[styles.levelTextMini, { color: levelColor }]}>{levelLabel}</ThemedText>
-                        </View>
-                        <ThemedText style={styles.skillStatsSmall}>⭐ {verified ? '+50 Points' : 'Level Up Available'}</ThemedText>
-                      </View>
-                    </View>
-
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <TouchableOpacity
-                        onPress={() => {
-                          if (buttonState === 'maxed') return;
-                          if (buttonState === 'verified_locked' || buttonState === 'locked') {
-                            showAlert('error', eligibility?.reason === 'cooldown' ? 'Cooling Period Active' : 'Not Eligible Yet', getEligibilityMessage(eligibility));
-                            return;
-                          }
-                          startTest(skillItem.skill_id, skill);
-                        }}
-                        style={[
-                          styles.testActionBtn,
-                          (buttonState === 'maxed' || buttonState === 'verified_locked') && { backgroundColor: '#10B981', shadowColor: '#10B981' },
-                          buttonState === 'locked' && { backgroundColor: '#F3F4F6', shadowOpacity: 0, shadowColor: 'transparent', elevation: 0 }
-                        ]}
-                      >
-                        {buttonState === 'maxed' ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                            <CheckCircle2 size={12} color="#fff" />
-                            <ThemedText style={[styles.testBtnText, { color: '#fff' }]}>Max Level</ThemedText>
-                          </View>
-                        ) : buttonState === 'verified_locked' ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                            <CheckCircle2 size={12} color="#fff" />
-                            <ThemedText style={[styles.testBtnText, { color: '#fff' }]}>Verified</ThemedText>
-                          </View>
-                        ) : buttonState === 'locked' ? (
-                          <ThemedText style={[styles.testBtnText, { color: '#9CA3AF' }]}>
-                            {eligibility?.reason === 'cooldown' ? `Wait ${eligibility.retry_after_minutes}m` : 'Locked'}
-                          </ThemedText>
-                        ) : buttonState === 'upgrade' ? (
-                          <ThemedText style={styles.testBtnText}>Upgrade Test</ThemedText>
-                        ) : (
-                          <ThemedText style={styles.testBtnText}>Take Test</ThemedText>
-                        )}
-                      </TouchableOpacity>
-                      {buttonState === 'verified_locked' && eligibility?.reason === 'needs_more_jobs' && (
-                        <ThemedText style={{ fontSize: 10, lineHeight: 16, color: '#6B7280', marginTop: 4, fontFamily: Fonts.poppins, textAlign: 'right', maxWidth: 110 }}>
-                          {eligibility.jobs_required - eligibility.jobs_completed} more job(s) to upgrade
-                        </ThemedText>
-                      )}
-                    </View>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => handleRemoveSkill(skillItem.skill_id)}
-                      style={styles.skillDeleteBtn}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Trash2 size={16} color="#EF4444" />
-                    </TouchableOpacity>
-                  </View>
-                );
-              })}
-            </ScrollView>
-          )}
+          <SkillAssessmentList
+            skills={assessableSkills}
+            eligibility={skillEligibility}
+            onAction={onSkillAction}
+            onRemove={onRemoveSkill}
+          />
         </Animated.View>
 
         {/* Identity Document */}

@@ -2,8 +2,8 @@ import AnimatedBrandMark from '@/components/animated-brand-mark';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { router } from 'expo-router';
-import React, { useEffect, useMemo } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { TokenStore, clearStaleSessionAfterReinstall } from '@/services/api';
 import { handleInitialCallAction, handleInitialNotification } from '@/services/callManager';
 import { prefetchDashboardEssentials } from '@/services/homeCache';
@@ -36,6 +36,19 @@ export default function SplashScreen() {
   const styles = React.useMemo(() => makeStyles(themeColors), [colorScheme]);
   const masterProgress = useSharedValue(0);
   const handledRef = React.useRef(false);
+
+  // Opened straight into a call (Accept on a locked phone, a call
+  // notification), this splash stayed under the call screen with its own
+  // redirect skipped — so when the call ended and the app came back here,
+  // it sat on the splash for good. Coming back to it: carry on into the app.
+  const focusCountRef = useRef(0);
+  useFocusEffect(useCallback(() => {
+    focusCountRef.current += 1;
+    if (focusCountRef.current === 1) return;
+    clearStaleSessionAfterReinstall().then(() => TokenStore.getAccessToken()).then(token => {
+      router.replace((token ? '/(tabs)' : '/login') as any);
+    });
+  }, []));
   // Every token read below must wait on this — otherwise a reinstall that
   // lands fast enough could read a stale pre-uninstall token for this one
   // launch before clearStaleSessionAfterReinstall() gets to it. Set inside

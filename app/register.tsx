@@ -1,5 +1,6 @@
 import AnimatedBackground from '@/components/animated-background';
 import AnimatedBrandMark from '@/components/animated-brand-mark';
+import { AcceptedIdDocuments } from '@/components/accepted-id-documents';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors, Fonts } from '@/constants/theme';
@@ -1258,21 +1259,23 @@ export default function RegisterScreen() {
             </View>
           </Animated.View>
 
-          {/* Section: National Identity Verification */}
+          {/* Section: Identity Verification */}
           <Animated.View entering={FadeInLeft.delay(600).springify()} style={styles.section}>
             <View style={styles.sectionHeaderRow}>
               <ShieldCheck size={20} color={themeColors.brand} />
               <View>
-                <ThemedText style={styles.sectionLabelSmall}>National Identity Verification</ThemedText>
-                <ThemedText style={styles.sectionSubLabel}>(Recommended for account recovery)</ThemedText>
+                <ThemedText style={styles.sectionLabelSmall}>Identity Verification</ThemedText>
+                <ThemedText style={styles.sectionSubLabel}>(Required before you can apply for jobs)</ThemedText>
               </View>
             </View>
 
+            <AcceptedIdDocuments />
+
             <View style={styles.inputGroup}>
-              <ThemedText style={styles.fieldLabel}>National ID Number</ThemedText>
+              <ThemedText style={styles.fieldLabel}>ID number</ThemedText>
               <TextInput
                 style={getInputStyle('idNumber')}
-                placeholder="Ex: 1234 5678 9012"
+                placeholder="e.g. your driver's license number"
                 placeholderTextColor={themeColors.icon}
                 value={formData.idNumber}
                 onChangeText={(text) => setFormData(prev => ({ ...prev, idNumber: text }))}
@@ -1299,7 +1302,7 @@ export default function RegisterScreen() {
                   onPress={() => pickImage('document')}
                 >
                   <Upload size={24} color={themeColors.brand} />
-                  <ThemedText style={styles.uploadBoxText}>Tap to upload ID document (JPG/PNG)</ThemedText>
+                  <ThemedText style={styles.uploadBoxText}>Tap to upload a photo of the front of your ID (JPG/PNG)</ThemedText>
                 </TouchableOpacity>
               )}
             </View>

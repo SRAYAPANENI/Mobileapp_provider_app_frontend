@@ -2,6 +2,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Image } from 'expo-image';
+import NetInfo from '@react-native-community/netinfo';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   CheckCheck,
@@ -47,7 +48,7 @@ import { CustomerRatingSheet } from '@/components/customer-rating-sheet';
 import { RTCIceServerConfig, SkoFyApi, TokenStore, getFreshAccessToken } from '@/services/api';
 import { CallOverlay } from '@/components/call-overlay';
 import InCallManager from 'react-native-incall-manager';
-import { answerIosRing, cancelIncomingCallNotification, endIosCallSession, endIosRingForHangUp, markIosCallConnected, registerAcceptHandler, registerDeclineHandler, showIosIncomingCall, registerHangupHandler, registerMuteHandler, registerSpeakerHandler, setActiveChatJob, setChatCallActive, startIosOutgoingCall, startOngoingCallNotification, stopOngoingCallNotification, updateOngoingCallControls } from '@/services/callManager';
+import { answerIosRing, claimOutgoingCall, markCallEnded, releaseOutgoingCall, startInAppRingtone, stopInAppRingtone, cancelIncomingCallNotification, endIosCallSession, forgetCallScreen, takeAcceptRequest, endIosRingForHangUp, markIosCallConnected, registerAcceptHandler, registerDeclineHandler, showIosIncomingCall, registerHangupHandler, registerMuteHandler, registerSpeakerHandler, setActiveChatJob, setChatCallActive, startIosOutgoingCall, startOngoingCallNotification, stopOngoingCallNotification, updateOngoingCallControls } from '@/services/callManager';
 
 // No-answer cutoff — like a real phone call, ringing/calling shouldn't go on forever.
 // The server ends an unanswered call after 45s and says why; this is only
@@ -66,9 +67,15 @@ const MESSAGE_PAGE_SIZE = 50;
 // stuck on "Connecting…" forever with no offer ever arriving and no way out
 // (the back button is intentionally blocked while a call is active).
 const CONNECTING_TIMEOUT_MS = 15000;
+// How often "Connecting…" asks the caller again for the call (call_ready).
+const CALL_READY_RETRY_MS = 3000;
 // A dropped connection (often a Wi-Fi ↔ mobile switch) is restarted (ICE
 // restart) and gets this long to come back before the call ends.
-const DISCONNECT_GRACE_MS = 20000;
+const DISCONNECT_GRACE_MS = 30000;
+// While reconnecting, the connection restart is sent again this often —
+// one sent while the other phone's socket was down was lost.
+const RESTART_RETRY_MS = 3000;
+const RESTART_MIN_GAP_MS = 8000;
 // Max wait for the TURN relay details before calling without them.
 const ICE_SERVERS_WAIT_MS = 3000;
 
@@ -126,7 +133,7 @@ function endedLabelFor(reason: string | undefined, state: CallState): string | n
 const FALLBACK_ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 
 export default function ChatScreen() {
-  const { jobId, name: paramName, profileImage, jobTitle: paramJobTitle, autoAnswer, autoCall, callId: callIdParam, returnOnEnd } = useLocalSearchParams<{
+  const { jobId, name: paramName, profileImage: paramProfileImage, jobTitle: paramJobTitle, autoAnswer, autoCall, callId: callIdParam, returnOnEnd } = useLocalSearchParams<{
     jobId: string;
     name: string;
     profileImage: string;
@@ -144,13 +151,17 @@ export default function ChatScreen() {
   // remember to pass these params.
   const [name, setName] = useState(paramName || '');
   const [jobTitle, setJobTitle] = useState(paramJobTitle || '');
+  // The customer's photo for the header and the call screen — most ways
+  // into this screen (a call notification among them) don't pass it.
+  const [profileImage, setProfileImage] = useState(paramProfileImage || '');
   useEffect(() => {
-    if ((paramName && paramJobTitle) || !jobId) return;
+    if ((paramName && paramJobTitle && paramProfileImage) || !jobId) return;
     SkoFyApi.jobs.get(jobId).then((job: any) => {
+      if (!paramProfileImage && job?.customer_profile_image) setProfileImage(job.customer_profile_image);
       if (!paramName && job?.customer_name) setName(job.customer_name);
       if (!paramJobTitle && job?.title) setJobTitle(job.title);
     }).catch(() => {});
-  }, [jobId, paramName, paramJobTitle]);
+  }, [jobId, paramName, paramJobTitle, paramProfileImage]);
   // The WS onmessage handler is set up in an effect keyed only on [jobId],
   // so inline code inside it (not routed through a ref, unlike
   // handleAcceptCall/handleEndCall/etc.) only ever sees the `name` state
@@ -267,6 +278,12 @@ export default function ChatScreen() {
   const isCallerRef = useRef(false);
   const wasConnectedRef = useRef(false);
   const restartIceRef = useRef<() => void>(() => {});
+  const outgoingClaimRef = useRef<string | null>(null);
+  const restartRetryRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastRestartAtRef = useRef(0);
+  // Set while answering — a second copy of the call's offer is ignored.
+  const answeringRef = useRef(false);
+  const callReadyTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // The restart offer not yet answered — re-sent if the socket was down.
   const restartOfferRef = useRef<{ sdp: string; type: string } | null>(null);
 
@@ -332,7 +349,7 @@ export default function ChatScreen() {
   useEffect(() => {
     if (autoAnswer === undefined) return;
     const timer = setTimeout(() => {
-      if (callStateRef.current === 'connecting') handleDeclineCallRef.current();
+      if (callStateRef.current === 'connecting' && !answeringRef.current) handleDeclineCallRef.current();
     }, CONNECTING_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, []);
@@ -343,6 +360,10 @@ export default function ChatScreen() {
   // socket closes (effect cleanups run in declaration order).
   useEffect(() => () => {
     if (callStateRef.current !== 'idle') handleEndCallRef.current();
+    // Left while the call was still being set up (before 'calling'): the
+    // one-call-at-a-time claim must not outlive this screen, or no call
+    // could be placed again until the app restarted.
+    releaseOutgoingCall(outgoingClaimRef.current);
   }, []);
 
   // AppLockGate must only skip re-locking (or force-dismiss an existing
@@ -399,22 +420,30 @@ export default function ChatScreen() {
   const cleanupCall = () => {
     Vibration.cancel();
     InCallManager.stopRingtone();
+    stopInAppRingtone();
     InCallManager.stopRingback();
     stopSound(ringtoneSoundRef);
     InCallManager.stop();
     clearCallTimeout();
     clearDisconnectTimer();
     callActionInFlightRef.current = false;
+    answeringRef.current = false;
+    releaseOutgoingCall(outgoingClaimRef.current);
+    outgoingClaimRef.current = null;
+    markCallEnded(callIdRef.current);
     callIdRef.current = null;
     autoAnswerPendingRef.current = false;
     sentIceRef.current = [];
     if (endedTimerRef.current) { clearTimeout(endedTimerRef.current); endedTimerRef.current = null; }
+    if (callReadyTimerRef.current) { clearInterval(callReadyTimerRef.current); callReadyTimerRef.current = null; }
+    if (restartRetryRef.current) { clearInterval(restartRetryRef.current); restartRetryRef.current = null; }
     setRemoteRinging(false);
     setReconnecting(false);
     reconnectingRef.current = false;
     restartOfferRef.current = null;
     if (jobId) stopOngoingCallNotification(jobId);
     if (jobId) endIosCallSession(jobId);
+    if (jobId) forgetCallScreen(jobId);
     registerHangupHandler(null);
     registerMuteHandler(null);
     registerSpeakerHandler(null);
@@ -447,6 +476,7 @@ export default function ChatScreen() {
       const state = pc.connectionState;
       if (state === 'connected') {
         clearDisconnectTimer();
+        if (restartRetryRef.current) { clearInterval(restartRetryRef.current); restartRetryRef.current = null; }
         reconnectingRef.current = false;
         setReconnecting(false);
       } else if (state === 'disconnected' || state === 'failed') {
@@ -456,6 +486,11 @@ export default function ChatScreen() {
         reconnectingRef.current = true;
         setReconnecting(true);
         restartIceRef.current();
+        if (!restartRetryRef.current) {
+          restartRetryRef.current = setInterval(() => {
+            if (reconnectingRef.current) restartIceRef.current();
+          }, RESTART_RETRY_MS);
+        }
         if (!disconnectTimerRef.current) {
           disconnectTimerRef.current = setTimeout(() => handleEndCallRef.current(), DISCONNECT_GRACE_MS);
         }
@@ -476,6 +511,10 @@ export default function ChatScreen() {
       Alert.alert('Not connected', "You're offline right now. Check your internet and try again in a moment.");
       return;
     }
+    // Another screen (a second copy of this chat) is already placing a call.
+    const claim = claimOutgoingCall();
+    if (!claim) return;
+    outgoingClaimRef.current = claim;
     callActionInFlightRef.current = true;
     if (endedTimerRef.current) { clearTimeout(endedTimerRef.current); endedTimerRef.current = null; }
     isCallerRef.current = true;
@@ -527,13 +566,16 @@ export default function ChatScreen() {
 
   const handleAcceptCall = async () => {
     const offer = incomingOfferRef.current;
-    if (!offer) return;
+    if (!offer || answeringRef.current) return;
     if (jobId && answerIosRing(jobId)) return; // comes back here once CallKit has answered
+    answeringRef.current = true;
+    if (jobId) takeAcceptRequest(jobId);
     autoAnswerPendingRef.current = false;
     isCallerRef.current = false;
     wasConnectedRef.current = true;
     Vibration.cancel();
     InCallManager.stopRingtone();
+    stopInAppRingtone();
     stopSound(ringtoneSoundRef);
     clearCallTimeout();
     // Safety net: answering in-app should always dismiss a matching incoming-
@@ -607,7 +649,14 @@ export default function ChatScreen() {
 
   const restartIce = async () => {
     const pc = peerConnectionRef.current;
-    if (!pc || !isCallerRef.current || callStateRef.current !== 'connected') return;
+    if (!pc || callStateRef.current !== 'connected') return;
+    // Only the caller makes the restart offer. The callee — often the phone
+    // that lost its network — asks for one; it used to just wait, and a
+    // restart sent while its socket was down never came again.
+    if (!isCallerRef.current) {
+      sendSignal({ type: 'call_restart' });
+      return;
+    }
     // One restart at a time: a pending one is just sent again (the socket
     // may have been down when it was made — see onopen).
     const pending = restartOfferRef.current;
@@ -616,6 +665,10 @@ export default function ChatScreen() {
       return;
     }
     if (pc.signalingState !== 'stable') return;
+    // A restart needs a few seconds to find the new route — a fresh one
+    // every retry would keep starting over.
+    if (Date.now() - lastRestartAtRef.current < RESTART_MIN_GAP_MS) return;
+    lastRestartAtRef.current = Date.now();
     try {
       const offer = await pc.createOffer({ iceRestart: true } as any);
       await pc.setLocalDescription(offer);
@@ -633,7 +686,11 @@ export default function ChatScreen() {
   useEffect(() => {
     const prev = prevCallStateRef.current;
     prevCallStateRef.current = callState;
-    if (returnOnEnd === 'true' && callState === 'idle' && prev !== 'idle' && !wasConnectedRef.current && router.canGoBack()) {
+    // Opened for a call (a notification, or automatically): when the call is
+    // over, go back to where the user was — like a phone call. An unanswered
+    // auto-opened one too. Cold-started into it (nothing behind): stay here.
+    const openedForCall = autoAnswer !== undefined || returnOnEnd === 'true';
+    if (openedForCall && callState === 'idle' && prev !== 'idle' && router.canGoBack()) {
       router.back();
     }
   }, [callState]);
@@ -697,7 +754,8 @@ export default function ChatScreen() {
     let reconnectDelay = 1000;
     const scheduleReconnect = () => {
       if (closedByScreen) return;
-      reconnectTimer = setTimeout(connect, reconnectDelay);
+      // During a call the socket carries the connection restart: no long backoff.
+      reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, callStateRef.current === 'idle' ? reconnectDelay : Math.min(reconnectDelay, 2000));
       reconnectDelay = Math.min(reconnectDelay * 2, 30000);
     };
     // Token fetched up front (in parallel with the URL) so onopen below can
@@ -706,8 +764,12 @@ export default function ChatScreen() {
     // gate of its own, so any async gap between "socket is OPEN" and "auth
     // message actually sent" is a real window for a user tap to jump the
     // queue ahead of auth and get the connection rejected by the server.
-    const connect = () => Promise.all([SkoFyApi.chat.getSocketUrl(jobId), getFreshAccessToken()]).then(([url, token]) => {
-      if (closedByScreen) return;
+    // Only the latest attempt may open a socket — an older one still
+    // fetching its URL when a newer one started would open a second socket
+    // (every message handled twice).
+    let attempt = 0;
+    const connect = () => { const mine = ++attempt; return Promise.all([SkoFyApi.chat.getSocketUrl(jobId), getFreshAccessToken()]).then(([url, token]) => {
+      if (closedByScreen || mine !== attempt) return;
       const ws = new WebSocket(url);
       socket = ws;
       wsRef.current = ws;
@@ -739,9 +801,21 @@ export default function ChatScreen() {
         if (autoAnswer !== undefined && !autoAnswerSentRef.current) {
           autoAnswerSentRef.current = true;
           sendSignal({ type: 'call_ready' });
+          // Asked again every few seconds: a caller whose app was briefly
+          // paused, or whose socket was reconnecting, missed a single ask and
+          // this screen sat on "Connecting…".
+          if (callReadyTimerRef.current) clearInterval(callReadyTimerRef.current);
+          callReadyTimerRef.current = setInterval(() => {
+            if (callStateRef.current !== 'connecting' || incomingOfferRef.current || answeringRef.current) {
+              if (callReadyTimerRef.current) clearInterval(callReadyTimerRef.current);
+              callReadyTimerRef.current = null;
+              return;
+            }
+            sendSignal({ type: 'call_ready' });
+          }, CALL_READY_RETRY_MS);
           clearCallTimeout();
           callTimeoutRef.current = setTimeout(() => {
-            if (callStateRef.current === 'connecting') handleDeclineCall();
+            if (callStateRef.current === 'connecting' && !answeringRef.current) handleDeclineCall();
           }, CONNECTING_TIMEOUT_MS);
         }
         // Tapping a phone icon elsewhere in the app (e.g. the Service Room's
@@ -764,8 +838,8 @@ export default function ChatScreen() {
           }
           if (data.type === 'call_offer') {
             const curState = callStateRef.current;
-            // Already ringing or connected — ignore duplicates/stray offers.
-            if (curState === 'ringing' || curState === 'connected') return;
+            // Already ringing, answering or connected — ignore duplicates/stray offers.
+            if (curState === 'ringing' || curState === 'connected' || answeringRef.current) return;
             // Opened from a notification: auto-answer only the call that
             // notification was for (no id from an older backend: accept it).
             const expectedCallId = curState === 'connecting' ? callIdRef.current : null;
@@ -795,7 +869,8 @@ export default function ChatScreen() {
             if (endedTimerRef.current) { clearTimeout(endedTimerRef.current); endedTimerRef.current = null; }
             incomingOfferRef.current = { sdp: data.sdp, type: data.sdpType };
             callIdRef.current = data.call_id ?? null;
-            if ((autoAnswerPendingRef.current && isNotifiedCall) || yieldedToTheirCall) {
+            const acceptPressed = autoAnswerPendingRef.current || (!!jobId && takeAcceptRequest(jobId));
+            if ((acceptPressed && isNotifiedCall) || yieldedToTheirCall) {
               // Already answered via the native incoming-call screen (CallKeep) —
               // skip showing our own ringing UI, go straight to connecting.
               // Through the ref (not handleAcceptCall directly) — this effect
@@ -805,6 +880,7 @@ export default function ChatScreen() {
               // later for a notification-tap open.
               handleAcceptCallRef.current();
             } else {
+              callStateRef.current = 'ringing';
               setCallState('ringing');
               // InCallManager.startRingtone plays on the actual ring audio
               // stream (same as the native notification's RingtoneManager
@@ -818,7 +894,9 @@ export default function ChatScreen() {
               const ringingOnCallKit = showIosIncomingCall({
                 jobId, callerId: data.from ?? '', callerName: nameRef.current || 'Your customer', callId: data.call_id ?? undefined,
               });
-              if (!ringingOnCallKit) InCallManager.startRingtone('_DEFAULT_', RING_PATTERN);
+              // Android: the phone's ringtone via Android's own player (the
+              // library's player was silent on phones with a custom ringtone).
+              if (!ringingOnCallKit && !startInAppRingtone()) InCallManager.startRingtone('_DEFAULT_', RING_PATTERN);
               sendSignal({ type: 'call_ring' });
               wasConnectedRef.current = false;
               clearCallTimeout();
@@ -881,6 +959,13 @@ export default function ChatScreen() {
             sendSignal({ type: 'call_renegotiate_answer', sdp: answer.sdp, sdpType: answer.type });
             return;
           }
+          if (data.type === 'call_restart') {
+            // The other phone lost the connection: restart it (or re-send
+            // the restart it missed).
+            if (isOtherCall) return;
+            restartIceRef.current();
+            return;
+          }
           if (data.type === 'call_renegotiate_answer') {
             if (isOtherCall) return;
             const pc = peerConnectionRef.current;
@@ -927,11 +1012,36 @@ export default function ChatScreen() {
           console.error('Failed to handle WS message:', err);
         }
       };
-    }).catch(scheduleReconnect);
+    }).catch(() => { if (mine === attempt) scheduleReconnect(); }); };
     connect();
+
+    // Network back: reconnect now instead of waiting out the backoff (it
+    // grows to 30s — a call lost to a short network drop waited too long).
+    // Back online, or moved to another network: the old socket is dead,
+    // though it can take a long time to say so — start a new one now.
+    let lastNetwork: string | null = null;
+    const unsubscribeNet = NetInfo.addEventListener(state => {
+      const network = state.isConnected ? `on:${state.type}` : 'off';
+      const changed = lastNetwork !== null && network !== lastNetwork;
+      lastNetwork = network;
+      if (closedByScreen || !changed || !state.isConnected) return;
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+      const old = socket;
+      socket = null;
+      if (old) {
+        old.onclose = null;
+        old.onmessage = null;
+        old.close();
+        if (wsRef.current === old) wsRef.current = null;
+      }
+      setSocketOpen(false);
+      reconnectDelay = 1000;
+      connect();
+    });
 
     return () => {
       closedByScreen = true;
+      unsubscribeNet();
       if (reconnectTimer) clearTimeout(reconnectTimer);
       socket?.close();
       wsRef.current = null;
@@ -1101,6 +1211,7 @@ export default function ChatScreen() {
 
       <CallOverlay
         callState={callState}
+        answered={autoAnswer === 'true'}
         name={name || 'Customer'}
         profileImage={profileImage}
         isMuted={isMuted}
