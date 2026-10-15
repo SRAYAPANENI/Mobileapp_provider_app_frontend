@@ -1,6 +1,9 @@
 import AnimatedBrandMark from '@/components/animated-brand-mark';
 import React, { useState, useEffect, useMemo } from 'react';
 import { SkillAssessmentList } from '@/components/skill-assessment-list';
+import { CustomerRatingSheet } from '@/components/customer-rating-sheet';
+import { RateCustomerButton } from '@/components/rate-customer-button';
+import { useUnratedCustomers } from '@/hooks/use-unrated-customers';
 import { AssessableSkill, SkillEligibility, TestButtonState, eligibilityMessage } from '@/services/skillAssessment';
 import { SkoFyApi } from '@/services/api';
 import { AppLock } from '@/services/appLock';
@@ -300,6 +303,9 @@ export default function ProfileScreen() {
   };
 
   const [jobHistory, setJobHistory] = useState<ApiJob[]>([]);
+  // A customer the provider didn't rate when asked can be rated from here.
+  const { unrated, reload: reloadUnrated, markRated } = useUnratedCustomers();
+  const [ratingJob, setRatingJob] = useState<{ id: string; customerName: string } | null>(null);
 
   // Available Slots State
   const [availableSlots, setAvailableSlots] = useState<{ id: string, date: string, startTime: string, endTime: string }[]>([]);
@@ -394,7 +400,9 @@ export default function ProfileScreen() {
     React.useCallback(() => {
       refreshProviderProfile();
       refreshSkills();
-    }, [refreshProviderProfile, refreshSkills])
+      // Rated from a popup or the Jobs tab since — drop its button here.
+      reloadUnrated();
+    }, [refreshProviderProfile, refreshSkills, reloadUnrated])
   );
 
   // Shared by initial load AND pull-to-refresh — each call is caught independently so one
@@ -443,7 +451,7 @@ export default function ProfileScreen() {
       })
       .catch((err) => console.error('Failed to fetch availability slots:', err));
 
-    await Promise.allSettled([profileCall, earningsCall, skillsCall, professionsCall, historyCall, documentsCall, slotsCall]);
+    await Promise.allSettled([profileCall, earningsCall, skillsCall, professionsCall, historyCall, documentsCall, slotsCall, reloadUnrated()]);
   }, []);
 
   const loadProfile = React.useCallback(async () => {
@@ -1575,6 +1583,9 @@ export default function ProfileScreen() {
           <MessageSquare size={16} color="#6B7280" />
           <ThemedText style={styles.historyHelpText}>Help & Support</ThemedText>
         </TouchableOpacity>
+        {unrated[item.job_id] !== undefined && (
+          <RateCustomerButton onPress={() => setRatingJob({ id: item.job_id, customerName: unrated[item.job_id] })} />
+        )}
       </Animated.View>
     );
   };
@@ -3104,7 +3115,29 @@ export default function ProfileScreen() {
             )}
           </ScrollView>
         </View>
+        <CustomerRatingSheet
+          jobId={isJobHistoryOpen ? ratingJob?.id ?? null : null}
+          customerName={ratingJob?.customerName}
+          onClose={(submitted) => {
+            if (submitted && ratingJob) {
+              markRated(ratingJob.id);
+              Alert.alert('Thanks!', 'Your rating has been submitted.');
+            }
+            setRatingJob(null);
+          }}
+        />
       </Modal>
+      <CustomerRatingSheet
+        jobId={isJobHistoryOpen ? null : ratingJob?.id ?? null}
+        customerName={ratingJob?.customerName}
+        onClose={(submitted) => {
+          if (submitted && ratingJob) {
+            markRated(ratingJob.id);
+            Alert.alert('Thanks!', 'Your rating has been submitted.');
+          }
+          setRatingJob(null);
+        }}
+      />
 
       {/* Available Slots Management Modal */}
       <Modal visible={isSlotModalOpen} animationType="slide" onRequestClose={() => setIsSlotModalOpen(false)}>

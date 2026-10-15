@@ -41,7 +41,13 @@ import * as SecureStore from 'expo-secure-store';
 import { SkillFilterBar, type MySkill, type SkillRef } from '@/components/skill-filter-bar';
 import { JobAlertsSheet } from '@/components/job-alerts-sheet';
 import { DeliveryHandover } from '@/components/delivery-handover';
-import { isDelivered, isDelivery, navigationTarget, purchaseSummary } from '@/services/pickupDelivery';
+import {
+  goodsAmountError, isBuyForMe, isDelivered, isDelivery, isOrderCollected, navigationTarget, parseGoodsAmount,
+  purchaseSummary,
+} from '@/services/pickupDelivery';
+import { PickupAtStore } from '@/components/pickup-at-store';
+import { ReportIssueModal } from '@/components/report-issue-modal';
+import { useGoodsHoldHeld } from '@/hooks/use-goods-hold';
 import notifee from '@notifee/react-native';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -397,6 +403,15 @@ export default function DashboardScreen() {
   // to hand over a code, so a photo substitutes for it instead).
   const [pickupPhoto, setPickupPhoto] = useState<{ uri: string; mimeType: string } | null>(null);
   const [confirmingPickup, setConfirmingPickup] = useState(false);
+  // Buy it for me: the receipt total, and whether the customer's money is held.
+  const [goodsAmountText, setGoodsAmountText] = useState('');
+  const buyingForCustomer = isDelivery(selectedJob) && isBuyForMe(manageJobDetail);
+  const goodsHeld = useGoodsHoldHeld(
+    selectedJob?.id, buyingForCustomer && selectedJob?.status === 'ACCEPTED' && !manageJobDetail?.pickup_confirmed_at,
+  );
+  const goodsError = buyingForCustomer ? goodsAmountError(goodsAmountText, manageJobDetail?.purchase_limit) : null;
+  const orderCollected = isOrderCollected({ jobKind: selectedJob?.jobKind, pickup_confirmed_at: manageJobDetail?.pickup_confirmed_at });
+  const [showReportIssue, setShowReportIssue] = useState(false);
   const [invoiceAmount, setInvoiceAmount] = useState('');
   const [invoiceNotes, setInvoiceNotes] = useState('');
   const [materials, setMaterials] = useState<Array<{ name: string; quantity: string; unit_cost: string }>>([]);
@@ -441,6 +456,8 @@ export default function DashboardScreen() {
             // this job is dead, no reason to keep it "locked in" as active.
             setActiveJobId(null);
           }
+          // Disputed by the customer: under review, not active work any more.
+          if (detail.status === 'DISPUTED') setActiveJobId(null);
           setJobs(prev => prev.map(j => j.id === selectedJob.id ? { ...j, status: detail.status } : j));
         }
       } catch {
@@ -509,6 +526,10 @@ export default function DashboardScreen() {
 
   const handleConfirmPickup = async () => {
     if (!selectedJob || !pickupPhoto) return;
+    if (buyingForCustomer && (goodsError || !goodsHeld)) {
+      appAlert.show('warning', 'Not Yet', goodsError ?? "The customer hasn't put the shopping money on hold yet.");
+      return;
+    }
     let coords = userCoords;
     if (!coords) {
       try {
@@ -522,10 +543,14 @@ export default function DashboardScreen() {
     }
     setConfirmingPickup(true);
     try {
-      await SkoFyApi.jobs.confirmPickup(selectedJob.id, pickupPhoto.uri, pickupPhoto.mimeType, coords.latitude, coords.longitude);
+      await SkoFyApi.jobs.confirmPickup(
+        selectedJob.id, pickupPhoto.uri, pickupPhoto.mimeType, coords.latitude, coords.longitude,
+        buyingForCustomer ? parseGoodsAmount(goodsAmountText) : undefined,
+      );
       const detail = await SkoFyApi.jobs.get(selectedJob.id);
       setManageJobDetail(detail);
       setPickupPhoto(null);
+      setGoodsAmountText('');
     } catch (err: any) {
       if (err?.error_code === 'NOT_AT_LOCATION') {
         appAlert.show('warning', 'Too Far From Pickup Location', err.message ?? 'You need to be at the pickup location.');
@@ -967,6 +992,7 @@ const filteredJobs = jobs.filter((job) => {
     setInvoiceNotes('');
     setMaterials([]);
     setPickupPhoto(null);
+    setGoodsAmountText('');
     setSelectedJobId(jobId);
     setShowManageModal(true);
   };
@@ -2008,7 +2034,14 @@ const filteredJobs = jobs.filter((job) => {
                     passed) — until then this is a Start Job button instead,
                     so completing a job you never actually started/reached is
                     no longer possible from this screen. */}
-                {selectedJob.status === 'IN_PROGRESS' && isDelivery(selectedJob) && !isDelivered(manageJobDetail) ? (
+                {selectedJob.status === 'DISPUTED' ? (
+                  // Either side can now dispute before the work starts (a
+                  // collected delivery) — without this the sheet fell through
+                  // to the last branch and offered "Start Job".
+                  <ThemedText style={styles.completeDisclaimer}>
+                    This job is under review. Our team will get back to you within 24 hours.
+                  </ThemedText>
+                ) : selectedJob.status === 'IN_PROGRESS' && isDelivery(selectedJob) && !isDelivered(manageJobDetail) ? (
                   <DeliveryHandover
                     jobId={selectedJob.id}
                     onDelivered={() => setManageJobDetail((prev: any) => ({ ...prev, delivered_at: new Date().toISOString() }))}
@@ -2111,12 +2144,11 @@ const filteredJobs = jobs.filter((job) => {
                   // inspection_completed_at).
                   <>
                     <ThemedText style={styles.completeDisclaimer}>
-                      Pickup confirmed. Add any items/costs, then send the customer your invoice.
-                      {manageJobDetail?.pickup_purchase === 'BUY_FOR_ME' && manageJobDetail?.purchase_limit != null
-                        ? ` Items can't come to more than the customer's limit of $${Number(manageJobDetail.purchase_limit).toFixed(2)}.`
-                        : ''}
+                      {buyingForCustomer
+                        ? `Pickup confirmed. The items${manageJobDetail?.goods_amount != null ? ` ($${Number(manageJobDetail.goods_amount).toFixed(2)})` : ''} are paid back to you from the customer's held shopping money — invoice only your delivery charge.`
+                        : 'Pickup confirmed. Add any items/costs, then send the customer your invoice.'}
                     </ThemedText>
-                    {materials.map((m, idx) => (
+                    {!buyingForCustomer && materials.map((m, idx) => (
                       <View key={idx} style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
                         <RNTextInput
                           style={[styles.otpEntryInput, { flex: 2 }]}
@@ -2146,15 +2178,17 @@ const filteredJobs = jobs.filter((job) => {
                         />
                       </View>
                     ))}
-                    <TouchableOpacity
-                      style={styles.cancelJobBtn}
-                      onPress={() => setMaterials(prev => [...prev, { name: '', quantity: '', unit_cost: '' }])}
-                    >
-                      <ThemedText style={styles.cancelJobBtnText}>+ Add Item</ThemedText>
-                    </TouchableOpacity>
+                    {!buyingForCustomer && (
+                      <TouchableOpacity
+                        style={styles.cancelJobBtn}
+                        onPress={() => setMaterials(prev => [...prev, { name: '', quantity: '', unit_cost: '' }])}
+                      >
+                        <ThemedText style={styles.cancelJobBtnText}>+ Add Item</ThemedText>
+                      </TouchableOpacity>
+                    )}
                     <RNTextInput
                       style={[styles.otpEntryInput, { fontSize: 17, fontWeight: '700' }]}
-                      placeholder="Invoice amount ($)"
+                      placeholder={buyingForCustomer ? 'Delivery charge ($)' : 'Invoice amount ($)'}
                       placeholderTextColor="#9CA3AF"
                       keyboardType="numeric"
                       value={invoiceAmount}
@@ -2178,12 +2212,14 @@ const filteredJobs = jobs.filter((job) => {
                         {raisingInvoice ? 'Sending…' : 'Send Invoice'}
                       </ThemedText>
                     </TouchableOpacity>
+                    {/* Once the order is collected the server refuses a cancel (it would
+                        be left with the provider) — a dispute instead. */}
                     <TouchableOpacity
                       style={styles.cancelJobBtn}
-                      onPress={() => setShowCancelJobModal(true)}
+                      onPress={() => (orderCollected ? setShowReportIssue(true) : setShowCancelJobModal(true))}
                     >
-                      <XCircle size={18} color="#EF4444" />
-                      <ThemedText style={styles.cancelJobBtnText}>Cancel This Job</ThemedText>
+                      {orderCollected ? <AlertTriangle size={18} color="#EF4444" /> : <XCircle size={18} color="#EF4444" />}
+                      <ThemedText style={styles.cancelJobBtnText}>{orderCollected ? 'Report an Issue' : 'Cancel This Job'}</ThemedText>
                     </TouchableOpacity>
                   </>
                 ) : selectedJob.status === 'ACCEPTED' && selectedJob.jobKind === 'PICKUP_DROPOFF' ? (
@@ -2192,9 +2228,34 @@ const filteredJobs = jobs.filter((job) => {
                   // geofence-checked photo of what was picked up substitutes
                   // for it instead.
                   <>
+                    <PickupAtStore
+                      details={manageJobDetail?.pickup_details}
+                      items={manageJobDetail?.shopping_list}
+                      buyForMe={buyingForCustomer}
+                      moneyHeld={goodsHeld}
+                    />
                     <ThemedText style={styles.completeDisclaimer}>
-                      Once you've got everything, take a photo to confirm pickup.
+                      {buyingForCustomer
+                        ? 'Once you have the items, enter the receipt total and take a photo of the items with the receipt.'
+                        : "Once you've got everything, take a photo to confirm pickup."}
                     </ThemedText>
+                    {buyingForCustomer && (
+                      <>
+                        <RNTextInput
+                          style={[styles.otpEntryInput, { fontSize: 17, fontWeight: '700' }]}
+                          placeholder={`Paid at the store ($, up to ${Number(manageJobDetail?.purchase_limit ?? 0).toFixed(2)})`}
+                          placeholderTextColor="#9CA3AF"
+                          keyboardType="decimal-pad"
+                          value={goodsAmountText}
+                          onChangeText={setGoodsAmountText}
+                          onFocus={scrollToFocusedInput}
+                          editable={goodsHeld}
+                        />
+                        {!!goodsAmountText && !!goodsError && (
+                          <ThemedText style={[styles.completeDisclaimer, { color: '#B45309' }]}>{goodsError}</ThemedText>
+                        )}
+                      </>
+                    )}
                     {pickupPhoto ? (
                       <Image source={{ uri: pickupPhoto.uri }} style={styles.pickupPhotoPreview} contentFit="cover" />
                     ) : null}
@@ -2205,9 +2266,9 @@ const filteredJobs = jobs.filter((job) => {
                       </ThemedText>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.completeJobBtn, (!pickupPhoto || confirmingPickup) && { opacity: 0.5 }]}
+                      style={[styles.completeJobBtn, (!pickupPhoto || confirmingPickup || (buyingForCustomer && (!goodsHeld || !!goodsError))) && { opacity: 0.5 }]}
                       onPress={handleConfirmPickup}
-                      disabled={!pickupPhoto || confirmingPickup}
+                      disabled={!pickupPhoto || confirmingPickup || (buyingForCustomer && (!goodsHeld || !!goodsError))}
                     >
                       <CheckCircle size={20} color="#fff" />
                       <ThemedText style={styles.completeJobText}>
@@ -2416,15 +2477,17 @@ const filteredJobs = jobs.filter((job) => {
                           {manageJobDetail?.invoice?.status === 'ACCEPTED'
                             ? 'Invoice accepted — waiting for the customer to pay.'
                             : manageJobDetail?.invoice?.status === 'COUNTER_REJECTED'
-                            ? `You declined their offer — waiting for the customer to accept the original $${manageJobDetail.invoice.amount} or cancel.`
+                            ? `You declined their offer — waiting for the customer to accept the original $${manageJobDetail.invoice.amount}${orderCollected ? '' : ' or cancel'}.`
                             : 'Invoice sent — waiting for the customer to respond.'}
                         </ThemedText>
+                        {/* Once the order is collected the server refuses a cancel (it would
+                            be left with the provider) — a dispute instead. */}
                         <TouchableOpacity
                           style={styles.cancelJobBtn}
-                          onPress={() => setShowCancelJobModal(true)}
+                          onPress={() => (orderCollected ? setShowReportIssue(true) : setShowCancelJobModal(true))}
                         >
-                          <XCircle size={18} color="#EF4444" />
-                          <ThemedText style={styles.cancelJobBtnText}>Cancel This Job</ThemedText>
+                          {orderCollected ? <AlertTriangle size={18} color="#EF4444" /> : <XCircle size={18} color="#EF4444" />}
+                          <ThemedText style={styles.cancelJobBtnText}>{orderCollected ? 'Report an Issue' : 'Cancel This Job'}</ThemedText>
                         </TouchableOpacity>
                       </>
                     )}
@@ -2453,6 +2516,20 @@ const filteredJobs = jobs.filter((job) => {
       </Modal>
 
       {/* Cancel Job Reason Modal */}
+      <ReportIssueModal
+        jobId={selectedJob?.id ?? null}
+        visible={showReportIssue}
+        onClose={() => setShowReportIssue(false)}
+        onFiled={() => {
+          // A disputed job leaves the active list (get_active_for_provider).
+          const id = selectedJob?.id;
+          setShowManageModal(false);
+          if (id) {
+            setJobs(prev => prev.filter(j => j.id !== id));
+            setActiveJobId(prev => (prev === id ? null : prev));
+          }
+        }}
+      />
       <Modal
         visible={showCancelJobModal}
         transparent

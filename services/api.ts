@@ -826,12 +826,16 @@ export const SkoFyApi = {
      * standard job (that flow can't apply here: the customer isn't
      * physically at the pickup point to hand over a code).
      */
-    confirmPickup: async (jobId: string, photoUri: string, mimeType: string, lat: number, lng: number) => {
+    confirmPickup: async (
+      jobId: string, photoUri: string, mimeType: string, lat: number, lng: number, goodsAmount?: number,
+    ) => {
       const form = new FormData();
       const ext = mimeType.split('/')[1] || 'jpg';
       form.append('photo', { uri: photoUri, name: `pickup.${ext}`, type: mimeType } as any);
       form.append('lat', String(lat));
       form.append('lng', String(lng));
+      // Buy it for me: the receipt total, paid back from the customer's hold.
+      if (goodsAmount != null) form.append('goods_amount', String(goodsAmount));
       return requestMultipart(`/jobs/${jobId}/pickup/confirm`, form);
     },
 
@@ -964,6 +968,14 @@ export const SkoFyApi = {
         method: 'POST',
         body: JSON.stringify({ token, platform, token_type: tokenType }),
       }),
+  },
+
+  // ── Payments ──────────────────────────────────────────────────────────────
+  payments: {
+    /** Buy it for me: is the customer's shopping money held yet? */
+    getStatus: async (jobId: string, purpose: 'INSPECTION_FEE' | 'JOB_COST' | 'GOODS_ADVANCE'): Promise<{
+      status: 'PENDING_CAPTURE' | 'HELD' | 'RELEASED' | 'REFUNDED' | 'FAILED'; amount: number;
+    }> => request(`/payments/${jobId}?purpose=${purpose}`),
   },
 
   // ── Payouts ───────────────────────────────────────────────────────────────

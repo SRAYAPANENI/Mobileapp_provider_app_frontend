@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Platform, Modal } from 'react-native';
-import { TextInput } from '@/components/scaled-text';
+import { View, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Platform } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors, Fonts } from '@/constants/theme';
@@ -9,8 +8,10 @@ import { SkoFyApi } from '@/services/api';
 import { router, useFocusEffect } from 'expo-router';
 import { CustomerRatingSheet } from '@/components/customer-rating-sheet';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useAppAlert } from '@/components/app-alert';
+import { ReportIssueModal } from '@/components/report-issue-modal';
+import { RateCustomerButton } from '@/components/rate-customer-button';
+import { isOrderCollected } from '@/services/pickupDelivery';
 import {
   Briefcase,
   CheckCircle2,
@@ -18,10 +19,12 @@ import {
   DollarSign,
   Calendar,
   AlertTriangle,
-  Star,
 } from 'lucide-react-native';
 
 interface ProviderJob {
+  // Pickup & Drop: a collected order is disputed, not cancelled (isOrderCollected).
+  job_type?: string;
+  pickup_confirmed_at?: string | null;
   job_id: string;
   title: string;
   description: string;
@@ -203,21 +206,15 @@ function JobCard({
         </View>
       )}
 
-      {/* Backend only accepts a dispute for IN_PROGRESS or COMPLETED — this
-          modal used to exist with no way to ever open it (openDispute was
-          defined but never wired to a button anywhere in this screen). */}
-      {isInProgress && (
+      {/* The server accepts a dispute for IN_PROGRESS, or once a delivery
+          order is collected (can_dispute in app/domain/pickup.py). */}
+      {(isInProgress || (isOrderCollected(job) && (isAccepted || job.job_status === 'INVOICE_PENDING'))) && (
         <TouchableOpacity style={styles.reportIssueLink} onPress={() => onDispute(job.job_id.toString())}>
           <AlertTriangle size={13} color="#EF4444" />
           <ThemedText style={styles.reportIssueLinkText}>Report an Issue</ThemedText>
         </TouchableOpacity>
       )}
-      {onRate && (
-        <TouchableOpacity style={styles.rateCustomerBtn} onPress={onRate} activeOpacity={0.85}>
-          <Star size={14} color="#111827" fill="#111827" />
-          <ThemedText style={styles.rateCustomerBtnText}>Rate customer</ThemedText>
-        </TouchableOpacity>
-      )}
+      {onRate && <RateCustomerButton onPress={onRate} />}
       {job.job_status === 'COMPLETED' && (
         <View style={styles.historyActionsRow}>
           <TouchableOpacity
@@ -268,9 +265,7 @@ export default function JobsScreen() {
   // Dispute modal state
   const [disputeModal, setDisputeModal] = useState(false);
   const [disputeJobId, setDisputeJobId] = useState<string | null>(null);
-  const [disputeReason, setDisputeReason] = useState('');
   const appAlert = useAppAlert();
-  const [isDisputing, setIsDisputing] = useState(false);
 
   // Finished jobs whose customer still needs a rating (job id → customer
   // name). Popups ask once; this is where a provider can always find it.
@@ -327,30 +322,7 @@ export default function JobsScreen() {
 
   const openDispute = (jobId: string) => {
     setDisputeJobId(jobId);
-    setDisputeReason('');
     setDisputeModal(true);
-  };
-
-  const submitDispute = async () => {
-    // Matches the backend's own DisputeJobRequest validator (min 5 chars) —
-    // checked here so the specific, helpful message shows instead of the
-    // generic "Request validation failed." the global 422 handler falls
-    // back to for any Pydantic validation error caught only at submit time.
-    if (!disputeJobId || disputeReason.trim().length < 5) {
-      appAlert.show('info', 'Description Required', 'Please describe the issue in at least 5 characters.');
-      return;
-    }
-    setIsDisputing(true);
-    try {
-      await SkoFyApi.jobs.disputeJob(disputeJobId, disputeReason.trim());
-      setDisputeModal(false);
-      load();
-      appAlert.show('success', 'Dispute Filed', 'Our team will review this and get back to you within 24 hours.');
-    } catch (err: any) {
-      appAlert.show('error', 'Dispute Failed', err?.message ?? 'Failed to file dispute.');
-    } finally {
-      setIsDisputing(false);
-    }
   };
 
   const displayJobs = tab === 'active' ? activeJobs : historyJobs;
@@ -431,54 +403,12 @@ export default function JobsScreen() {
         }}
       />
 
-      {/* Dispute modal */}
-      <Modal
+      <ReportIssueModal
+        jobId={disputeJobId}
         visible={disputeModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setDisputeModal(false)}
-      >
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior="padding" automaticOffset>
-          <View style={[styles.modalSheet, { backgroundColor: themeColors.background }]}>
-            <View style={styles.modalHandle} />
-            <View style={styles.modalHeader}>
-              <AlertTriangle size={20} color="#EF4444" />
-              <ThemedText style={styles.modalTitle}>File a Dispute</ThemedText>
-            </View>
-            <ThemedText style={styles.modalDesc}>
-              Describe the issue clearly. Our team will review and respond within 24 hours.
-            </ThemedText>
-            <TextInput
-              style={[styles.disputeInput, { color: themeColors.text, borderColor: themeColors.border ?? '#E5E7EB' }]}
-              placeholder="Describe the problem (e.g. customer not responding, unsafe conditions)..."
-              placeholderTextColor="#9CA3AF"
-              multiline
-              numberOfLines={4}
-              value={disputeReason}
-              onChangeText={setDisputeReason}
-              textAlignVertical="top"
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setDisputeModal(false)}
-              >
-                <ThemedText style={styles.cancelBtnText}>Cancel</ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.submitBtn, isDisputing && { opacity: 0.6 }]}
-                onPress={submitDispute}
-                disabled={isDisputing}
-              >
-                {isDisputing
-                  ? <ActivityIndicator size="small" color="#fff" />
-                  : <ThemedText style={styles.submitBtnText}>Submit Dispute</ThemedText>
-                }
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        onClose={() => setDisputeModal(false)}
+        onFiled={load}
+      />
       {appAlert.element}
     </ThemedView>
   );
@@ -592,11 +522,6 @@ function makeStyles(t: typeof Colors.light) {
       marginTop: 8, paddingVertical: 8,
     },
     reportIssueLinkText: { fontSize: 12.5, lineHeight: 16, fontFamily: Fonts.poppinsSemiBold, color: '#EF4444' },
-    rateCustomerBtn: {
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-      marginTop: 14, paddingVertical: 11, borderRadius: 12, backgroundColor: '#FFCE48',
-    },
-    rateCustomerBtnText: { fontSize: 13, lineHeight: 17, fontFamily: Fonts.poppinsSemiBold, color: '#111827' },
     historyActionsRow: {
       flexDirection: 'row', gap: 10, marginTop: 14,
       borderTopWidth: 1, borderTopColor: t.borderSubtle, paddingTop: 14,
@@ -611,25 +536,5 @@ function makeStyles(t: typeof Colors.light) {
     emptyTitle: { fontSize: 18, lineHeight: 22, fontFamily: Fonts.poppinsBold, color: t.textSecondary, marginTop: 20, textAlign: 'center' },
     emptySub: { fontSize: 13, fontFamily: Fonts.poppins, color: t.textMuted, marginTop: 8, textAlign: 'center', lineHeight: 20 },
 
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-    modalSheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40 },
-    modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#D1D5DB', alignSelf: 'center', marginBottom: 20 },
-    modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-    modalTitle: { fontSize: 18, lineHeight: 22, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
-    modalDesc: { fontSize: 13, fontFamily: Fonts.poppins, color: t.textSecondary, lineHeight: 19, marginBottom: 16 },
-    disputeInput: {
-      borderWidth: 1.5,
-      borderRadius: 14,
-      padding: 14,
-      minHeight: 110,
-      fontFamily: Fonts.poppins,
-      fontSize: 14, lineHeight: 18,
-      marginBottom: 20,
-    },
-    modalActions: { flexDirection: 'row', gap: 12 },
-    cancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 14, borderWidth: 1.5, borderColor: t.border, alignItems: 'center' },
-    cancelBtnText: { fontSize: 14, lineHeight: 18, fontFamily: Fonts.poppinsSemiBold, color: t.textSecondary },
-    submitBtn: { flex: 2, paddingVertical: 13, borderRadius: 14, backgroundColor: '#EF4444', alignItems: 'center' },
-    submitBtnText: { fontSize: 14, lineHeight: 18, fontFamily: Fonts.poppinsBold, color: '#fff' },
   });
 }
