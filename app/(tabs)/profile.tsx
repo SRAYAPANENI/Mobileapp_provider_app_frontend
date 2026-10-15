@@ -7,12 +7,11 @@ import { useUnratedCustomers } from '@/hooks/use-unrated-customers';
 import { AssessableSkill, SkillEligibility, TestButtonState, eligibilityMessage } from '@/services/skillAssessment';
 import { SkoFyApi } from '@/services/api';
 import { AppLock } from '@/services/appLock';
-import { getCurrentVoipToken } from '@/services/callManager';
+import { signOutDevice } from '@/services/callManager';
 import { stopBackgroundLocation } from '@/services/background-location';
 import { disconnectLocationSocket } from '@/services/location-socket';
 import { clearDashboardCache } from '@/services/homeCache';
 import { kmToMiles, milesToKm } from '@/services/schedulingEngine';
-import messaging from '@react-native-firebase/messaging';
 import { StyleSheet, View, TouchableOpacity, ScrollView, Platform, Dimensions, Modal, Switch, RefreshControl, SafeAreaView, Pressable, BackHandler, PanResponder, Animated as RNAnimated, ActivityIndicator, Alert, Linking } from 'react-native';
 import { TextInput } from '@/components/scaled-text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1313,20 +1312,10 @@ export default function ProfileScreen() {
     // defense in depth, clearing it outright rather than leaving a
     // deleted/logged-out account's data sitting on disk indefinitely.
     await clearDashboardCache().catch(() => {});
-    // Local logout proceeds regardless — this is just telling the server to
-    // invalidate the refresh token server-side.
-    try {
-      // Best-effort — a failure here shouldn't block logout, it would just
-      // mean the backend deletes the token by user_id next login instead of
-      // right now (see auth_service.py's logout docstring for why this
-      // exists at all: without it, a logged-out device kept ringing for
-      // incoming calls indefinitely).
-      const fcmToken = await messaging().getToken().catch(() => undefined);
-      const voipToken = getCurrentVoipToken() ?? undefined;
-      await SkoFyApi.auth.logout(fcmToken, voipToken);
-    } catch (err) {
-      console.error('Server-side logout failed:', err);
-    }
+    // Server drops this phone's tokens; the phone also has Firebase forget
+    // its token and stops any ringing, so a failed server call can't leave
+    // it ringing after logout.
+    await signOutDevice();
     router.replace('/login');
   };
 
