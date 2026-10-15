@@ -965,7 +965,7 @@ const filteredJobs = jobs.filter((job) => {
             { text: gate.actionLabel, onPress: () => router.push('/(tabs)/profile') },
           ]);
         } else {
-          appAlert.show('error', 'Bid Failed', msg || 'Failed to submit bid. Please try again.');
+          appAlert.show('error', 'Could Not Apply', msg || 'Failed to apply for this job. Please try again.');
         }
         return;
       }

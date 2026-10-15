@@ -470,7 +470,7 @@ export default function JobDetailsScreen() {
       const msg = err?.message ?? '';
       if (msg.toLowerCase().includes('already') || err?.error_code === 'ALREADY_BID') {
         setShowBidModal(false);
-        Alert.alert('Already Applied', 'You have already submitted a bid for this job.');
+        Alert.alert('Already Applied', 'You have already applied for this job.');
         return;
       }
       const gate = resolveApplyGate(err);
@@ -483,7 +483,7 @@ export default function JobDetailsScreen() {
           onAction: () => { setGateModal(null); router.push('/(tabs)/profile'); },
         });
       } else {
-        Alert.alert('Failed', msg || 'Could not submit bid. Please try again.');
+        Alert.alert('Failed', msg || 'Could not apply for this job. Please try again.');
       }
     } finally {
       setIsSubmittingBid(false);

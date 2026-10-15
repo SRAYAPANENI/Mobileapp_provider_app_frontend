@@ -69,7 +69,7 @@ function formatBudget(job: ProviderJob): string {
   // pre-migration application. The real, settled price is final_amount,
   // set once a post-inspection invoice (or its counter) is paid.
   if (job.final_amount) return `$${job.final_amount}`;
-  if (job.proposed_fee) return `$${job.proposed_fee} (your bid)`;
+  if (job.proposed_fee) return `$${job.proposed_fee} (your quote)`;
   if (job.budget_min && job.budget_max) return `$${job.budget_min} – $${job.budget_max}`;
   if (job.budget_min) return `From $${job.budget_min}`;
   if (job.budget_max) return `Up to $${job.budget_max}`;
@@ -155,7 +155,7 @@ function JobCard({
       {/* History: show your bid amount + message */}
       {isHistory && job.proposed_fee != null && (
         <View style={styles.bidInfo}>
-          <ThemedText style={styles.bidInfoLabel}>Your bid: </ThemedText>
+          <ThemedText style={styles.bidInfoLabel}>Your quote: </ThemedText>
           <ThemedText style={styles.bidInfoValue}>${job.proposed_fee}</ThemedText>
           {job.message ? (
             <ThemedText style={styles.bidInfoMsg} numberOfLines={1}> · "{job.message}"</ThemedText>
