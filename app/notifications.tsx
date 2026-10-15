@@ -29,6 +29,7 @@ import { router, useFocusEffect } from 'expo-router';
 import Animated, { FadeInUp, LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SkoFyApi } from '@/services/api';
+import { useAppAlert } from '@/components/app-alert';
 
 interface NotifItem {
   id: string;
@@ -79,6 +80,12 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+/** The newest notification shown — "Clear all" clears up to it, so one that
+ * arrives while the user is deciding isn't cleared unseen. */
+function newestCreatedAt(list: { created_at: string }[]): string | undefined {
+  return list.reduce<string | undefined>((max, n) => (!max || new Date(n.created_at) > new Date(max) ? n.created_at : max), undefined);
+}
+
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
@@ -86,6 +93,7 @@ export default function NotificationsScreen() {
   const styles = React.useMemo(() => makeStyles(themeColors), [colorScheme]);
 
   const [notifications, setNotifications] = useState<NotifItem[]>([]);
+  const appAlert = useAppAlert();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -135,9 +143,25 @@ export default function NotificationsScreen() {
     }
   };
 
-  const clearAll = async () => {
-    setNotifications([]);
-    SkoFyApi.notifications.readAll().catch(() => {});
+  const clearAll = () => {
+    if (notifications.length === 0) return;
+    appAlert.show('warning', 'Clear all notifications?', "They'll be removed from this list. This can't be undone.", [
+      { text: 'Cancel', variant: 'secondary' },
+      {
+        text: 'Clear all',
+        variant: 'primary',
+        onPress: async () => {
+          const before = notifications;
+          setNotifications([]);
+          try {
+            await SkoFyApi.notifications.clearAll(newestCreatedAt(before));
+          } catch {
+            setNotifications(before);
+            appAlert.show('error', 'Could not clear', 'Please check your connection and try again.');
+          }
+        },
+      },
+    ]);
   };
 
   return (
@@ -148,7 +172,11 @@ export default function NotificationsScreen() {
           <ChevronLeft size={24} color="#111827" />
         </TouchableOpacity>
         <ThemedText style={styles.headerTitle}>Notifications</ThemedText>
-        <TouchableOpacity onPress={clearAll} style={styles.clearBtn}>
+        <TouchableOpacity
+          onPress={clearAll}
+          style={[styles.clearBtn, notifications.length === 0 && { opacity: 0 }]}
+          disabled={notifications.length === 0}
+        >
           <ThemedText style={styles.clearText}>Clear All</ThemedText>
         </TouchableOpacity>
       </View>
@@ -211,6 +239,7 @@ export default function NotificationsScreen() {
           )}
         </ScrollView>
       )}
+      {appAlert.element}
     </View>
   );
 }

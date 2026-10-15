@@ -540,7 +540,7 @@ export default function JobDetailsScreen() {
 
       <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Main Job Info Card */}
-        <Animated.View entering={FadeInUp.delay(100).springify()} style={styles.mainCard}>
+        <Animated.View entering={FadeInUp.delay(100)} style={styles.mainCard}>
           {/* Badges row — mirrors dashboard card */}
           <View style={styles.detailBadgesRow}>
             {job.isDirectRequest && (
@@ -681,7 +681,7 @@ export default function JobDetailsScreen() {
         </Animated.View>
 
         {/* Job Meta Card */}
-        <Animated.View entering={FadeInUp.delay(200).springify()} style={styles.employerCard}>
+        <Animated.View entering={FadeInUp.delay(200)} style={styles.employerCard}>
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: '#FEF9C3', alignItems: 'center', justifyContent: 'center' }}>
               <Briefcase size={20} color="#FFCE48" />
@@ -694,7 +694,7 @@ export default function JobDetailsScreen() {
         </Animated.View>
 
         {/* Description & Requirements Section */}
-        <Animated.View entering={FadeInUp.delay(300).springify()} style={styles.descriptionSection}>
+        <Animated.View entering={FadeInUp.delay(300)} style={styles.descriptionSection}>
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>Job Description & Requirements</Text>
           </View>
@@ -718,7 +718,7 @@ export default function JobDetailsScreen() {
 
         {/* Specific Details from Customer (Attachments, etc) */}
         {job.hasMedia && (
-          <Animated.View entering={FadeInUp.delay(400).springify()} style={styles.customerDetailsSection}>
+          <Animated.View entering={FadeInUp.delay(400)} style={styles.customerDetailsSection}>
             <Text style={styles.sectionTitle}>Customer Attachments</Text>
             <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} style={styles.mediaScroll}>
               {job.media.map((item: any, index: number) => (
@@ -745,7 +745,7 @@ export default function JobDetailsScreen() {
         )}
 
         {/* Job Card Details (Timer and Skills from Dashboard) */}
-        <Animated.View entering={FadeInUp.delay(500).springify()} style={styles.dashboardDetailsSection}>
+        <Animated.View entering={FadeInUp.delay(500)} style={styles.dashboardDetailsSection}>
           <Text style={styles.sectionTitle}>Job card Summary</Text>
           <View style={styles.summaryStatsRow}>
             <View style={styles.summaryStatItem}>

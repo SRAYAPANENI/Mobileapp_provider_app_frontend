@@ -111,7 +111,7 @@ function JobCard({
 
   return (
     <Animated.View
-      entering={FadeInDown.delay(index * 70).springify()}
+      entering={FadeInDown.delay(index * 70)}
       style={[styles.card, { backgroundColor: themeColors.background }]}
     >
       {/* Top badges */}

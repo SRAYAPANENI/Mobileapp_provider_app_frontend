@@ -231,7 +231,7 @@ export default function LoginScreen() {
             <ThemedText style={styles.subtitle}>Login to start providing services</ThemedText>
           </View>
 
-          <Animated.View layout={Layout.springify()} style={styles.form}>
+          <Animated.View layout={Layout.duration(200)} style={styles.form}>
             {loginMethod === 'otp' ? (
               <Animated.View
                 key="otp-form"

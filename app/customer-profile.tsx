@@ -224,7 +224,7 @@ export default function CustomerProfileScreen() {
         </Animated.View>
 
         {/* Quick Stats */}
-        <Animated.View entering={FadeInUp.delay(100).springify()} style={styles2.statsRow}>
+        <Animated.View entering={FadeInUp.delay(100)} style={styles2.statsRow}>
           <View style={styles2.statItem}>
             <Text style={styles2.statValue}>{profile.jobs_posted}</Text>
             <Text style={styles2.statLabel}>Total Jobs</Text>
@@ -237,7 +237,7 @@ export default function CustomerProfileScreen() {
         </Animated.View>
 
         {/* About Section */}
-        <Animated.View entering={FadeInUp.delay(200).springify()} style={styles2.aboutCard}>
+        <Animated.View entering={FadeInUp.delay(200)} style={styles2.aboutCard}>
           <Text style={styles2.sectionTitle}>About Customer</Text>
           <View style={styles2.aboutRow}>
             <Briefcase size={16} color="#6B7280" />

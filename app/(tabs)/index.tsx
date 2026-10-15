@@ -67,7 +67,6 @@ import Animated, {
   withRepeat,
   withSequence,
   withTiming,
-  withSpring,
 } from 'react-native-reanimated';
 const formatTime = (deadline: number, now: number) => {
   const diff = Math.max(0, deadline - now);
@@ -641,8 +640,9 @@ export default function DashboardScreen() {
             useNativeDriver: true,
           }).start();
         } else {
-          RNAnimated.spring(panY, {
+          RNAnimated.timing(panY, {
             toValue: 0,
+            duration: 200,
             useNativeDriver: true,
           }).start();
         }
@@ -819,8 +819,8 @@ export default function DashboardScreen() {
       const cur = getTabCount(idx);
       if (cur > prevTabCounts.current[idx] && idx !== activeTab) {
         tabPulseScales[idx].value = withSequence(
-          withTiming(1.25, { duration: 200 }),
-          withSpring(1, { damping: 8 }),
+          withTiming(1.15, { duration: 180 }),
+          withTiming(1, { duration: 220 }),
         );
       }
       prevTabCounts.current[idx] = cur;
@@ -835,7 +835,7 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     if (showSuccessOverlay) {
-      successScale.value = withSpring(1, { damping: 15 });
+      successScale.value = withTiming(1, { duration: 300 });
       successOpacity.value = withTiming(1, { duration: 400 });
 
       let chatNotifTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1357,7 +1357,7 @@ const filteredJobs = jobs.filter((job) => {
 
   useEffect(() => {
     if (showChatNotification) {
-      notificationTranslateY.value = withSpring(Platform.OS === 'ios' ? 60 : 40);
+      notificationTranslateY.value = withTiming(Platform.OS === 'ios' ? 60 : 40, { duration: 250 });
       const timer = setTimeout(() => {
         setShowChatNotification(false);
         notificationTranslateY.value = withTiming(-100);
@@ -1393,7 +1393,7 @@ const filteredJobs = jobs.filter((job) => {
     return (
       <Animated.View
         key={job.id}
-        entering={FadeInUp.delay(200 * index).springify()}
+        entering={FadeInUp.delay(200 * index)}
         style={[
           styles.jobCard,
           {
