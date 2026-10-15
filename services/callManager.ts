@@ -406,7 +406,7 @@ export function setActiveChatJob(jobId: string | null) {
   activeChatJobId = jobId;
 }
 
-const MISSED_CALL_CHANNEL_ID = 'missed_calls_v1';
+const MISSED_CALL_CHANNEL_ID = 'missed_calls_v2';
 
 /** One-shot "Missed call" notice — replaces the incoming-call notification
  * once the caller hangs up (or times out) before this device ever answers. */
@@ -414,7 +414,7 @@ async function showMissedCallNotification(jobId: string, callerName: string) {
   await notifee.createChannel({
     id: MISSED_CALL_CHANNEL_ID,
     name: 'Missed Calls',
-    importance: AndroidImportance.DEFAULT,
+    importance: AndroidImportance.HIGH,
     visibility: AndroidVisibility.PUBLIC,
   });
   await notifee.displayNotification({
@@ -544,7 +544,7 @@ function handleDirectRequestAction(jobId: string, actionId: string | undefined) 
   safeNavigate(() => router.push({ pathname: '/job-details' as any, params }));
 }
 
-const JOB_UPDATE_CHANNEL_ID = 'job_updates_v1';
+const JOB_UPDATE_CHANNEL_ID = 'job_updates_v2';
 
 
 // Chat messages get their own channel at HIGH importance — they used to go
@@ -583,7 +583,7 @@ async function showJobUpdateNotification(jobId: string, title: string, body: str
   await notifee.createChannel({
     id: JOB_UPDATE_CHANNEL_ID,
     name: 'Job Updates',
-    importance: AndroidImportance.DEFAULT,
+    importance: AndroidImportance.HIGH,
     visibility: AndroidVisibility.PUBLIC,
   });
   await notifee.displayNotification({
@@ -599,7 +599,7 @@ async function showJobUpdateNotification(jobId: string, title: string, body: str
   });
 }
 
-const ADMIN_BROADCAST_CHANNEL_ID = 'admin_broadcasts_v1';
+const ADMIN_BROADCAST_CHANNEL_ID = 'admin_broadcasts_v2';
 
 /** Fired on "admin_broadcast" pushes (admin portal's Push Notifications
  * screen) — same class of bug as elsewhere in this file: no handler existed
@@ -612,7 +612,7 @@ async function showAdminBroadcastNotification(title: string, body: string, image
   await notifee.createChannel({
     id: ADMIN_BROADCAST_CHANNEL_ID,
     name: 'Announcements',
-    importance: AndroidImportance.DEFAULT,
+    importance: AndroidImportance.HIGH,
     visibility: AndroidVisibility.PUBLIC,
   });
   // notifee's Android BigPictureStyle accepts a remote HTTP(S) URL directly.
@@ -721,6 +721,17 @@ function handleNotifeeEvent(type: EventType, detail: any) {
   const missedJobId = detail.notification?.data?.missedCallJobId as string | undefined;
   if (missedJobId && (type === EventType.PRESS || type === EventType.ACTION_PRESS)) {
     openChatForMissedCall(missedJobId, (detail.notification?.data?.callerName as string) || '');
+    if (detail.notification?.id) notifee.cancelNotification(detail.notification.id);
+    return;
+  }
+
+  const generalType = detail.notification?.data?.generalType as string | undefined;
+  if (generalType && (type === EventType.PRESS || type === EventType.ACTION_PRESS)) {
+    openGeneralNotification(
+      generalType,
+      detail.notification?.data?.ticketId as string | undefined,
+      detail.notification?.data?.jobId as string | undefined,
+    );
     if (detail.notification?.id) notifee.cancelNotification(detail.notification.id);
     return;
   }
@@ -1272,6 +1283,57 @@ export function registerCallDeclineTask() {
 
 /** Must be called as early as possible (before the app's component tree even
  * mounts) so Android's headless JS can run it when the app is killed. */
+// Any push the app has no special handling for — a support reply, a pickup
+// code, a job status change — still shows as a normal pop-up notification.
+// Unhandled types used to be dropped silently: these pushes are data-only,
+// so nothing appears unless the app shows it itself.
+async function showGeneralNotification(data: Record<string, any> | undefined) {
+  const title = data?.title as string | undefined;
+  const body = data?.body as string | undefined;
+  if (!title || !body) return;
+  const type = String(data?.type ?? 'general');
+  const key = (data?.ticket_id as string) || (data?.job_id as string) || String(Date.now());
+  await notifee.createChannel({
+    id: JOB_UPDATE_CHANNEL_ID,
+    name: 'Service Updates',
+    importance: AndroidImportance.HIGH,
+    visibility: AndroidVisibility.PUBLIC,
+  });
+  await notifee.displayNotification({
+    id: `general-${type}-${key}`,
+    title,
+    body,
+    data: {
+      generalType: type,
+      ...(data?.ticket_id ? { ticketId: String(data.ticket_id) } : {}),
+      ...(data?.job_id ? { jobId: String(data.job_id) } : {}),
+    } as any,
+    android: {
+      channelId: JOB_UPDATE_CHANNEL_ID,
+      pressAction: { id: 'default' },
+      autoCancel: true,
+    },
+  });
+}
+
+/** A tapped notification opens what it's about: the support conversation, or
+ * the job's Service Room — the Notifications list only when it's about neither. */
+function openGeneralNotification(type: string, ticketId?: string, jobId?: string) {
+  if (type === 'support_ticket') {
+    safeNavigate(() => router.push({ pathname: '/support-chat', params: ticketId ? { ticketId } : {} } as any));
+    return;
+  }
+  if (jobId) {
+    safeNavigate(() => router.push({ pathname: '/(tabs)', params: { openServiceRoom: 'true', jobId } } as any));
+    return;
+  }
+  safeNavigate(() => router.push('/notifications' as any));
+}
+
+// Android never lets an app raise a channel's importance once it exists on a
+// phone, so the quiet ones are replaced by new high-importance channels.
+const RETIRED_CHANNEL_IDS = ['missed_calls_v1', 'job_started_v1', 'job_updates_v1', 'admin_broadcasts_v1'];
+
 // ── Signing this phone out of push ──────────────────────────────────────────
 // A logged-out phone used to keep ringing: logout only asked the server to
 // forget the token, and if that request failed (no network, an expired
@@ -1408,7 +1470,11 @@ export function registerBackgroundHandler() {
       return;
     }
     const call = parseIncomingCall(remoteMessage.data);
-    if (call) await showIncomingCallNotification(call);
+    if (call) {
+      await showIncomingCallNotification(call);
+      return;
+    }
+    await showGeneralNotification(remoteMessage.data);
   });
   notifee.onBackgroundEvent(async ({ type, detail }) => {
     handleNotifeeEvent(type, detail);
@@ -1480,6 +1546,9 @@ async function checkMakerCallSettings() {
  * foreground push/notification-press listeners. */
 export function initCallManager() {
   setupCallKeepForIOS();
+  if (Platform.OS === 'android') {
+    RETIRED_CHANNEL_IDS.forEach((id) => { notifee.deleteChannel(id).catch(() => {}); });
+  }
   initCallActionListener();
   // One prompt per launch at most.
   checkFullScreenCallPermission().then((asked) => { if (!asked) checkMakerCallSettings(); });
@@ -1583,7 +1652,10 @@ export function initCallManager() {
       return;
     }
     const call = parseIncomingCall(remoteMessage.data);
-    if (!call) return;
+    if (!call) {
+      await showGeneralNotification(remoteMessage.data);
+      return;
+    }
     // Already looking at this exact call's chat screen — the WS-driven
     // ringing UI is handling it, showing the notification too would just be
     // a redundant, confusing second prompt for the same call.

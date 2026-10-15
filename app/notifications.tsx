@@ -40,6 +40,7 @@ interface NotifItem {
   is_read: boolean;
   created_at: string;
   image_url: string | null;
+  ticket_id?: string | null;
 }
 
 function getTypeStyles(type: string) {
@@ -119,6 +120,13 @@ export default function NotificationsScreen() {
   };
 
   const handlePress = (item: NotifItem) => {
+    // A support reply opens that conversation (ticket_id is kept since
+    // migration 053; older rows open the list of the user's tickets).
+    if (item.notif_type === 'support_ticket') {
+      if (item.ticket_id) router.push({ pathname: '/support-chat', params: { ticketId: item.ticket_id } } as any);
+      else router.push('/help-support' as any);
+      return;
+    }
     if (!item.job_id) return;
     switch (item.notif_type) {
       case 'new_job':
