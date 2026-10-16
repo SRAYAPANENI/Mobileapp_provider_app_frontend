@@ -6,6 +6,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { SkoFyApi } from '@/services/api';
+import { registerFcmToken } from '@/services/callManager';
 import { GooglePlacesService, GooglePlaceSuggestion } from '@/services/google-places';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -580,6 +581,9 @@ export default function RegisterScreen() {
     if (formData.otp.length >= 4) {
       try {
         const user = await SkoFyApi.auth.verifyOTP(`+${callingCode}${formData.mobileNumber}`, formData.otp);
+        // Signing in removes this account's push tokens from its other phones
+        // (and from this one), so this phone registers its own again at once.
+        registerFcmToken();
         // is_new_role (not is_new_user) is what actually gates whether
         // there's a Provider profile left to fill in — is_new_user alone
         // can't distinguish "brand-new account" from "this phone already
