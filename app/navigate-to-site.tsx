@@ -17,6 +17,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { liftBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 
 let MapView: any;
 let Marker: any;
@@ -83,6 +84,7 @@ async function fetchRoute(origin: LatLng, dest: LatLng): Promise<{ coords: LatLn
 }
 
 export default function NavigateToSiteScreen() {
+  const bottomInset = useBottomInset();
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
   const styles = React.useMemo(() => makeStyles(themeColors), [colorScheme]);
@@ -390,7 +392,7 @@ export default function NavigateToSiteScreen() {
       {/* Locate / follow button */}
       {!mapError && destination && (
         <TouchableOpacity
-          style={[styles.locateBtn, isFollowing && styles.locateBtnActive]}
+          style={liftBottom([styles.locateBtn, isFollowing && styles.locateBtnActive], bottomInset)}
           onPress={handleLocate}
         >
           <LocateFixed size={20} color={isFollowing ? '#fff' : '#000'} />
@@ -401,7 +403,7 @@ export default function NavigateToSiteScreen() {
       {appAlert.element}
 
       {!mapError && destination && (
-        <View style={styles.panel}>
+        <View style={liftBottom(styles.panel, bottomInset)}>
           <View style={styles.etaRow}>
             <View>
               <ThemedText style={styles.arrivingLabel}>Arriving in</ThemedText>

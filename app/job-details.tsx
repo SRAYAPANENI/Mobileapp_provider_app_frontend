@@ -35,6 +35,7 @@ import Animated, { FadeInUp, FadeInRight } from 'react-native-reanimated';
 import { Alert } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { getJobById, JOBS_LIST } from '@/data/jobsData';
+import { useBottomInset } from '@/hooks/use-bottom-inset';
 
 const { width } = Dimensions.get('window');
 
@@ -122,6 +123,7 @@ const SkillMatchCircle = ({ percentage, styles }: { percentage: number; styles: 
 };
 
 export default function JobDetailsScreen() {
+  const bottomInset = useBottomInset();
   const { id, autoApply } = useLocalSearchParams<{ id: string; autoApply?: string }>();
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
@@ -829,11 +831,11 @@ export default function JobDetailsScreen() {
           </View>
         </Animated.View>
 
-        <View style={{ height: 120 }} />
+        <View style={{ height: 120 + bottomInset }} />
       </ScrollView>
 
       {/* Persistent Footer Actions */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(bottomInset + 8, 16) }]}>
         {(() => {
           // Precedence matters here: isOngoing (I'm the hired provider) >
           // isClosed (job died — cancelled/expired/disputed, nobody won it)

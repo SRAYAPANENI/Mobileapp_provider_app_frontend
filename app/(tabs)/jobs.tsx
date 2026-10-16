@@ -20,6 +20,7 @@ import {
   Calendar,
   AlertTriangle,
 } from 'lucide-react-native';
+import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 
 interface ProviderJob {
   // Pickup & Drop: a collected order is disputed, not cancelled (isOrderCollected).
@@ -253,6 +254,7 @@ function EmptyState({ tab }: { tab: 'active' | 'history' }) {
 }
 
 export default function JobsScreen() {
+  const bottomInset = useBottomInset();
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
   const styles = React.useMemo(() => makeStyles(themeColors), [colorScheme]);
@@ -377,7 +379,7 @@ export default function JobsScreen() {
               : undefined}
           />
         )}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={padBottom(styles.listContent, bottomInset)}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl

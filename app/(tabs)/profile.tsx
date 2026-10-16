@@ -65,6 +65,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { Calendar } from 'react-native-calendars';
 import Animated, { FadeInUp, FadeInDown, FadeInRight, FadeIn, LinearTransition, ZoomIn } from 'react-native-reanimated';
 import { Camera, Image as ImageIcon, Trash2, Edit2, AlertTriangle, Layers, Zap, Clock, Trophy } from 'lucide-react-native';
+import { fitBottom, padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 
 // How long the timed-out question's feedback (Incorrect + explanation, or
 // the final score card) stays visible before the skill test auto-advances —
@@ -143,6 +144,7 @@ interface ApiJob {
 }
 
 export default function ProfileScreen() {
+  const bottomInset = useBottomInset();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
@@ -1653,7 +1655,7 @@ export default function ProfileScreen() {
       <ScrollView keyboardShouldPersistTaps="handled"
         ref={profileScrollRef}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={padBottom(styles.scrollContent, bottomInset)}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -2248,7 +2250,7 @@ export default function ProfileScreen() {
         onRequestClose={() => setIsSettingsOpen(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={fitBottom(styles.modalContent, bottomInset)}>
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Settings</ThemedText>
               <TouchableOpacity onPress={() => setIsSettingsOpen(false)}>
@@ -2855,7 +2857,7 @@ export default function ProfileScreen() {
           activeOpacity={1}
           onPress={() => setIsPhotoSheetOpen(false)}
         >
-          <View style={styles.photoSheet}>
+          <View style={padBottom(styles.photoSheet, bottomInset)}>
             <View style={styles.photoSheetHeader}>
               <ThemedText style={styles.photoSheetTitle}>Profile Photo</ThemedText>
             </View>
@@ -2971,7 +2973,7 @@ export default function ProfileScreen() {
       {/* Skill Tagging Modal */}
       <Modal visible={showTagModal} transparent animationType="slide" onRequestClose={() => setShowTagModal(false)}>
         <KeyboardAvoidingView style={styles.modalOverlay} behavior="padding" automaticOffset>
-          <View style={styles.tagModalContent}>
+          <View style={padBottom(styles.tagModalContent, bottomInset)}>
             {/* Header */}
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Add Skill Proof</ThemedText>

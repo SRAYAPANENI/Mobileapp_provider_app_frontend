@@ -31,6 +31,7 @@ import { CallOverlay } from '@/components/call-overlay';
 import InCallManager from 'react-native-incall-manager';
 import { answerIosRing, claimOutgoingCall, markCallEnded, releaseOutgoingCall, startInAppRingtone, stopInAppRingtone, cancelIncomingCallNotification, endIosCallSession, forgetCallScreen, takeAcceptRequest, endIosRingForHangUp, markIosCallConnected, registerAcceptHandler, registerDeclineHandler, showIosIncomingCall, registerHangupHandler, registerMuteHandler, registerSpeakerHandler, setActiveChatJob, setChatCallActive, startIosOutgoingCall, startOngoingCallNotification, stopOngoingCallNotification, updateOngoingCallControls } from '@/services/callManager';
 import { useOpenScreen } from '@/services/openScreens';
+import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 
 // No-answer cutoff — like a real phone call, ringing/calling shouldn't go on forever.
 // The server ends an unanswered call after 45s and says why; this is only
@@ -94,6 +95,7 @@ function endedLabelFor(reason: string | undefined, state: CallState): string | n
 }
 
 export default function ChatScreen() {
+  const bottomInset = useBottomInset();
   const { jobId, name: paramName, profileImage: paramProfileImage, jobTitle: paramJobTitle, autoAnswer, autoCall, callId: callIdParam, returnOnEnd } = useLocalSearchParams<{
     jobId: string;
     name: string;
@@ -1114,7 +1116,7 @@ export default function ChatScreen() {
       />
 
       {contactOpen ? (
-        <View style={styles.inputContainer}>
+        <View style={padBottom(styles.inputContainer, bottomInset)}>
           <TextInput
             style={styles.input}
             placeholder="Type a message..."
@@ -1132,7 +1134,7 @@ export default function ChatScreen() {
           </TouchableOpacity>
         </View>
       ) : (
-        <View style={[styles.closedBanner, { paddingBottom: 14 }]}>
+        <View style={padBottom([styles.closedBanner, { paddingBottom: 14 }], bottomInset)}>
           <ThemedText style={styles.closedBannerText}>{CLOSED_TEXT}</ThemedText>
         </View>
       )}

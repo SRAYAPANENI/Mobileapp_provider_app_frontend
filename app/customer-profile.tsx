@@ -15,6 +15,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { SkoFyApi } from '@/services/api';
+import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 
 interface JobHistoryItem {
   id: string;
@@ -92,6 +93,7 @@ function SkillGauge({ score, size = 70 }: { score: number; size?: number }) {
 
 // --- Main Screen ---
 export default function CustomerProfileScreen() {
+  const bottomInset = useBottomInset();
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
   const styles2 = React.useMemo(() => makeStyles(themeColors), [colorScheme]);
@@ -189,7 +191,7 @@ export default function CustomerProfileScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles2.scrollContent}>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={padBottom(styles2.scrollContent, bottomInset)}>
         {/* Profile Section */}
         <Animated.View entering={FadeInUp.duration(600)} style={styles2.profileSection}>
           <View style={styles2.avatarContainer}>

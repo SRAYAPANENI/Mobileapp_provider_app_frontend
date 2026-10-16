@@ -68,6 +68,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
+import { fitBottom, padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 const formatTime = (deadline: number, now: number) => {
   const diff = Math.max(0, deadline - now);
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -78,6 +79,7 @@ const formatTime = (deadline: number, now: number) => {
 };
 
 export default function DashboardScreen() {
+  const bottomInset = useBottomInset();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { openServiceRoom, jobId: paramJobId } = useLocalSearchParams<{ openServiceRoom?: string; jobId?: string }>();
@@ -1795,7 +1797,7 @@ const filteredJobs = jobs.filter((job) => {
 
       <ScrollView keyboardShouldPersistTaps="handled"
         style={styles.jobsList}
-        contentContainerStyle={styles.jobsListContent}
+        contentContainerStyle={padBottom(styles.jobsListContent, bottomInset)}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -1934,7 +1936,7 @@ const filteredJobs = jobs.filter((job) => {
                 behavior="padding"
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
               >
-              <ScrollView ref={manageScrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
+              <ScrollView ref={manageScrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 + bottomInset }} keyboardShouldPersistTaps="handled">
                 {/* Live badge */}
                 <View style={styles.liveBadge}>
                   <View style={styles.liveDot} />
@@ -2671,7 +2673,7 @@ const filteredJobs = jobs.filter((job) => {
         onRequestClose={skipRating}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.ratingSheet}>
+          <View style={fitBottom(styles.ratingSheet, bottomInset)}>
             <View style={styles.dragHandle} />
             <ThemedText style={styles.ratingTitle}>Rate Your Experience</ThemedText>
             <ThemedText style={styles.ratingSubtitle}>

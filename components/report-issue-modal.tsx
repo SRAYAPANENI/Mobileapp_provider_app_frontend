@@ -8,6 +8,7 @@ import { AlertTriangle } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 
 interface Props {
   jobId: string | null;
@@ -19,6 +20,7 @@ interface Props {
 // Filing a dispute on a job — used from the Jobs tab and the job sheet. The
 // server decides when a job can be disputed (job_service.dispute_job).
 export function ReportIssueModal({ jobId, visible, onClose, onFiled }: Props) {
+  const bottomInset = useBottomInset();
   const colorScheme = useColorScheme();
   const t = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
   const styles = useMemo(() => makeStyles(t), [t]);
@@ -51,7 +53,7 @@ export function ReportIssueModal({ jobId, visible, onClose, onFiled }: Props) {
     <>
       <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
         <KeyboardAvoidingView style={styles.overlay} behavior="padding" automaticOffset>
-          <View style={[styles.sheet, { backgroundColor: t.background }]}>
+          <View style={padBottom([styles.sheet, { backgroundColor: t.background }], bottomInset)}>
             <View style={styles.handle} />
             <View style={styles.header}>
               <AlertTriangle size={20} color="#EF4444" />

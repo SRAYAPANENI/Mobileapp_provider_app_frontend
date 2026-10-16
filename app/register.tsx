@@ -52,6 +52,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
+import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 
 // Must match the `profession` values seeded in skofy-backend/scripts/seed_skills.py exactly —
 // addSkillsByName() resolves by (name, profession) and getMySkills()/job matching rely on consistent naming.
@@ -88,6 +89,7 @@ const PROFESSIONS_DATA = [
 ];
 
 export default function RegisterScreen() {
+  const bottomInset = useBottomInset();
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
   const styles = React.useMemo(() => makeStyles(themeColors), [colorScheme]);
@@ -639,7 +641,7 @@ export default function RegisterScreen() {
         </View>
 
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={padBottom(styles.scrollContent, bottomInset)}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -1439,7 +1441,7 @@ export default function RegisterScreen() {
       {/* Profession Modal */}
       <Modal visible={showProfessionModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: themeColors.background }]}>
+          <View style={padBottom([styles.modalContent, { backgroundColor: themeColors.background }], bottomInset)}>
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Select Profession</ThemedText>
               <TouchableOpacity onPress={() => setShowProfessionModal(false)}>
@@ -1479,7 +1481,7 @@ export default function RegisterScreen() {
       {/* Skills Modal */}
       <Modal visible={showSkillsModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: themeColors.background }]}>
+          <View style={padBottom([styles.modalContent, { backgroundColor: themeColors.background }], bottomInset)}>
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Select Skills</ThemedText>
               <TouchableOpacity onPress={() => setShowSkillsModal(false)}>
@@ -1527,7 +1529,7 @@ export default function RegisterScreen() {
       {/* Skill Tag Modal */}
       <Modal visible={showTagModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: themeColors.background, maxHeight: '90%', flex: 1, marginTop: 'auto', borderTopLeftRadius: 32, borderTopRightRadius: 32, minHeight: '0%' }]}>
+          <View style={padBottom([styles.modalContent, { backgroundColor: themeColors.background, maxHeight: '90%', flex: 1, marginTop: 'auto', borderTopLeftRadius: 32, borderTopRightRadius: 32, minHeight: '0%' }], bottomInset)}>
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Add Skill Proof</ThemedText>
               <TouchableOpacity onPress={() => setShowTagModal(false)}>

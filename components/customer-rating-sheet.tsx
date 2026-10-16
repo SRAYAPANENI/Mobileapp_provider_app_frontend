@@ -5,6 +5,7 @@ import { Star } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { Alert, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, TextInput } from '@/components/scaled-text';
+import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 
 const DIMENSIONS = ['behaviour', 'negotiation', 'payment', 'environment'] as const;
 type Dimension = typeof DIMENSIONS[number];
@@ -26,6 +27,7 @@ export function CustomerRatingSheet({
   customerName?: string;
   onClose: (submitted: boolean) => void;
 }) {
+  const bottomInset = useBottomInset();
   const [ratings, setRatings] = useState(EMPTY);
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -68,7 +70,7 @@ export function CustomerRatingSheet({
   return (
     <Modal visible={!!jobId} transparent animationType="fade" onRequestClose={skip}>
       <View style={styles.overlay}>
-        <View style={styles.sheet}>
+        <View style={padBottom(styles.sheet, bottomInset)}>
           <Text style={styles.title}>{customerName ? `Rate ${customerName}` : 'Rate this customer'}</Text>
           <Text style={styles.subtitle}>How did the job go?</Text>
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={{ width: '100%' }}>

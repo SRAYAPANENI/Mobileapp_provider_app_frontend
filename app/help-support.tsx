@@ -15,6 +15,7 @@ import {
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View, RefreshControl } from 'react-native';
 import { TextInput } from '@/components/scaled-text';
+import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 
 const FAQS = [
   {
@@ -59,6 +60,7 @@ function formatDate(iso: string): string {
 }
 
 export default function HelpSupportScreen() {
+  const bottomInset = useBottomInset();
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
   const styles = React.useMemo(() => makeStyles(themeColors), [colorScheme]);
@@ -94,7 +96,7 @@ export default function HelpSupportScreen() {
       </View>
 
       <ScrollView keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={padBottom(styles.scrollContent, bottomInset)}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl

@@ -5,8 +5,10 @@ import { ThemedView } from '@/components/themed-view';
 import { MessageSquare } from 'lucide-react-native';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 
 export default function MessagesScreen() {
+  const bottomInset = useBottomInset();
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
   const styles = React.useMemo(() => makeStyles(themeColors), [colorScheme]);
@@ -20,7 +22,7 @@ export default function MessagesScreen() {
   return (
     <ThemedView style={styles.container}>
       <ScrollView keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={padBottom(styles.scrollContent, bottomInset)}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl

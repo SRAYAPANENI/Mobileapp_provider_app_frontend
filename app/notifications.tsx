@@ -31,6 +31,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SkoFyApi } from '@/services/api';
 import { openScreen, useOpenScreen } from '@/services/openScreens';
 import { useAppAlert } from '@/components/app-alert';
+import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 
 interface NotifItem {
   id: string;
@@ -89,6 +90,7 @@ function newestCreatedAt(list: { created_at: string }[]): string | undefined {
 }
 
 export default function NotificationsScreen() {
+  const bottomInset = useBottomInset();
   // A tapped announcement comes back to this list instead of opening another copy.
   useOpenScreen('/notifications', 'list', {});
   const insets = useSafeAreaInsets();
@@ -198,7 +200,7 @@ export default function NotificationsScreen() {
         </View>
       ) : (
         <ScrollView keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={padBottom(styles.scrollContent, bottomInset)}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#FFCE48']} tintColor="#FFCE48" />
