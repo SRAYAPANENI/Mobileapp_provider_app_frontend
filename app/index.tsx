@@ -42,13 +42,22 @@ export default function SplashScreen() {
   // notification), this splash stayed under the call screen with its own
   // redirect skipped — so when the call ended and the app came back here,
   // it sat on the splash for good. Coming back to it: carry on into the app.
-  const focusCountRef = useRef(0);
+  // Also when a notification opened its screen before this splash was ever
+  // in front: going back is then its *first* focus, and its own redirect was
+  // skipped (handledRef), so counting focuses left it stuck here.
+  const leftRef = useRef(false);
+  const focusedRef = useRef(false);
   useFocusEffect(useCallback(() => {
-    focusCountRef.current += 1;
-    if (focusCountRef.current === 1) return;
-    clearStaleSessionAfterReinstall().then(() => TokenStore.getAccessToken()).then(token => {
-      router.replace((token ? '/(tabs)' : '/login') as any);
-    });
+    focusedRef.current = true;
+    if (leftRef.current || handledRef.current) {
+      clearStaleSessionAfterReinstall().then(() => TokenStore.getAccessToken()).then(token => {
+        router.replace((token ? '/(tabs)' : '/login') as any);
+      });
+    }
+    return () => {
+      focusedRef.current = false;
+      leftRef.current = true;
+    };
   }, []));
   // Every token read below must wait on this — otherwise a reinstall that
   // lands fast enough could read a stale pre-uninstall token for this one
@@ -96,7 +105,9 @@ export default function SplashScreen() {
   }, []);
 
   const navigateAfterSplash = () => {
-    if (handledRef.current) return;
+    // Something else is in front (opened from a notification): replacing
+    // now would replace that screen. Coming back here carries on instead.
+    if (handledRef.current || !focusedRef.current) return;
     // A previous bug here always sent the user to /login on every cold start,
     // even with a perfectly valid stored session — meaning killing the app and
     // reopening it (or tapping a notification, before the fix above) always
