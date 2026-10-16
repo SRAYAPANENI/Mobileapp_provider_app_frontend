@@ -8,6 +8,7 @@ import VoipPushNotification from 'react-native-voip-push-notification';
 // LiveKit's WebRTC (our own media server): same CallKit audio-session hooks.
 import { RTCAudioSession } from '@livekit/react-native-webrtc';
 import { SkoFyApi, TokenStore, getFreshAccessToken } from './api';
+import { openScreen } from './openScreens';
 import { AppLock } from './appLock';
 
 // Android-only native module (see CallStyleModule.kt/CallActionModule.kt) that
@@ -437,7 +438,7 @@ async function showMissedCallNotification(jobId: string, callerName: string) {
  * Deliberately doesn't set autoAnswer, so chat.tsx renders its normal idle
  * view rather than the call overlay. */
 function openChatForMissedCall(jobId: string, callerName: string) {
-  safeNavigate(() => router.push({ pathname: '/chat', params: { jobId, name: callerName } } as any));
+  safeNavigate(() => openScreen('/chat', jobId, { jobId, name: callerName }));
 }
 
 // v2: bumped for the same reason incoming_calls_v4->v5 was — Android locks a
@@ -743,13 +744,13 @@ function handleNotifeeEvent(type: EventType, detail: any) {
     // Was a bare router.push(route) with no jobId param — harmless for '/'
     // (the dashboard needs nothing), but would silently break '/chat' (needs
     // jobId to know which thread to load) the moment that route got used.
-    safeNavigate(() => router.push({ pathname: route, params: { jobId: jobUpdateJobId } } as any));
+    safeNavigate(() => openScreen(route, jobUpdateJobId, { jobId: jobUpdateJobId }));
     if (detail.notification?.id) notifee.cancelNotification(detail.notification.id);
     return;
   }
 
   if (detail.notification?.data?.adminBroadcast && (type === EventType.PRESS || type === EventType.ACTION_PRESS)) {
-    safeNavigate(() => router.push('/notifications' as any));
+    safeNavigate(() => openScreen('/notifications', 'list', {}));
     if (detail.notification?.id) notifee.cancelNotification(detail.notification.id);
     return;
   }
@@ -849,7 +850,7 @@ export async function handleInitialNotification(): Promise<boolean> {
     const jobUpdateJobId = initial.notification?.data?.jobUpdateJobId as string | undefined;
     if (jobUpdateJobId) {
       const route = (initial.notification?.data?.jobUpdateRoute as string) || '/';
-      safeNavigate(() => router.push({ pathname: route, params: { jobId: jobUpdateJobId } } as any));
+      safeNavigate(() => openScreen(route, jobUpdateJobId, { jobId: jobUpdateJobId }));
       if (initial.notification?.id) notifee.cancelNotification(initial.notification.id);
       return true;
     }
@@ -1321,14 +1322,14 @@ async function showGeneralNotification(data: Record<string, any> | undefined) {
  * the job's Service Room — the Notifications list only when it's about neither. */
 function openGeneralNotification(type: string, ticketId?: string, jobId?: string) {
   if (type === 'support_ticket') {
-    safeNavigate(() => router.push({ pathname: '/support-chat', params: ticketId ? { ticketId } : {} } as any));
+    safeNavigate(() => (ticketId ? openScreen('/support-chat', ticketId, { ticketId }) : router.push('/support-chat' as any)));
     return;
   }
   if (jobId) {
     safeNavigate(() => router.push({ pathname: '/(tabs)', params: { openServiceRoom: 'true', jobId } } as any));
     return;
   }
-  safeNavigate(() => router.push('/notifications' as any));
+  safeNavigate(() => openScreen('/notifications', 'list', {}));
 }
 
 // Android never lets an app raise a channel's importance once it exists on a

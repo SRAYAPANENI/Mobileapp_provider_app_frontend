@@ -29,6 +29,7 @@ import { router, useFocusEffect } from 'expo-router';
 import Animated, { FadeInUp, LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SkoFyApi } from '@/services/api';
+import { openScreen, useOpenScreen } from '@/services/openScreens';
 import { useAppAlert } from '@/components/app-alert';
 
 interface NotifItem {
@@ -88,6 +89,8 @@ function newestCreatedAt(list: { created_at: string }[]): string | undefined {
 }
 
 export default function NotificationsScreen() {
+  // A tapped announcement comes back to this list instead of opening another copy.
+  useOpenScreen('/notifications', 'list', {});
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
@@ -123,7 +126,7 @@ export default function NotificationsScreen() {
     // A support reply opens that conversation (ticket_id is kept since
     // migration 053; older rows open the list of the user's tickets).
     if (item.notif_type === 'support_ticket') {
-      if (item.ticket_id) router.push({ pathname: '/support-chat', params: { ticketId: item.ticket_id } } as any);
+      if (item.ticket_id) openScreen('/support-chat', item.ticket_id, { ticketId: item.ticket_id });
       else router.push('/help-support' as any);
       return;
     }
@@ -144,7 +147,7 @@ export default function NotificationsScreen() {
         break;
       case 'chat_message':
       case 'incoming_call':
-        router.push({ pathname: '/chat', params: { jobId: item.job_id } } as any);
+        openScreen('/chat', item.job_id, { jobId: item.job_id });
         break;
       default:
         router.push('/(tabs)');
