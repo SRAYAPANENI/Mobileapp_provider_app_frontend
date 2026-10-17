@@ -8,7 +8,7 @@ import VoipPushNotification from 'react-native-voip-push-notification';
 // LiveKit's WebRTC (our own media server): same CallKit audio-session hooks.
 import { RTCAudioSession } from '@livekit/react-native-webrtc';
 import { SkoFyApi, TokenStore, getFreshAccessToken } from './api';
-import { openScreen } from './openScreens';
+import { isScreenInFront, openScreen } from './openScreens';
 import { AppLock } from './appLock';
 
 // Android-only native module (see CallStyleModule.kt/CallActionModule.kt) that
@@ -1304,6 +1304,8 @@ async function showGeneralNotification(data: Record<string, any> | undefined) {
   const body = data?.body as string | undefined;
   if (!title || !body) return;
   const type = String(data?.type ?? 'general');
+  // Support calling while that ticket's chat is on screen: it rings right there.
+  if (type === 'support_call' && isScreenInFront('/support-chat', data?.ticket_id as string | undefined)) return;
   const key = (data?.ticket_id as string) || (data?.job_id as string) || String(Date.now());
   await notifee.createChannel({
     id: JOB_UPDATE_CHANNEL_ID,
@@ -1331,7 +1333,8 @@ async function showGeneralNotification(data: Record<string, any> | undefined) {
 /** A tapped notification opens what it's about: the support conversation, or
  * the job's Service Room — the Notifications list only when it's about neither. */
 function openGeneralNotification(type: string, ticketId?: string, jobId?: string) {
-  if (type === 'support_ticket') {
+  // A support reply, or support calling: that ticket's chat (where the call rings).
+  if (type === 'support_ticket' || type === 'support_call') {
     safeNavigate(() => (ticketId ? openScreen('/support-chat', ticketId, { ticketId }) : router.push('/support-chat' as any)));
     return;
   }
