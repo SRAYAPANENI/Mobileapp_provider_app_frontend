@@ -51,51 +51,75 @@ const JOB_CATEGORY = 'Job Issue';
 // most questions are answered here without needing a person. A topic with
 // no FAQs (Something Else) goes straight to chat.
 const CATEGORY_FAQS: Record<string, { question: string; answer: string }[]> = {
-  'Payment / Payout Issue': [
+  "Payment / Payout Issue": [
     {
-      question: 'When do I get paid?',
-      answer: "Dodorez takes a 12% platform fee from each job payout. As soon as the job is marked complete and any invoice is settled, the rest is transferred to your connected Stripe account.",
+      question: "When do I get paid?",
+      answer: "When the job is complete (and any invoice is paid), your earnings minus Dodorez's 12% platform fee go to your Stripe payout account. Stripe then sends them to your bank on its usual schedule.",
     },
     {
-      question: 'When do I get my visiting fee?',
-      answer: "Your visiting fee is released to you as soon as you complete the inspection — even if the customer decides not to hire you for the work.",
+      question: "When do I get my visiting fee?",
+      answer: "As soon as you complete the visit — even if the customer decides not to go ahead with the work.",
     },
     {
-      question: 'How do I set up payouts?',
-      answer: "Go to Profile and tap the payouts section to connect your bank account through Stripe. You can't be hired until payouts are set up.",
+      question: "The customer cancelled after I visited",
+      answer: "You keep your visiting fee once the visit is done. If they cancel before you've visited, nothing was charged for your time.",
+    },
+    {
+      question: "How do I set up payouts?",
+      answer: "Go to Profile and connect your bank through Stripe in the payouts section. You can apply for jobs before that, but you can't be hired until payouts are set up.",
     },
   ],
-  'Job Issue': [
+  "Job Issue": [
     {
-      question: 'Had a problem with a job or a customer no-show?',
-      answer: "If there's an issue on a job that's in progress or already completed, file a dispute directly from that job — go to Jobs, open it, and tap \"Report an Issue.\" Our team reviews every dispute within 24 hours.",
+      question: "Why can't customers hire me?",
+      answer: "Three things must be done first: payouts set up, your background check cleared, and your licence approved. You can see each one's status in Profile.",
     },
     {
       question: "Why am I not getting jobs?",
-      answer: "Jobs go to providers whose verified skills match what the job needs. Keep your availability switched on, pass the skill tests for every skill you offer, and keep location access on so we know where you are.",
+      answer: "Jobs go to providers whose verified skills match what the job needs. Keep your availability on, pass the skill test for every skill you offer, and keep location access on. Online jobs can come from anywhere.",
+    },
+    {
+      question: "How do I send an invoice?",
+      answer: "For jobs priced after an inspection: complete the inspection in the job, then raise your invoice with the price. The customer accepts it in the app, and the payment is held until you finish the work.",
+    },
+    {
+      question: "Had a problem with a job or a customer no-show?",
+      answer: "If there's an issue on a job that's in progress or completed, open it in Jobs and tap \"Report an Issue.\" Our team reviews every report within 24 hours.",
     },
   ],
-  'Customer Behavior': [
+  "Customer Behavior": [
     {
-      question: 'Customer being unprofessional or unsafe?',
-      answer: "If a customer was abusive, unsafe, or is refusing to cooperate on a job that's in progress or completed, file a dispute directly from that job — go to Jobs, open it, and tap \"Report an Issue.\" Our team reviews every dispute within 24 hours.",
+      question: "Customer being rude or not cooperating?",
+      answer: "If a customer was abusive or won't cooperate on a job that's in progress or completed, open it in Jobs and tap \"Report an Issue.\" Our team reviews every report within 24 hours.",
     },
     {
-      question: 'The customer wants to pay me outside the app',
+      question: "I feel unsafe",
+      answer: "If you're in danger, call 911 first. Then tell us here what happened — safety reports go straight to our senior team.",
+    },
+    {
+      question: "The customer wants to pay me outside the app",
       answer: "Please don't accept it. Payments outside Dodorez aren't protected — we can't help if the customer doesn't pay, and it can affect your account. Ask them to pay through the app.",
     },
   ],
-  'Account Issue': [
+  "Account Issue": [
     {
       question: "I can't log in",
-      answer: "Use \"Forgot password\" on the login screen, or log in with a one-time code sent to your phone. If neither works, tap \"I still need help\" below.",
+      answer: "Use \"Forgot Password?\" on the login screen, or log in with a one-time code sent to your phone. If neither works, tap \"I still need help\" below.",
     },
     {
-      question: 'How do I update my profile or skills?',
-      answer: "Go to Profile to edit your details, rates and skills. New skills need a short skill test before they count as verified.",
+      question: "How do I update my profile or skills?",
+      answer: "Go to Profile to edit your details, rates and skills. A new skill needs a short skill test before it counts as verified.",
+    },
+    {
+      question: "I'm not getting job alerts or calls",
+      answer: "Check that notifications are allowed for Dodorez in your phone's settings and your availability is on. Dodorez works on one phone at a time — logging in on another phone moves your alerts and calls there.",
+    },
+    {
+      question: "How do I delete my account?",
+      answer: "Tap \"I still need help\" below and ask us to delete it. We'll confirm here once it's done.",
     },
   ],
-  'Something Else': [],
+  "Something Else": [],
 };
 
 const nowTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -582,7 +606,7 @@ function makeStyles(t: typeof Colors.light) {
     categoryChip: { backgroundColor: t.inputFilled, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1, borderColor: t.borderSubtle },
     categoryChipText: { fontSize: 13, fontFamily: Fonts.poppinsSemiBold, color: t.textPrimary },
     selfHelpButtonRow: { flexDirection: 'row', gap: 10 },
-  faqList: { maxHeight: 220 },
+  faqList: { maxHeight: 300 },
   faqChip: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: t.inputFilled, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11,
