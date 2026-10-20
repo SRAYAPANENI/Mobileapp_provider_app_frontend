@@ -51,7 +51,7 @@ export function ReportIssueModal({ jobId, visible, onClose, onFiled }: Props) {
 
   return (
     <>
-      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Modal statusBarTranslucent navigationBarTranslucent visible={visible} transparent animationType="slide" onRequestClose={onClose}>
         <KeyboardAvoidingView style={styles.overlay} behavior="padding" automaticOffset>
           <View style={padBottom([styles.sheet, { backgroundColor: t.background }], bottomInset)}>
             <View style={styles.handle} />

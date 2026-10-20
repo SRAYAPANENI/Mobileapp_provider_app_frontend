@@ -2666,13 +2666,13 @@ const filteredJobs = jobs.filter((job) => {
       </Modal>
 
       {/* Rating Modal */}
-      <Modal
+      <Modal statusBarTranslucent navigationBarTranslucent
         visible={showRatingModal}
         transparent
         animationType="slide"
         onRequestClose={skipRating}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior="padding" automaticOffset>
           <View style={fitBottom(styles.ratingSheet, bottomInset)}>
             <View style={styles.dragHandle} />
             <ThemedText style={styles.ratingTitle}>Rate Your Experience</ThemedText>
@@ -2727,7 +2727,7 @@ const filteredJobs = jobs.filter((job) => {
               <ThemedText style={styles.skipRatingText}>Maybe later</ThemedText>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Final Success Modal */}

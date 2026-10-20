@@ -11,7 +11,6 @@ import { signOutDevice } from '@/services/callManager';
 import { stopBackgroundLocation } from '@/services/background-location';
 import { disconnectLocationSocket } from '@/services/location-socket';
 import { clearDashboardCache } from '@/services/homeCache';
-import { kmToMiles, milesToKm } from '@/services/schedulingEngine';
 import { StyleSheet, View, TouchableOpacity, ScrollView, Platform, Dimensions, Modal, Switch, RefreshControl, SafeAreaView, Pressable, BackHandler, PanResponder, Animated as RNAnimated, ActivityIndicator, Alert, Linking } from 'react-native';
 import { TextInput } from '@/components/scaled-text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,7 +27,6 @@ import {
   Shield,
   Bell,
   HelpCircle,
-  MapPin,
   Briefcase,
   Star,
   CheckCircle2,
@@ -65,6 +63,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { Calendar } from 'react-native-calendars';
 import Animated, { FadeInUp, FadeInDown, FadeInRight, FadeIn, LinearTransition, ZoomIn } from 'react-native-reanimated';
 import { Camera, Image as ImageIcon, Trash2, Edit2, AlertTriangle, Layers, Zap, Clock, Trophy } from 'lucide-react-native';
+import { usePushPreference } from '@/hooks/use-push-preference';
 import { fitBottom, padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 
 // How long the timed-out question's feedback (Incorrect + explanation, or
@@ -174,7 +173,7 @@ export default function ProfileScreen() {
   const [isPhotoSheetOpen, setIsPhotoSheetOpen] = useState(false);
   const [checkingFace, setCheckingFace] = useState(false);
   const [isJobHistoryOpen, setIsJobHistoryOpen] = useState(false);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [pushEnabled, setPushEnabled] = usePushPreference(message => showAlert('error', 'Not Saved', message));
   const [appLockEnabled, setAppLockEnabled] = useState(false);
   const [appLockAvailable, setAppLockAvailable] = useState(true);
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -256,14 +255,6 @@ export default function ProfileScreen() {
   const [reviewCount, setReviewCount] = useState(0);
   const [isTestMinimized, setIsTestMinimized] = useState(false);
   const [now, setNow] = useState(Date.now());
-
-  // Job Preferences state
-  const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
-  // In miles for the UI (US launch) — only converted to/from km at the
-  // backend boundary (preferred_radius_km), to avoid rounding drift from
-  // converting back and forth on every +/- tap.
-  const [preferredRadiusMiles, setPreferredRadiusMiles] = useState(6);
-  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
 
   // Edit Profile state
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
@@ -356,7 +347,6 @@ export default function ProfileScreen() {
       setAvgBehaviourRating(profile?.avg_behaviour_rating ?? null);
       setAvgCommunicationRating(profile?.avg_communication_rating ?? null);
       setReviewCount(profile?.review_count ?? 0);
-      setPreferredRadiusMiles(Math.round(kmToMiles(profile?.preferred_radius_km ?? 10)));
       if (profile?.hci_score != null) setSkillScore(Math.round(profile.hci_score));
       if (profile?.profile_image_url) setProfileImage(profile.profile_image_url);
       if (profile?.connect_onboarding_status) setConnectStatus(profile.connect_onboarding_status);
@@ -1286,18 +1276,6 @@ export default function ProfileScreen() {
       await SkoFyApi.provider.setAvailability(next);
     } catch {
       setIsAvailable(!next);
-    }
-  };
-
-  const handleSavePreferences = async () => {
-    setIsSavingPreferences(true);
-    try {
-      await SkoFyApi.provider.setPreferences(Math.round(milesToKm(preferredRadiusMiles)));
-      setIsPreferencesOpen(false);
-    } catch (e: any) {
-      showAlert('error', 'Failed', e?.message || 'Could not save preferences. Try again.');
-    } finally {
-      setIsSavingPreferences(false);
     }
   };
 
@@ -2243,13 +2221,13 @@ export default function ProfileScreen() {
       </ScrollView>
 
       {/* Settings Modal - Mirrored from Customer App */}
-      <Modal
+      <Modal statusBarTranslucent navigationBarTranslucent
         visible={isSettingsOpen}
         transparent={true}
         animationType="slide"
         onRequestClose={() => setIsSettingsOpen(false)}
       >
-        <View style={styles.modalOverlay}>
+        <View style={[styles.modalOverlay, { paddingTop: insets.top + 12 }]}>
           <View style={fitBottom(styles.modalContent, bottomInset)}>
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Settings</ThemedText>
@@ -2265,8 +2243,8 @@ export default function ProfileScreen() {
                   <ThemedText style={styles.settingLabel}>Push Notifications</ThemedText>
                 </View>
                 <Switch
-                  value={notificationsEnabled}
-                  onValueChange={setNotificationsEnabled}
+                  value={pushEnabled}
+                  onValueChange={setPushEnabled}
                   trackColor={{ false: '#D1D5DB', true: '#FFCE48' }}
                   thumbColor="#fff"
                 />
@@ -2287,39 +2265,11 @@ export default function ProfileScreen() {
 
               <TouchableOpacity
                 style={[styles.settingItem, { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }]}
-                onPress={() => {
-                  setIsSettingsOpen(false);
-                  router.push('/notifications');
-                }}
-              >
-                <View style={styles.settingInfo}>
-                  <Bell size={20} color="#6B7280" />
-                  <ThemedText style={styles.settingLabel}>Notification Inbox</ThemedText>
-                </View>
-                <ChevronRight size={20} color="#D1D5DB" />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.settingItem, { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }]}
                 onPress={() => { setIsSettingsOpen(false); setTimeout(() => setIsEditProfileOpen(true), 400); }}
               >
                 <View style={styles.settingInfo}>
                   <Edit2 size={20} color="#6B7280" />
                   <ThemedText style={styles.settingLabel}>Edit Profile</ThemedText>
-                </View>
-                <ChevronRight size={20} color="#D1D5DB" />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.settingItem, { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }]}
-                onPress={() => {
-                  setIsSettingsOpen(false);
-                  setTimeout(() => setIsPreferencesOpen(true), 400);
-                }}
-              >
-                <View style={styles.settingInfo}>
-                  <MapPin size={20} color="#6B7280" />
-                  <ThemedText style={styles.settingLabel}>Job Preferences</ThemedText>
                 </View>
                 <ChevronRight size={20} color="#D1D5DB" />
               </TouchableOpacity>
@@ -2515,48 +2465,6 @@ export default function ProfileScreen() {
             </View>
           </ScrollView>
           </KeyboardAvoidingView>
-        </ThemedView>
-      </Modal>
-
-      {/* Job Preferences Modal */}
-      <Modal visible={isPreferencesOpen} animationType="slide" onRequestClose={() => setIsPreferencesOpen(false)}>
-        <ThemedView style={{ flex: 1 }}>
-          <View style={[styles.modalHeaderInner, { paddingTop: insets.top }]}>
-            <TouchableOpacity onPress={() => setIsPreferencesOpen(false)} style={styles.headerBackBtn}>
-              <XCircle size={28} color="#000" />
-            </TouchableOpacity>
-            <ThemedText style={styles.modalHeaderTitle}>Job Preferences</ThemedText>
-            <TouchableOpacity onPress={handleSavePreferences} disabled={isSavingPreferences} style={{ paddingHorizontal: 8 }}>
-              <ThemedText style={{ color: '#D97706', fontFamily: Fonts.poppinsSemiBold, fontSize: 15, lineHeight: 21 }}>
-                {isSavingPreferences ? 'Saving…' : 'Save'}
-              </ThemedText>
-            </TouchableOpacity>
-          </View>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 16 }}>
-            <View>
-              <ThemedText style={styles.inputLabel}>Maximum Travel Distance</ThemedText>
-              <ThemedText style={{ fontSize: 12, lineHeight: 18, color: '#9CA3AF', fontFamily: Fonts.poppins, marginTop: 4, marginBottom: 12 }}>
-                You'll only be notified about jobs within this distance from you.
-              </ThemedText>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                <TouchableOpacity
-                  onPress={() => setPreferredRadiusMiles(prev => Math.max(1, prev - 5))}
-                  style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' }}
-                >
-                  <ThemedText style={{ fontSize: 20, lineHeight: 26, fontFamily: Fonts.poppinsSemiBold }}>−</ThemedText>
-                </TouchableOpacity>
-                <ThemedText style={{ fontSize: 24, lineHeight: 30, fontFamily: Fonts.poppinsBold, minWidth: 90, textAlign: 'center' }}>
-                  {preferredRadiusMiles} mi
-                </ThemedText>
-                <TouchableOpacity
-                  onPress={() => setPreferredRadiusMiles(prev => Math.min(62, prev + 5))}
-                  style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' }}
-                >
-                  <ThemedText style={{ fontSize: 20, lineHeight: 26, fontFamily: Fonts.poppinsSemiBold }}>+</ThemedText>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </ScrollView>
         </ThemedView>
       </Modal>
 
@@ -2851,7 +2759,7 @@ export default function ProfileScreen() {
       )}
 
       {/* Photo Options Modal */}
-      <Modal visible={isPhotoSheetOpen} transparent animationType="fade" onRequestClose={() => setIsPhotoSheetOpen(false)}>
+      <Modal statusBarTranslucent navigationBarTranslucent visible={isPhotoSheetOpen} transparent animationType="fade" onRequestClose={() => setIsPhotoSheetOpen(false)}>
         <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
@@ -2971,7 +2879,7 @@ export default function ProfileScreen() {
       </Modal>
 
       {/* Skill Tagging Modal */}
-      <Modal visible={showTagModal} transparent animationType="slide" onRequestClose={() => setShowTagModal(false)}>
+      <Modal statusBarTranslucent navigationBarTranslucent visible={showTagModal} transparent animationType="slide" onRequestClose={() => setShowTagModal(false)}>
         <KeyboardAvoidingView style={styles.modalOverlay} behavior="padding" automaticOffset>
           <View style={padBottom(styles.tagModalContent, bottomInset)}>
             {/* Header */}

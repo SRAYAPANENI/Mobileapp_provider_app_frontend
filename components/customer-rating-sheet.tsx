@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, TextInput } from '@/components/scaled-text';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 const DIMENSIONS = ['behaviour', 'negotiation', 'payment', 'environment'] as const;
 type Dimension = typeof DIMENSIONS[number];
@@ -68,8 +69,8 @@ export function CustomerRatingSheet({
   };
 
   return (
-    <Modal visible={!!jobId} transparent animationType="fade" onRequestClose={skip}>
-      <View style={styles.overlay}>
+    <Modal statusBarTranslucent navigationBarTranslucent visible={!!jobId} transparent animationType="fade" onRequestClose={skip}>
+      <KeyboardAvoidingView style={styles.overlay} behavior="padding" automaticOffset>
         <View style={padBottom(styles.sheet, bottomInset)}>
           <Text style={styles.title}>{customerName ? `Rate ${customerName}` : 'Rate this customer'}</Text>
           <Text style={styles.subtitle}>How did the job go?</Text>
@@ -110,7 +111,7 @@ export function CustomerRatingSheet({
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

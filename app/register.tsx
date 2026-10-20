@@ -1439,7 +1439,7 @@ export default function RegisterScreen() {
       </KeyboardAvoidingView>
 
       {/* Profession Modal */}
-      <Modal visible={showProfessionModal} transparent animationType="slide">
+      <Modal statusBarTranslucent navigationBarTranslucent visible={showProfessionModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={padBottom([styles.modalContent, { backgroundColor: themeColors.background }], bottomInset)}>
             <View style={styles.modalHeader}>
@@ -1479,7 +1479,7 @@ export default function RegisterScreen() {
       </Modal>
 
       {/* Skills Modal */}
-      <Modal visible={showSkillsModal} transparent animationType="slide">
+      <Modal statusBarTranslucent navigationBarTranslucent visible={showSkillsModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={padBottom([styles.modalContent, { backgroundColor: themeColors.background }], bottomInset)}>
             <View style={styles.modalHeader}>
@@ -1527,8 +1527,8 @@ export default function RegisterScreen() {
       </Modal>
 
       {/* Skill Tag Modal */}
-      <Modal visible={showTagModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
+      <Modal statusBarTranslucent navigationBarTranslucent visible={showTagModal} transparent animationType="slide">
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior="padding" automaticOffset>
           <View style={padBottom([styles.modalContent, { backgroundColor: themeColors.background, maxHeight: '90%', flex: 1, marginTop: 'auto', borderTopLeftRadius: 32, borderTopRightRadius: 32, minHeight: '0%' }], bottomInset)}>
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Add Skill Proof</ThemedText>
@@ -1654,7 +1654,7 @@ export default function RegisterScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Custom Alert Modal */}

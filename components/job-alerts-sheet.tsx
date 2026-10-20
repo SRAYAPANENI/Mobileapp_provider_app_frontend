@@ -47,7 +47,7 @@ export function JobAlertsSheet({ visible, mySkills, chosen, onClose, onSave }: P
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal statusBarTranslucent navigationBarTranslucent visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={onClose} />
       <View style={[s.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
         <View style={s.header}>
