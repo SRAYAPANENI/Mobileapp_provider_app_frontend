@@ -46,6 +46,7 @@ import {
   purchaseSummary,
 } from '@/services/pickupDelivery';
 import { PickupAtStore } from '@/components/pickup-at-store';
+import { PickupFromPerson } from '@/components/pickup-from-person';
 import { ReportIssueModal } from '@/components/report-issue-modal';
 import { useGoodsHoldHeld } from '@/hooks/use-goods-hold';
 import notifee from '@notifee/react-native';
@@ -412,6 +413,11 @@ export default function DashboardScreen() {
   );
   const goodsError = buyingForCustomer ? goodsAmountError(goodsAmountText, manageJobDetail?.purchase_limit) : null;
   const orderCollected = isOrderCollected({ jobKind: selectedJob?.jobKind, pickup_confirmed_at: manageJobDetail?.pickup_confirmed_at });
+  // From a person (any address): the item must be checked before it's taken (PickupFromPerson).
+  const pickupFromPerson = manageJobDetail?.pickup_source === 'PERSON';
+  const [personItemChecked, setPersonItemChecked] = useState(false);
+  // Checks belong to one job: another job starts unchecked (its panel remounts too).
+  useEffect(() => { setPersonItemChecked(false); }, [selectedJob?.id]);
   const [showReportIssue, setShowReportIssue] = useState(false);
   const [invoiceAmount, setInvoiceAmount] = useState('');
   const [invoiceNotes, setInvoiceNotes] = useState('');
@@ -525,33 +531,45 @@ export default function DashboardScreen() {
     }
   };
 
+  const currentCoords = async (): Promise<{ latitude: number; longitude: number } | null> => {
+    if (userCoords) return userCoords;
+    try {
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const coords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+      setUserCoords(coords);
+      return coords;
+    } catch {
+      return null;
+    }
+  };
+
   const handleConfirmPickup = async () => {
     if (!selectedJob || !pickupPhoto) return;
     if (buyingForCustomer && (goodsError || !goodsHeld)) {
       appAlert.show('warning', 'Not Yet', goodsError ?? "The customer hasn't put the shopping money on hold yet.");
       return;
     }
-    let coords = userCoords;
+    if (pickupFromPerson && !personItemChecked) {
+      appAlert.show('warning', 'Check the Item First', 'Tick the three checks — or tap "Can\'t take it".');
+      return;
+    }
+    const coords = await currentCoords();
     if (!coords) {
-      try {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        coords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-        setUserCoords(coords);
-      } catch {
-        appAlert.show('error', 'Location Required', 'Turn on location to confirm pickup.');
-        return;
-      }
+      appAlert.show('error', 'Location Required', 'Turn on location to confirm pickup.');
+      return;
     }
     setConfirmingPickup(true);
     try {
       await SkoFyApi.jobs.confirmPickup(
         selectedJob.id, pickupPhoto.uri, pickupPhoto.mimeType, coords.latitude, coords.longitude,
         buyingForCustomer ? parseGoodsAmount(goodsAmountText) : undefined,
+        pickupFromPerson && personItemChecked,
       );
       const detail = await SkoFyApi.jobs.get(selectedJob.id);
       setManageJobDetail(detail);
       setPickupPhoto(null);
       setGoodsAmountText('');
+      setPersonItemChecked(false);
     } catch (err: any) {
       if (err?.error_code === 'NOT_AT_LOCATION') {
         appAlert.show('warning', 'Too Far From Pickup Location', err.message ?? 'You need to be at the pickup location.');
@@ -561,6 +579,16 @@ export default function DashboardScreen() {
     } finally {
       setConfirmingPickup(false);
     }
+  };
+
+  const handlePickupRefused = () => {
+    const refusedId = selectedJob?.id;
+    setJobs(prevJobs => prevJobs.filter(job => job.id !== refusedId));
+    setShowManageModal(false);
+    setActiveJobId(null);
+    setPersonItemChecked(false);
+    setPickupPhoto(null);
+    appAlert.show('success', 'Item Refused', 'The job is cancelled and your trip fee is kept. Thanks for checking.');
   };
 
   const handleCompleteInspection = async () => {
@@ -2230,16 +2258,32 @@ const filteredJobs = jobs.filter((job) => {
                   // geofence-checked photo of what was picked up substitutes
                   // for it instead.
                   <>
-                    <PickupAtStore
-                      details={manageJobDetail?.pickup_details}
-                      items={manageJobDetail?.shopping_list}
-                      buyForMe={buyingForCustomer}
-                      moneyHeld={goodsHeld}
-                    />
+                    {pickupFromPerson ? (
+                      <PickupFromPerson
+                        key={selectedJob.id}
+                        jobId={selectedJob.id}
+                        item={manageJobDetail?.pickup_item}
+                        value={manageJobDetail?.item_value}
+                        details={manageJobDetail?.pickup_details}
+                        onCheckedChange={setPersonItemChecked}
+                        getCoords={currentCoords}
+                        onRefused={handlePickupRefused}
+                        onError={(title, message) => appAlert.show('error', title, message)}
+                      />
+                    ) : (
+                      <PickupAtStore
+                        details={manageJobDetail?.pickup_details}
+                        items={manageJobDetail?.shopping_list}
+                        buyForMe={buyingForCustomer}
+                        moneyHeld={goodsHeld}
+                      />
+                    )}
                     <ThemedText style={styles.completeDisclaimer}>
                       {buyingForCustomer
                         ? 'Once you have the items, enter the receipt total and take a photo of the items with the receipt.'
-                        : "Once you've got everything, take a photo to confirm pickup."}
+                        : pickupFromPerson
+                          ? 'Once you\'ve checked it, take a photo of the item to confirm pickup.'
+                          : "Once you've got everything, take a photo to confirm pickup."}
                     </ThemedText>
                     {buyingForCustomer && (
                       <>
@@ -2268,9 +2312,9 @@ const filteredJobs = jobs.filter((job) => {
                       </ThemedText>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.completeJobBtn, (!pickupPhoto || confirmingPickup || (buyingForCustomer && (!goodsHeld || !!goodsError))) && { opacity: 0.5 }]}
+                      style={[styles.completeJobBtn, (!pickupPhoto || confirmingPickup || (buyingForCustomer && (!goodsHeld || !!goodsError)) || (pickupFromPerson && !personItemChecked)) && { opacity: 0.5 }]}
                       onPress={handleConfirmPickup}
-                      disabled={!pickupPhoto || confirmingPickup || (buyingForCustomer && (!goodsHeld || !!goodsError))}
+                      disabled={!pickupPhoto || confirmingPickup || (buyingForCustomer && (!goodsHeld || !!goodsError)) || (pickupFromPerson && !personItemChecked)}
                     >
                       <CheckCircle size={20} color="#fff" />
                       <ThemedText style={styles.completeJobText}>

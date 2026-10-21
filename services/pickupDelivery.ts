@@ -10,11 +10,17 @@ type DetailLike = {
   pickup_purchase?: string | null; purchase_limit?: number | null;
   dropoff_address?: string | null; dropoff_notes?: string | null;
   pickup_details?: PickupDetails | null; shopping_list?: ShoppingItem[] | null; goods_amount?: number | string | null;
+  /** STORE or PERSON (any address), and what's collected from a person. */
+  pickup_source?: string | null; pickup_item?: string | null; item_value?: number | null;
 } | null | undefined;
 
 /** Already paid: what the store needs. The server sends it only to the hired
  * provider, and drops the store code once the order is collected. */
-export type PickupDetails = { order_name?: string; order_number?: string; pickup_code?: string; store_contact?: string };
+export type PickupDetails = {
+  order_name?: string; order_number?: string; pickup_code?: string; store_contact?: string;
+  /** From a person: who hands the item over. */
+  handover_name?: string; handover_phone?: string;
+};
 export type ShoppingItem = { name: string; quantity: number; if_unavailable: 'SUBSTITUTE' | 'SKIP' | 'CALL' };
 
 export const IF_UNAVAILABLE_LABELS: Record<ShoppingItem['if_unavailable'], string> = {
@@ -42,8 +48,12 @@ export function navigationTarget(job: JobLike, detail: DetailLike): { lat: numbe
   return { lat: job.latitude, lng: job.longitude, title: job.title ?? 'Job Site' };
 }
 
-/** The customer chose who pays for the goods. */
+/** The customer chose who pays for the goods — or, from a person, what's collected. */
 export function purchaseSummary(detail: DetailLike): string | null {
+  if (detail?.pickup_source === 'PERSON') {
+    const worth = detail.item_value != null ? ` (worth $${Number(detail.item_value).toFixed(2)})` : '';
+    return `From a person: ${detail.pickup_item || 'an item'}${worth} — check it before you take it`;
+  }
   if (!detail?.pickup_purchase) return null;
   if (detail.pickup_purchase === 'BUY_FOR_ME') {
     return detail.purchase_limit != null

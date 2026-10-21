@@ -1,3 +1,4 @@
+import { purchaseSummary } from '@/services/pickupDelivery';
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, ScrollView, TouchableOpacity, SafeAreaView, Platform, Dimensions, ActivityIndicator, Share, Modal, Pressable } from 'react-native';
 import { Text, TextInput } from '@/components/scaled-text';
@@ -290,7 +291,9 @@ export default function JobDetailsScreen() {
               : j.job_type === 'PICKUP_DROPOFF' ? '$0 (No Delivery Fee)' : '$0 (No Visiting Fee)',
             skills: requiredSkills.map(s => s.name),
             requiredSkills,
-            requirements: j.notes ? [j.notes] : [],
+            // Pickup & Drop: from a person (the item and its worth) or a store
+            // (already paid / buy for me) — known before applying.
+            requirements: [purchaseSummary(j), j.notes].filter((r): r is string => !!r),
             skillMatch: skillMatchPct,
             hasMedia: Array.isArray(j.images) && j.images.length > 0,
             // `images` is just bare URL strings with no type metadata — this

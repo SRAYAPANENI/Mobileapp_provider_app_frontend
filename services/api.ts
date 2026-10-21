@@ -846,6 +846,7 @@ export const SkoFyApi = {
      */
     confirmPickup: async (
       jobId: string, photoUri: string, mimeType: string, lat: number, lng: number, goodsAmount?: number,
+      itemChecked = false,
     ) => {
       const form = new FormData();
       const ext = mimeType.split('/')[1] || 'jpg';
@@ -854,8 +855,34 @@ export const SkoFyApi = {
       form.append('lng', String(lng));
       // Buy it for me: the receipt total, paid back from the customer's hold.
       if (goodsAmount != null) form.append('goods_amount', String(goodsAmount));
+      // From a person: the item has been seen and checked.
+      if (itemChecked) form.append('item_checked', 'true');
       return requestMultipart(`/jobs/${jobId}/pickup/confirm`, form);
     },
+
+    /** From a person: not taking the item (prohibited, not as described,
+     * not shown, nobody there). The job is cancelled; the trip is paid.
+     * "Nobody there" needs a photo of the door (the reason's `photo` flag). */
+    refusePickup: async (
+      jobId: string, reason: string, lat: number, lng: number, note?: string,
+      photo?: { uri: string; mimeType: string },
+    ) => {
+      const form = new FormData();
+      form.append('reason', reason);
+      form.append('lat', String(lat));
+      form.append('lng', String(lng));
+      if (note) form.append('note', note);
+      if (photo) {
+        const ext = photo.mimeType.split('/')[1] || 'jpg';
+        form.append('photo', { uri: photo.uri, name: `refusal.${ext}`, type: photo.mimeType } as any);
+      }
+      return requestMultipart(`/jobs/${jobId}/pickup/refuse`, form);
+    },
+
+    /** A pickup from a person: the value cap, what's never carried, why an item can be refused. */
+    getPersonPickupRules: async (): Promise<{
+      max_value: number; banned: string; refusal_reasons: { key: string; label: string; photo?: boolean }[];
+    }> => request('/jobs/pickup-from-person'),
 
     respondToCounter: async (jobId: string, accept: boolean) =>
       request(`/jobs/${jobId}/invoice/respond-counter`, {
