@@ -2092,6 +2092,7 @@ const filteredJobs = jobs.filter((job) => {
                   <DeliveryHandover
                     jobId={selectedJob.id}
                     onDelivered={() => setManageJobDetail((prev: any) => ({ ...prev, delivered_at: new Date().toISOString() }))}
+                    recipientName={manageJobDetail?.pickup_details?.recipient_name}
                   />
                 ) : selectedJob.status === 'IN_PROGRESS' ? (
                   <>

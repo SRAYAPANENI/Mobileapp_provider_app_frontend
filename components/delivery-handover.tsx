@@ -12,7 +12,11 @@ const CODE_LENGTH = 4;
 // Handing a Pickup & Drop order over: ask for the customer's drop-off code,
 // enter it at the drop-off, done. The server checks the code and that the
 // phone is at the drop-off (app/services/delivery_service.py).
-export function DeliveryHandover({ jobId, onDelivered }: { jobId: string; onDelivered: () => void }) {
+export function DeliveryHandover({ jobId, onDelivered, recipientName }: {
+  jobId: string; onDelivered: () => void;
+  /** Sent by the customer: who receives it — the customer sends them the code. */
+  recipientName?: string | null;
+}) {
   const appAlert = useAppAlert();
   const inputRef = useRef<TextInput>(null);
   const [code, setCode] = useState('');
@@ -23,7 +27,12 @@ export function DeliveryHandover({ jobId, onDelivered }: { jobId: string; onDeli
     setRequesting(true);
     try {
       await SkoFyApi.jobs.requestDeliveryCode(jobId);
-      appAlert.show('success', 'Ask for the code', 'The customer now sees a 4-digit drop-off code in their app.');
+      appAlert.show(
+        'success', 'Ask for the code',
+        recipientName
+          ? `The customer is sending ${recipientName} a 4-digit code. Ask ${recipientName} for it.`
+          : 'The customer now sees a 4-digit drop-off code in their app.',
+      );
       inputRef.current?.focus();
     } catch (err: any) {
       appAlert.show('error', 'Could not get a code', err?.message ?? 'Please try again.');
@@ -46,7 +55,7 @@ export function DeliveryHandover({ jobId, onDelivered }: { jobId: string; onDeli
       onDelivered();
     } catch (err: any) {
       if (err?.error_code === 'NOT_AT_LOCATION') {
-        appAlert.show('warning', 'Not at the drop-off', err.message ?? "You need to be at the customer's drop-off address.");
+        appAlert.show('warning', 'Not at the drop-off', err.message ?? 'You need to be at the drop-off address.');
       } else {
         appAlert.show('error', 'Wrong code', err?.message ?? 'That code is incorrect or expired.');
       }
@@ -61,7 +70,11 @@ export function DeliveryHandover({ jobId, onDelivered }: { jobId: string; onDeli
         <ShieldCheck size={16} color="#111827" />
         <Text style={s.title}>Hand over the order</Text>
       </View>
-      <Text style={s.body}>At the drop-off, ask the customer for the 4-digit code on their screen.</Text>
+      <Text style={s.body}>
+        {recipientName
+          ? `At the drop-off, tap below — the customer sends ${recipientName} a 4-digit code. Ask ${recipientName} for it.`
+          : 'At the drop-off, ask the customer for the 4-digit code on their screen.'}
+      </Text>
 
       <TouchableOpacity style={[s.secondary, requesting && s.dim]} onPress={requestCode} disabled={requesting}>
         <Text style={s.secondaryText}>{requesting ? 'Sending…' : 'Ask for the drop-off code'}</Text>
