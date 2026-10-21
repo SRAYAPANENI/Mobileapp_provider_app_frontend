@@ -112,7 +112,8 @@ export default function DashboardScreen() {
         isOngoing: false,
         latitude: j.lat ?? null,
         longitude: j.lng ?? null,
-        location: j.address ?? 'Customer Location',
+        // Pickup & Drop: where it's collected (a person's address only once hired).
+        location: j.pickup_address ?? j.address ?? 'Customer Location',
         // "STANDARD" (default) or "PICKUP_DROPOFF" — the pickup point is
         // latitude/longitude above; dropoff is a second, independent point.
         jobKind: j.job_type ?? 'STANDARD',
@@ -175,7 +176,8 @@ export default function DashboardScreen() {
         isOngoing: true,
         latitude: j.lat ?? null,
         longitude: j.lng ?? null,
-        location: j.address ?? 'Customer Location',
+        // Pickup & Drop: where it's collected (a person's address only once hired).
+        location: j.pickup_address ?? j.address ?? 'Customer Location',
         jobKind: j.job_type ?? 'STANDARD',
         dropoffLatitude: j.dropoff_lat ?? null,
         dropoffLongitude: j.dropoff_lng ?? null,
@@ -2040,8 +2042,23 @@ const filteredJobs = jobs.filter((job) => {
                     {!!purchaseSummary(manageJobDetail) && (
                       <ThemedText style={styles.deliveryInfoStrong}>{purchaseSummary(manageJobDetail)}</ThemedText>
                     )}
+                    {!!manageJobDetail.pickup_address && (
+                      <ThemedText style={styles.deliveryInfoText}>Pick up at: {manageJobDetail.pickup_address}</ThemedText>
+                    )}
                     {!!manageJobDetail.dropoff_address && (
                       <ThemedText style={styles.deliveryInfoText}>Deliver to: {manageJobDetail.dropoff_address}</ThemedText>
+                    )}
+                    {!!manageJobDetail.pickup_details?.recipient_name && (
+                      <TouchableOpacity
+                        disabled={!manageJobDetail.pickup_details?.recipient_phone}
+                        onPress={() => Linking.openURL(`tel:${manageJobDetail.pickup_details.recipient_phone}`)}
+                      >
+                        <ThemedText style={styles.deliveryInfoText}>
+                          Hand it to: {manageJobDetail.pickup_details.recipient_name}
+                          {manageJobDetail.pickup_details?.recipient_phone ? ` · call ${manageJobDetail.pickup_details.recipient_phone}` : ''}
+                          {' '}— they have the drop-off code
+                        </ThemedText>
+                      </TouchableOpacity>
                     )}
                     {!!manageJobDetail.dropoff_notes && (
                       <ThemedText style={styles.deliveryInfoText}>Instructions: {manageJobDetail.dropoff_notes}</ThemedText>

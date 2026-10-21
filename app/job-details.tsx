@@ -272,7 +272,7 @@ export default function JobDetailsScreen() {
               ? { latitude: j.dropoff_lat, longitude: j.dropoff_lng }
               : null,
             serviceMode: j.service_mode ?? 'ON_SITE',
-            location: 'Customer Location',
+            location: j.pickup_address ?? j.full_address ?? 'Customer Location',
             startTime: scheduledMs ?? Date.now() + 3600000,
             endTime: scheduledMs ? scheduledMs + 7200000 : Date.now() + 7200000,
             // Anchored to when the job was actually POSTED (j.created_at),
