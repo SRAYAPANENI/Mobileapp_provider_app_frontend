@@ -52,6 +52,11 @@ export function CareJobPanel({ job, getCoords, onChanged, onComplete, onCustomer
         </Text>
       )}
       {!paid && <Text style={s.muted}>The customer pays when they book — it's held safely and paid to you when the job is done.</Text>}
+      {!paid && job.pay_by && (
+        <Text style={s.muted}>
+          If they haven't paid by {new Date(job.pay_by).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}, you're freed automatically — it won't count against you.
+        </Text>
+      )}
     </View>
   );
 
@@ -142,7 +147,8 @@ function MissedDropOff({ job, getCoords, onDone, onMessage }: {
     const t = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(t);
   }, []);
-  if (!job.scheduled_at) return null;
+  // Only once the drop-off time has come.
+  if (!job.scheduled_at || now < new Date(job.scheduled_at).getTime()) return null;
   const leftMin = Math.ceil((new Date(job.scheduled_at).getTime() + DROP_OFF_WAIT_MINUTES * 60000 - now) / 60000);
 
   const report = async () => {

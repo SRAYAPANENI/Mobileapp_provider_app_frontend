@@ -141,7 +141,11 @@ export default function DashboardScreen() {
           : new Date(j.created_at).getTime() + 9 * 3600000,
         budgetMin: j.budget_min,
         budgetMax: j.budget_max,
-        fee: j.budget_min && j.budget_max ? `$${j.budget_min}–$${j.budget_max}` : j.budget_min ? `From $${j.budget_min}` : 'Negotiable',
+        // Priced up front: your total once you've applied, else your rate's unit.
+        fee: (j.steps ?? []).includes('PAY_UPFRONT')
+          ? (j.proposed_fee ? `$${Number(j.proposed_fee).toFixed(2)} total`
+            : `Your price per ${({ HOUR: 'hour', DAY: 'day', NIGHT: 'night' } as Record<string, string>)[j.shape?.pricing_unit] ?? 'unit'}`)
+          : j.budget_min && j.budget_max ? `$${j.budget_min}–$${j.budget_max}` : j.budget_min ? `From $${j.budget_min}` : 'Negotiable',
         skills: j.skills ?? [],
         skillRefs: j.skill_refs ?? [],
         // Previously hardcoded false — ProviderJobView didn't carry images

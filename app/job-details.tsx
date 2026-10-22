@@ -307,7 +307,8 @@ export default function JobDetailsScreen() {
             rate: upfront?.rate ?? budgetStr,
             duration: upfront?.duration ?? 'project',
             upfront,
-            fee: j.inspection_fee > 0
+            fee: upfront ? 'None — paid when booked'
+              : j.inspection_fee > 0
               ? `$${j.inspection_fee}`
               : j.job_type === 'PICKUP_DROPOFF' ? '$0 (No Delivery Fee)' : '$0 (No Visiting Fee)',
             skills: requiredSkills.map(s => s.name),
