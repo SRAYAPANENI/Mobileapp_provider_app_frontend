@@ -328,6 +328,21 @@ export interface GuaranteeClaim {
   provider_responded_at: string | null; decision_note: string | null;
 }
 
+/** Your prices per hour / day / night, and hosting at your place
+ * (docs/JOB_SHAPE_DESIGN.md phase 4). */
+export interface ProviderRate { skill_id: string; skill_name: string; unit: 'HOUR' | 'DAY' | 'NIGHT' | 'VISIT' | 'FIXED'; amount: number }
+export interface Hosting {
+  hosts_at_home: boolean; host_capacity: number; base_address: string | null;
+  base_lat: number | null; base_lng: number | null; rates: ProviderRate[];
+}
+
+/** The hand-over photos and every update, for a pet or home in your care. */
+export interface CareRecord {
+  handover_at: string | null;
+  handover_photos: { url: string; taken_at: string }[];
+  updates: { id: string; note: string | null; photo_urls: string[]; created_at: string }[];
+}
+
 /** Work asked to be added mid-job (§11). */
 export interface ExtraWork {
   amount: number; description: string;
@@ -922,6 +937,39 @@ export const SkoFyApi = {
     markArrived: async (jobId: string, lat: number, lng: number): Promise<{ arrived_at: string; can_report_absent_at: string | null }> =>
       request(`/jobs/${jobId}/arrived`, { method: 'POST', body: JSON.stringify({ lat, lng }) }),
 
+    // ── Priced up front: check-in, hand-over and updates (phase 4) ───────
+
+    /** The customer's screen shows a code; ask for it when they arrive. */
+    requestCheckInCode: async (jobId: string) =>
+      request(`/jobs/${jobId}/check-in/request-code`, { method: 'POST' }),
+
+    checkIn: async (jobId: string, code: string, lat: number, lng: number) =>
+      request(`/jobs/${jobId}/check-in`, { method: 'POST', body: JSON.stringify({ otp: code, lat, lng }) }),
+
+    /** Photos of what's left in your care, as it was handed over. */
+    handOver: async (jobId: string, lat: number, lng: number, photos: { uri: string; mimeType: string }[]) => {
+      const form = new FormData();
+      form.append('lat', String(lat));
+      form.append('lng', String(lng));
+      photos.forEach((p, i) => {
+        const ext = p.mimeType.split('/')[1] || 'jpg';
+        form.append('photos', { uri: p.uri, name: `handover-${i}.${ext}`, type: p.mimeType } as any);
+      });
+      return requestMultipart(`/jobs/${jobId}/hand-over`, form);
+    },
+
+    postCareUpdate: async (jobId: string, note: string, photos: { uri: string; mimeType: string }[]) => {
+      const form = new FormData();
+      if (note.trim()) form.append('note', note.trim());
+      photos.forEach((p, i) => {
+        const ext = p.mimeType.split('/')[1] || 'jpg';
+        form.append('photos', { uri: p.uri, name: `update-${i}.${ext}`, type: p.mimeType } as any);
+      });
+      return requestMultipart(`/jobs/${jobId}/care-updates`, form);
+    },
+
+    careRecord: async (jobId: string): Promise<CareRecord> => request(`/jobs/${jobId}/care-updates`) as any,
+
     /** "Customer not here" — after checking in and waiting; the visiting fee is yours. */
     reportCustomerAbsent: async (jobId: string, lat: number, lng: number) =>
       request(`/jobs/${jobId}/customer-absent`, { method: 'POST', body: JSON.stringify({ lat, lng }) }),
@@ -1174,6 +1222,17 @@ export const SkoFyApi = {
       request(`/series/${seriesId}/respond`, { method: 'POST', body: JSON.stringify({ accept }) }),
     end: async (seriesId: string) =>
       request(`/series/${seriesId}/change`, { method: 'POST', body: JSON.stringify({ action: 'END' }) }),
+  },
+
+  // ── Rates & hosting (docs/JOB_SHAPE_DESIGN.md phase 4) ───────────────────
+  hosting: {
+    mine: async (): Promise<Hosting> => request('/hosting/me') as any,
+    update: async (body: { hosts_at_home: boolean; host_capacity: number; base_address: string | null; base_lat: number | null; base_lng: number | null }): Promise<Hosting> =>
+      request('/hosting/me', { method: 'PUT', body: JSON.stringify(body) }) as any,
+    setRate: async (skillId: string, unit: ProviderRate['unit'], amount: number): Promise<Hosting> =>
+      request('/hosting/me/rates', { method: 'PUT', body: JSON.stringify({ skill_id: skillId, unit, amount }) }) as any,
+    removeRate: async (skillId: string, unit: ProviderRate['unit']): Promise<Hosting> =>
+      request(`/hosting/me/rates?skill_id=${encodeURIComponent(skillId)}&unit=${unit}`, { method: 'DELETE' }) as any,
   },
 
   // ── The Dodorez guarantee (docs/MONEY_RULES_DESIGN.md §12) ───────────────

@@ -53,6 +53,7 @@ import {
   Sparkles,
   Eye,
   EyeOff,
+  BadgeDollarSign,
 } from 'lucide-react-native';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { Colors, Fonts } from '@/constants/theme';
@@ -2361,6 +2362,20 @@ export default function ProfileScreen() {
                 <View style={styles.settingInfo}>
                   <ShieldCheck size={20} color="#6B7280" />
                   <ThemedText style={styles.settingLabel}>Guarantee requests</ThemedText>
+                </View>
+                <ChevronRight size={20} color="#D1D5DB" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.settingItem, { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }]}
+                onPress={() => {
+                  setIsSettingsOpen(false);
+                  router.push('/rates-and-hosting' as any);
+                }}
+              >
+                <View style={styles.settingInfo}>
+                  <BadgeDollarSign size={20} color="#6B7280" />
+                  <ThemedText style={styles.settingLabel}>Rates & hosting</ThemedText>
                 </View>
                 <ChevronRight size={20} color="#D1D5DB" />
               </TouchableOpacity>

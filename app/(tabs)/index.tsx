@@ -48,6 +48,7 @@ import {
 import { PickupAtStore } from '@/components/pickup-at-store';
 import { PickupFromPerson } from '@/components/pickup-from-person';
 import { ArrivalPanel } from '@/components/arrival-panel';
+import { CareJobPanel } from '@/components/care-job-panel';
 import { InspectionReportForm } from '@/components/inspection-report-form';
 import { InspectionStatus } from '@/components/inspection-status';
 import { KeepPreview } from '@/components/keep-preview';
@@ -486,6 +487,16 @@ export default function DashboardScreen() {
     return () => { cancelled = true; clearInterval(interval); };
   }, [showManageModal, selectedJob?.id, selectedJob?.status]);
 
+  // The opened job's detail, once — whatever its status (the poll above only
+  // runs while it's moving), and never another job's left over from before.
+  useEffect(() => {
+    if (!showManageModal || !selectedJob?.id) return;
+    let cancelled = false;
+    setManageJobDetail((prev: any) => (prev?.id === selectedJob.id ? prev : null));
+    SkoFyApi.jobs.get(selectedJob.id).then((detail) => { if (!cancelled) setManageJobDetail(detail); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [showManageModal, selectedJob?.id]);
+
   const handleRequestInspectionOtp = async () => {
     if (!selectedJob) return;
     setRequestingOtp(true);
@@ -609,12 +620,12 @@ export default function DashboardScreen() {
   };
 
   // "Customer not here": the job is cancelled and the visiting fee is theirs.
-  const handleCustomerAbsent = () => {
+  const handleCustomerAbsent = (message?: string) => {
     const goneId = selectedJob?.id;
     setJobs(prevJobs => prevJobs.filter(job => job.id !== goneId));
     setShowManageModal(false);
     setActiveJobId(null);
-    appAlert.show('success', 'Job Cancelled', "The customer wasn't there — the visiting fee is yours.");
+    appAlert.show('success', 'Job Cancelled', message ?? "The customer wasn't there — the visiting fee is yours.");
   };
 
   const handleRaiseInvoice = async () => {
@@ -2076,7 +2087,7 @@ const filteredJobs = jobs.filter((job) => {
                     )}
                   </View>
                 )}
-                {selectedJob.serviceMode !== 'REMOTE' && (
+                {selectedJob.serviceMode !== 'REMOTE' && manageJobDetail?.shape?.venue !== 'PROVIDER_PLACE' && (
                   <TouchableOpacity style={styles.navigateBtn} onPress={handleNavigateToSite}>
                     <NavIcon size={20} color="#fff" />
                     <ThemedText style={styles.navigateBtnText}>
@@ -2099,6 +2110,17 @@ const filteredJobs = jobs.filter((job) => {
                   <ThemedText style={styles.completeDisclaimer}>
                     This job is under review. Our team will get back to you within 24 hours.
                   </ThemedText>
+                ) : manageJobDetail?.steps?.includes('PAY_UPFRONT') ? (
+                  // Priced up front — booked and paid, then check-in, hand-over,
+                  // updates and hand-back (docs/JOB_SHAPE_DESIGN.md phase 4).
+                  <CareJobPanel
+                    job={manageJobDetail}
+                    getCoords={currentCoords}
+                    onChanged={refreshManageDetail}
+                    onComplete={handleCompleteJob}
+                    onCustomerAbsent={handleCustomerAbsent}
+                    onMessage={(kind, title, message) => appAlert.show(kind, title, message)}
+                  />
                 ) : selectedJob.status === 'IN_PROGRESS' && isDelivery(selectedJob) && !isDelivered(manageJobDetail) ? (
                   <DeliveryHandover
                     jobId={selectedJob.id}

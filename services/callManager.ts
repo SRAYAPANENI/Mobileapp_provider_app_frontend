@@ -663,6 +663,8 @@ const DASHBOARD_JOB_UPDATES = new Set([
   'dispute_overdue',
   'recovery_created',
   'payment_reversed',
+  // A pet or home in your care: an update is due (JOB_SHAPE_DESIGN phase 4).
+  'care_update_due',
 ]);
 
 /** Pushes that open a screen of their own rather than the dashboard. */

@@ -145,6 +145,7 @@ export default function NotificationsScreen() {
       case 'invoice_accepted':
       case 'invoice_countered':
       case 'job_cost_paid':
+      case 'care_update_due':
         router.push({ pathname: '/(tabs)', params: { openServiceRoom: 'true', jobId: item.job_id } } as any);
         break;
       case 'chat_message':

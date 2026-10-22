@@ -15,7 +15,8 @@ interface Props {
   customerExpected: boolean;
   getCoords: () => Promise<{ latitude: number; longitude: number } | null>;
   onArrived: () => void;
-  onCustomerAbsent: () => void;
+  /** With the server's message — it differs for a booking paid up front. */
+  onCustomerAbsent: (message?: string) => void;
   onError: (title: string, message: string) => void;
 }
 
@@ -32,7 +33,7 @@ export function ArrivalPanel({ jobId, arrivedAt, customerExpected, getCoords, on
     return () => clearInterval(t);
   }, [arrivedAt]);
 
-  const withCoords = async (action: (lat: number, lng: number) => Promise<unknown>, after: () => void) => {
+  const withCoords = async (action: (lat: number, lng: number) => Promise<any>, after: (result: any) => void) => {
     setBusy(true);
     try {
       const coords = await getCoords();
@@ -40,8 +41,7 @@ export function ArrivalPanel({ jobId, arrivedAt, customerExpected, getCoords, on
         onError('Location Required', 'Turn on location — this only counts at the job.');
         return;
       }
-      await action(coords.latitude, coords.longitude);
-      after();
+      after(await action(coords.latitude, coords.longitude));
     } catch (err: any) {
       onError(err?.error_code === 'NOT_AT_LOCATION' ? 'Not at the Job Yet' : 'Could Not Send', err?.message ?? 'Please try again.');
     } finally {
@@ -76,7 +76,7 @@ export function ArrivalPanel({ jobId, arrivedAt, customerExpected, getCoords, on
       <TouchableOpacity
         style={[s.absent, (leftMin > 0 || busy) && { opacity: 0.45 }]}
         disabled={leftMin > 0 || busy}
-        onPress={() => withCoords((lat, lng) => SkoFyApi.jobs.reportCustomerAbsent(jobId, lat, lng), onCustomerAbsent)}
+        onPress={() => withCoords((lat, lng) => SkoFyApi.jobs.reportCustomerAbsent(jobId, lat, lng), (r) => onCustomerAbsent(r?.message))}
       >
         <DoorOpen size={16} color="#B91C1C" />
         <Text style={s.absentText}>Customer not here</Text>

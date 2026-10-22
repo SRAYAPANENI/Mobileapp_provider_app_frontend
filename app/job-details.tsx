@@ -123,6 +123,23 @@ const SkillMatchCircle = ({ percentage, styles }: { percentage: number; styles: 
   );
 };
 
+const UNIT_WORD: Record<string, string> = { HOUR: 'hour', DAY: 'day', NIGHT: 'night' };
+
+/** A job priced up front, as this provider sees it: their total, or what's
+ * missing to apply. null for a job priced by a quote. */
+function upfrontPricing(j: any): { myPrice: any; unitWord: string; rate: string; duration: string } | null {
+  if (!(j.steps ?? []).includes('PAY_UPFRONT')) return null;
+  const unitWord = UNIT_WORD[j.shape?.pricing_unit] ?? 'unit';
+  const myPrice = j.my_price ?? j.upfront_price ?? null;
+  if (!myPrice) return { myPrice: null, unitWord, rate: 'Your price', duration: `per ${unitWord}` };
+  const qty = Number(myPrice.quantity);
+  return {
+    myPrice, unitWord,
+    rate: `$${Number(myPrice.total).toFixed(2)}`,
+    duration: `${qty} ${unitWord}${qty === 1 ? '' : 's'}`,
+  };
+}
+
 export default function JobDetailsScreen() {
   const bottomInset = useBottomInset();
   const { id, autoApply } = useLocalSearchParams<{ id: string; autoApply?: string }>();
@@ -252,6 +269,9 @@ export default function JobDetailsScreen() {
             j.budget_min ? `From $${j.budget_min}` :
             j.budget_max ? `Up to $${j.budget_max}` : 'Negotiable';
           const scheduledMs = j.scheduled_at ? new Date(j.scheduled_at).getTime() : null;
+          // Priced up front (docs/JOB_SHAPE_DESIGN.md phase 4): your own
+          // price for these dates, from Rates & hosting — no quoting.
+          const upfront = upfrontPricing(j);
           const requiredSkills: { name: string; is_verified_by_provider: boolean }[] = j.required_skills ?? [];
           const matchedCount = requiredSkills.filter(s => s.is_verified_by_provider).length;
           const skillMatchPct = requiredSkills.length > 0
@@ -284,8 +304,9 @@ export default function JobDetailsScreen() {
             deadline: scheduledMs ?? new Date(j.created_at).getTime() + 9 * 3600000,
             budgetMin: j.budget_min,
             budgetMax: j.budget_max,
-            rate: budgetStr,
-            duration: 'project',
+            rate: upfront?.rate ?? budgetStr,
+            duration: upfront?.duration ?? 'project',
+            upfront,
             fee: j.inspection_fee > 0
               ? `$${j.inspection_fee}`
               : j.job_type === 'PICKUP_DROPOFF' ? '$0 (No Delivery Fee)' : '$0 (No Visiting Fee)',
@@ -992,9 +1013,23 @@ export default function JobDetailsScreen() {
             <View style={styles.bidSheetHandle} />
             <Text style={styles.bidSheetTitle}>Apply to This Job</Text>
             <Text style={styles.bidSheetJob} numberOfLines={2}>{job?.title}</Text>
-            <Text style={styles.bidFieldLabel}>
-              No price to set yet — you'll inspect the job in person and send an invoice once you're hired.
-            </Text>
+            {job?.upfront ? (
+              job.upfront.myPrice ? (
+                <Text style={styles.bidFieldLabel}>
+                  Your price: {job.upfront.myPrice.text}. The customer sees it and pays when they book you.
+                </Text>
+              ) : (
+                <TouchableOpacity onPress={() => { setShowBidModal(false); router.push('/rates-and-hosting' as any); }}>
+                  <Text style={styles.bidFieldLabel}>
+                    Add your price per {job.upfront.unitWord} for this skill in Rates & hosting to apply — tap to set it.
+                  </Text>
+                </TouchableOpacity>
+              )
+            ) : (
+              <Text style={styles.bidFieldLabel}>
+                No price to set yet — you'll inspect the job in person and send an invoice once you're hired.
+              </Text>
+            )}
 
             <Text style={styles.bidFieldLabel}>Message to Customer (optional)</Text>
             <TextInput
@@ -1013,9 +1048,9 @@ export default function JobDetailsScreen() {
                 <Text style={styles.bidCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.bidSubmitBtn, isSubmittingBid && { opacity: 0.7 }]}
+                style={[styles.bidSubmitBtn, (isSubmittingBid || (job?.upfront && !job.upfront.myPrice)) && { opacity: 0.5 }]}
                 onPress={handleSubmitBid}
-                disabled={isSubmittingBid}
+                disabled={isSubmittingBid || (job?.upfront && !job.upfront.myPrice)}
               >
                 {isSubmittingBid
                   ? <ActivityIndicator size="small" color="#111827" />
