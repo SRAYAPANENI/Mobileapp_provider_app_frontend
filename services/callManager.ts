@@ -645,6 +645,43 @@ async function showChatMessageNotification(jobId: string, title: string, body: s
   });
 }
 
+/** Pushes about a job the provider is on that just land them on the
+ * dashboard — one list for the background and foreground listeners. */
+const DASHBOARD_JOB_UPDATES = new Set([
+  'invoice_accepted',
+  'invoice_countered',
+  'job_cost_paid',
+  // Proving the inspection (docs/MONEY_RULES_DESIGN.md §4–5).
+  'inspection_not_done',
+  'inspection_disputed',
+  // Work added mid-job, and tips (§11).
+  'extra_work_paid',
+  'extra_work_declined',
+  'tip_received',
+  // Decided on the evidence, or a chargeback recovery (§5, §12).
+  'visit_decided',
+  'dispute_overdue',
+  'recovery_created',
+  'payment_reversed',
+]);
+
+/** Pushes that open a screen of their own rather than the dashboard. */
+const ROUTED_UPDATES: Record<string, string> = {
+  // A strike for asking to be paid outside the app — read it, appeal (§10).
+  strike: '/account-standing',
+  // A customer's guarantee claim on your work — answer it (§12).
+  guarantee_claim: '/guarantee-claims',
+  // A customer wants you on a schedule, or ended it (§13).
+  series_proposed: '/regular-customers',
+  series_answered: '/regular-customers',
+};
+
+/** Where a job-update push opens, or null if it isn't one of these. */
+function updateRoute(type: unknown): string | null {
+  if (DASHBOARD_JOB_UPDATES.has(type as string)) return '/';
+  return ROUTED_UPDATES[type as string] ?? null;
+}
+
 async function showJobUpdateNotification(jobId: string, title: string, body: string, route: string) {
   await notifee.createChannel({
     id: JOB_UPDATE_CHANNEL_ID,
@@ -1528,16 +1565,13 @@ export function registerBackgroundHandler() {
     // notifications.tsx's in-app list does for the same types — that'd need
     // an extra flag alongside jobUpdateJobId/jobUpdateRoute, out of scope
     // for the chat-notification gap this pass is actually fixing.
-    if (
-      remoteMessage.data?.type === 'invoice_accepted' ||
-      remoteMessage.data?.type === 'invoice_countered' ||
-      remoteMessage.data?.type === 'job_cost_paid'
-    ) {
+    const route = remoteMessage.data ? updateRoute(remoteMessage.data.type) : null;
+    if (remoteMessage.data && route) {
       await showJobUpdateNotification(
         remoteMessage.data.job_id as string,
         (remoteMessage.data.title as string) || 'Job update',
         (remoteMessage.data.body as string) || 'Open the app to see what changed.',
-        '/',
+        route,
       );
       return;
     }
@@ -1711,16 +1745,13 @@ export function initCallManager() {
       });
       return;
     }
-    if (
-      remoteMessage.data?.type === 'invoice_accepted' ||
-      remoteMessage.data?.type === 'invoice_countered' ||
-      remoteMessage.data?.type === 'job_cost_paid'
-    ) {
+    const route = remoteMessage.data ? updateRoute(remoteMessage.data.type) : null;
+    if (remoteMessage.data && route) {
       await showJobUpdateNotification(
         remoteMessage.data.job_id as string,
         (remoteMessage.data.title as string) || 'Job update',
         (remoteMessage.data.body as string) || 'Open the app to see what changed.',
-        '/',
+        route,
       );
       return;
     }

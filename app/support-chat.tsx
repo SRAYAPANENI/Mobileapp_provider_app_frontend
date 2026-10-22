@@ -61,7 +61,7 @@ const CATEGORY_FAQS: Record<string, { question: string; answer: string }[]> = {
   "Payment / Payout Issue": [
     {
       question: "When do I get paid?",
-      answer: "When the job is complete (and any invoice is paid), your earnings minus Dodorez's 12% platform fee go to your Stripe payout account. Stripe then sends them to your bank on its usual schedule.",
+      answer: "When the job is complete (and any invoice is paid), your earnings minus Dodorez's fee go to your Stripe payout account — 10% of the first $500 of a job and 4% of the rest, at most $119 a job, and just 2% once you've paid $249 in a month. Stripe then sends them to your bank on its usual schedule.",
     },
     {
       question: "When do I get my visiting fee?",

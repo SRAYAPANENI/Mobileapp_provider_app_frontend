@@ -26,7 +26,7 @@ const FAQS = [
   {
     id: '2',
     question: 'What is the platform fee?',
-    answer: 'Dodorez takes a 12% platform fee from each job payout. The rest is transferred to your connected bank account once the job is complete.',
+    answer: "Dodorez takes 10% of the first $500 of a job and 4% of the rest — never more than $119 a job; once you've paid $249 in a month, just 2% until the month ends. No lead fees. The rest goes to your connected bank account once the job is complete.",
   },
   {
     id: '3',

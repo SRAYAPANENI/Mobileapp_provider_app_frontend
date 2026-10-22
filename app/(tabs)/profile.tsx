@@ -37,6 +37,8 @@ import {
   Lock,
   FileText,
   MessageSquare,
+  ShieldCheck,
+  Repeat,
   ChevronLeft,
   Search,
   User,
@@ -65,6 +67,8 @@ import Animated, { FadeInUp, FadeInDown, FadeInRight, FadeIn, LinearTransition, 
 import { Camera, Image as ImageIcon, Trash2, Edit2, AlertTriangle, Layers, Zap, Clock, Trophy } from 'lucide-react-native';
 import { usePushPreference } from '@/hooks/use-push-preference';
 import { fitBottom, padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
+import { FeeCapCard } from '@/components/fee-cap-card';
+import { MIN_VISITING_FEE } from '@/services/fees';
 
 // How long the timed-out question's feedback (Incorrect + explanation, or
 // the final score card) stays visible before the skill test auto-advances —
@@ -141,6 +145,11 @@ interface ApiJob {
     comment: string | null;
   } | null;
 }
+
+// What each payout was for (docs/MONEY_RULES_DESIGN.md §11–12).
+const PAYOUT_KIND: Record<string, string> = {
+  INSPECTION_FEE: 'Visiting fee', JOB_COST: 'Job', EXTRA_WORK: 'Added work', TIP: 'Tip — all yours',
+};
 
 export default function ProfileScreen() {
   const bottomInset = useBottomInset();
@@ -284,7 +293,11 @@ export default function ProfileScreen() {
   // bank-account/UPI entry form that never talked to a real backend).
   const [isEarningsModalOpen, setIsEarningsModalOpen] = useState(false);
   const [earnings, setEarnings] = useState({ totalEarned: 0, pending: 0, jobsPaidOut: 0 });
-  const [recentPayouts, setRecentPayouts] = useState<{ jobId: string; jobTitle: string; amount: number; paidAt: string | null }[]>([]);
+  const [recentPayouts, setRecentPayouts] = useState<{
+    jobId: string; jobTitle: string; amount: number; paidAt: string | null;
+    purpose: string | null; recovered: number; arrivesBy: string | null;
+  }[]>([]);
+  const [payoutInfo, setPayoutInfo] = useState({ recoveryOwed: 0, payoutDays: 2 });
   const [isDashboardLinkLoading, setIsDashboardLinkLoading] = useState(false);
 
   const getLocalISODate = (date: Date) => {
@@ -1103,7 +1116,11 @@ export default function ProfileScreen() {
     try {
       const data = await SkoFyApi.provider.getEarnings();
       setEarnings({ totalEarned: data.total_earned, pending: data.pending, jobsPaidOut: data.jobs_paid_out });
-      setRecentPayouts(data.recent_payouts.map(p => ({ jobId: p.job_id, jobTitle: p.job_title, amount: p.amount, paidAt: p.paid_at })));
+      setRecentPayouts(data.recent_payouts.map(p => ({
+        jobId: p.job_id, jobTitle: p.job_title, amount: p.amount, paidAt: p.paid_at,
+        purpose: p.purpose ?? null, recovered: p.recovered ?? 0, arrivesBy: p.arrives_by ?? null,
+      })));
+      setPayoutInfo({ recoveryOwed: data.recovery_owed ?? 0, payoutDays: data.payout_days ?? 2 });
     } catch {
       // non-fatal — keep whatever was last loaded
     }
@@ -1149,6 +1166,10 @@ export default function ProfileScreen() {
     if ((editVisitingFee && (!visitingFeeNum || visitingFeeNum <= 0)) ||
         (editHourlyRate && (!hourlyRateNum || hourlyRateNum <= 0))) {
       showAlert('error', 'Invalid Rate', 'Visiting Fee and Hourly Rate must be greater than 0.');
+      return;
+    }
+    if (visitingFeeNum != null && visitingFeeNum < MIN_VISITING_FEE) {
+      showAlert('error', 'Visiting Fee Too Low', `The visiting fee is at least $${MIN_VISITING_FEE} — it covers your trip if a customer cancels.`);
       return;
     }
     // The backend's rates endpoint takes both fields together — there's no
@@ -2320,6 +2341,48 @@ export default function ProfileScreen() {
                 style={[styles.settingItem, { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }]}
                 onPress={() => {
                   setIsSettingsOpen(false);
+                  router.push('/account-standing' as any);
+                }}
+              >
+                <View style={styles.settingInfo}>
+                  <ShieldCheck size={20} color="#6B7280" />
+                  <ThemedText style={styles.settingLabel}>Account standing</ThemedText>
+                </View>
+                <ChevronRight size={20} color="#D1D5DB" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.settingItem, { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }]}
+                onPress={() => {
+                  setIsSettingsOpen(false);
+                  router.push('/guarantee-claims' as any);
+                }}
+              >
+                <View style={styles.settingInfo}>
+                  <ShieldCheck size={20} color="#6B7280" />
+                  <ThemedText style={styles.settingLabel}>Guarantee requests</ThemedText>
+                </View>
+                <ChevronRight size={20} color="#D1D5DB" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.settingItem, { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }]}
+                onPress={() => {
+                  setIsSettingsOpen(false);
+                  router.push('/regular-customers' as any);
+                }}
+              >
+                <View style={styles.settingInfo}>
+                  <Repeat size={20} color="#6B7280" />
+                  <ThemedText style={styles.settingLabel}>Regular customers</ThemedText>
+                </View>
+                <ChevronRight size={20} color="#D1D5DB" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.settingItem, { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }]}
+                onPress={() => {
+                  setIsSettingsOpen(false);
                   router.push('/help-support' as any);
                 }}
               >
@@ -2447,7 +2510,7 @@ export default function ProfileScreen() {
                 <TextInput
                   value={editVisitingFee}
                   onChangeText={setEditVisitingFee}
-                  placeholder="e.g. 25"
+                  placeholder={`at least ${MIN_VISITING_FEE}`}
                   keyboardType="decimal-pad"
                   style={[styles.editableInput, { marginTop: 6 }]}
                 />
@@ -3279,6 +3342,8 @@ export default function ProfileScreen() {
               </View>
             )}
 
+            <FeeCapCard />
+
             <View style={styles.withdrawalSection}>
               <TouchableOpacity
                 style={styles.withdrawalConfirmBtn}
@@ -3292,9 +3357,16 @@ export default function ProfileScreen() {
                 )}
               </TouchableOpacity>
               <ThemedText style={{ fontSize: 12, lineHeight: 18, color: '#6B7280', fontFamily: Fonts.poppins, textAlign: 'center', marginTop: 10 }}>
-                Your bank account and payout schedule are managed directly through Stripe — money is deposited automatically after each completed job.
+                Your bank account is managed through Stripe. Money is released when the job allows — the visit once it's
+                confirmed, the job when it's done, a tip right away — and reaches your bank about {payoutInfo.payoutDays} business days later.
               </ThemedText>
             </View>
+
+            {payoutInfo.recoveryOwed > 0 && (
+              <ThemedText style={{ fontSize: 12.5, lineHeight: 18, color: '#92400E', fontFamily: Fonts.poppins, marginTop: 16 }}>
+                ${payoutInfo.recoveryOwed.toFixed(2)} of a chargeback found yours to bear comes out of your next payouts.
+              </ThemedText>
+            )}
 
             <ThemedText style={[styles.sectionTitleSmall, { marginTop: 24 }]}>Recent Payouts</ThemedText>
             {recentPayouts.length === 0 ? (
@@ -3303,12 +3375,14 @@ export default function ProfileScreen() {
               </ThemedText>
             ) : (
               recentPayouts.map(p => (
-                <View key={p.jobId} style={styles.paymentInfoDisplay}>
+                <View key={`${p.jobId}-${p.purpose}`} style={styles.paymentInfoDisplay}>
                   <Landmark size={20} color="#D97706" />
                   <View style={{ flex: 1 }}>
                     <ThemedText style={styles.paymentInfoTextLarge}>{p.jobTitle}</ThemedText>
                     <ThemedText style={styles.paymentInfoSubTextLarge}>
-                      {p.paidAt ? new Date(p.paidAt).toLocaleDateString() : ''}
+                      {PAYOUT_KIND[p.purpose ?? ''] ?? 'Payout'}
+                      {p.arrivesBy ? ` · in your bank by ${new Date(`${p.arrivesBy}T12:00:00`).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}` : ''}
+                      {p.recovered > 0 ? ` · $${p.recovered.toFixed(2)} toward a chargeback` : ''}
                     </ThemedText>
                   </View>
                   <ThemedText style={{ fontSize: 15, lineHeight: 21, fontFamily: Fonts.poppinsBold, color: '#111827' }}>

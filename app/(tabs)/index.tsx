@@ -47,6 +47,11 @@ import {
 } from '@/services/pickupDelivery';
 import { PickupAtStore } from '@/components/pickup-at-store';
 import { PickupFromPerson } from '@/components/pickup-from-person';
+import { ArrivalPanel } from '@/components/arrival-panel';
+import { InspectionReportForm } from '@/components/inspection-report-form';
+import { InspectionStatus } from '@/components/inspection-status';
+import { KeepPreview } from '@/components/keep-preview';
+import { ExtraWorkPanel } from '@/components/extra-work-panel';
 import { ReportIssueModal } from '@/components/report-issue-modal';
 import { useGoodsHoldHeld } from '@/hooks/use-goods-hold';
 import notifee from '@notifee/react-native';
@@ -401,7 +406,8 @@ export default function DashboardScreen() {
   const [otpInput, setOtpInput] = useState('');
   const [requestingOtp, setRequestingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
-  const [completingInspection, setCompletingInspection] = useState(false);
+  // The share paid when work starts — on a big quote, or for the parts listed (KeepPreview).
+  const [depositPercent, setDepositPercent] = useState(0);
   // Pickup & Drop: proof-of-pickup photo — this job kind's equivalent of the
   // OTP-gated inspection start above (the customer isn't at the pickup point
   // to hand over a code, so a photo substitutes for it instead).
@@ -424,6 +430,8 @@ export default function DashboardScreen() {
   const [invoiceAmount, setInvoiceAmount] = useState('');
   const [invoiceNotes, setInvoiceNotes] = useState('');
   const [materials, setMaterials] = useState<Array<{ name: string; quantity: string; unit_cost: string }>>([]);
+  // What the listed parts cost — a small quote can have them paid when work starts.
+  const partsTotal = materials.reduce((sum, m) => sum + (parseFloat(m.quantity) || 0) * (parseFloat(m.unit_cost) || 0), 0);
   // KeyboardAvoidingView is well known to not cooperate with RN's <Modal> on
   // Android — Modal renders in its own native window, which doesn't
   // participate in the Activity's keyboard-driven resize the way a normal
@@ -593,18 +601,20 @@ export default function DashboardScreen() {
     appAlert.show('success', 'Item Refused', 'The job is cancelled and your trip fee is kept. Thanks for checking.');
   };
 
-  const handleCompleteInspection = async () => {
+  // The job as the server has it now — after a report, a check-in, a code.
+  const refreshManageDetail = async () => {
     if (!selectedJob) return;
-    setCompletingInspection(true);
-    try {
-      await SkoFyApi.jobs.completeInspection(selectedJob.id);
-      const detail = await SkoFyApi.jobs.get(selectedJob.id);
-      setManageJobDetail(detail);
-    } catch (err: any) {
-      appAlert.show('error', 'Not Yet', err?.message ?? 'Please try again in a moment.');
-    } finally {
-      setCompletingInspection(false);
-    }
+    const detail = await SkoFyApi.jobs.get(selectedJob.id).catch(() => null);
+    if (detail) setManageJobDetail(detail);
+  };
+
+  // "Customer not here": the job is cancelled and the visiting fee is theirs.
+  const handleCustomerAbsent = () => {
+    const goneId = selectedJob?.id;
+    setJobs(prevJobs => prevJobs.filter(job => job.id !== goneId));
+    setShowManageModal(false);
+    setActiveJobId(null);
+    appAlert.show('success', 'Job Cancelled', "The customer wasn't there — the visiting fee is yours.");
   };
 
   const handleRaiseInvoice = async () => {
@@ -623,11 +633,12 @@ export default function DashboardScreen() {
           quantity: parseFloat(m.quantity) || 1,
           unit_cost: parseFloat(m.unit_cost) || 0,
         }));
-      await SkoFyApi.jobs.raiseInvoice(selectedJob.id, amount, materialLines, invoiceNotes.trim() || undefined);
+      await SkoFyApi.jobs.raiseInvoice(selectedJob.id, amount, materialLines, invoiceNotes.trim() || undefined, depositPercent);
       setJobs(prev => prev.map(j => j.id === selectedJob.id ? { ...j, status: 'INVOICE_PENDING' } : j));
       setInvoiceAmount('');
       setInvoiceNotes('');
       setMaterials([]);
+      setDepositPercent(0);
     } catch (err: any) {
       appAlert.show('error', 'Failed to Send Invoice', err?.message ?? 'Please try again.');
     } finally {
@@ -2096,6 +2107,7 @@ const filteredJobs = jobs.filter((job) => {
                   />
                 ) : selectedJob.status === 'IN_PROGRESS' ? (
                   <>
+                    <ExtraWorkPanel jobId={selectedJob.id} onMessage={(kind, title, message) => appAlert.show(kind, title, message)} />
                     <ThemedText style={styles.completeDisclaimer}>
                       Please ensure you have finished all tasks before marking as completed.
                     </ThemedText>
@@ -2158,6 +2170,13 @@ const filteredJobs = jobs.filter((job) => {
                       value={invoiceAmount}
                       onChangeText={setInvoiceAmount}
                       onFocus={scrollToFocusedInput}
+                    />
+                    <KeepPreview
+                      jobId={selectedJob.id}
+                      amount={parseFloat(invoiceAmount) || 0}
+                      partsTotal={partsTotal}
+                      depositPercent={depositPercent}
+                      onDepositChange={setDepositPercent}
                     />
                     <RNTextInput
                       style={styles.otpEntryInput}
@@ -2242,6 +2261,13 @@ const filteredJobs = jobs.filter((job) => {
                       value={invoiceAmount}
                       onChangeText={setInvoiceAmount}
                       onFocus={scrollToFocusedInput}
+                    />
+                    <KeepPreview
+                      jobId={selectedJob.id}
+                      amount={parseFloat(invoiceAmount) || 0}
+                      partsTotal={partsTotal}
+                      depositPercent={depositPercent}
+                      onDepositChange={setDepositPercent}
                     />
                     <RNTextInput
                       style={styles.otpEntryInput}
@@ -2349,6 +2375,15 @@ const filteredJobs = jobs.filter((job) => {
                   </>
                 ) : selectedJob.status === 'ACCEPTED' ? (
                   <>
+                    <ArrivalPanel
+                      jobId={selectedJob.id}
+                      arrivedAt={manageJobDetail?.arrived_at}
+                      customerExpected={(manageJobDetail?.shape?.venue ?? 'CUSTOMER_PLACE') === 'CUSTOMER_PLACE'}
+                      getCoords={currentCoords}
+                      onArrived={refreshManageDetail}
+                      onCustomerAbsent={handleCustomerAbsent}
+                      onError={(title, message) => appAlert.show('error', title, message)}
+                    />
                     <ThemedText style={styles.completeDisclaimer}>
                       Once you've arrived, ask the customer for the 4-digit code on their screen to start inspecting.
                     </ThemedText>
@@ -2417,19 +2452,12 @@ const filteredJobs = jobs.filter((job) => {
                   </>
                 ) : selectedJob.status === 'INSPECTING' && !manageJobDetail?.inspection_completed_at ? (
                   <>
-                    <ThemedText style={styles.completeDisclaimer}>
-                      Mark it complete when you're done inspecting.
-                    </ThemedText>
-                    <TouchableOpacity
-                      style={[styles.completeJobBtn, completingInspection && { opacity: 0.5 }]}
-                      onPress={handleCompleteInspection}
-                      disabled={completingInspection}
-                    >
-                      <CheckCircle size={20} color="#fff" />
-                      <ThemedText style={styles.completeJobText}>
-                        {completingInspection ? 'Completing…' : 'Complete Inspection'}
-                      </ThemedText>
-                    </TouchableOpacity>
+                    <InspectionReportForm
+                      jobId={selectedJob.id}
+                      getCoords={currentCoords}
+                      onSubmitted={refreshManageDetail}
+                      onError={(title, message) => appAlert.show('error', title, message)}
+                    />
                     <TouchableOpacity
                       style={styles.cancelJobBtn}
                       onPress={() => setShowCancelJobModal(true)}
@@ -2440,6 +2468,13 @@ const filteredJobs = jobs.filter((job) => {
                   </>
                 ) : selectedJob.status === 'INSPECTING' && manageJobDetail?.inspection_completed_at ? (
                   <>
+                    <InspectionStatus
+                      jobId={selectedJob.id}
+                      confidence={manageJobDetail?.inspection_confidence}
+                      disputed={!!manageJobDetail?.inspection_disputed_at}
+                      onChanged={refreshManageDetail}
+                      onError={(title, message) => appAlert.show('error', title, message)}
+                    />
                     <ThemedText style={styles.completeDisclaimer}>
                       Add any raw materials needed, then send the customer your invoice.
                     </ThemedText>
@@ -2488,6 +2523,13 @@ const filteredJobs = jobs.filter((job) => {
                       onChangeText={setInvoiceAmount}
                       onFocus={scrollToFocusedInput}
                     />
+                    <KeepPreview
+                      jobId={selectedJob.id}
+                      amount={parseFloat(invoiceAmount) || 0}
+                      partsTotal={partsTotal}
+                      depositPercent={depositPercent}
+                      onDepositChange={setDepositPercent}
+                    />
                     <RNTextInput
                       style={styles.otpEntryInput}
                       placeholder="What did you inspect? (optional)"
@@ -2515,6 +2557,15 @@ const filteredJobs = jobs.filter((job) => {
                   </>
                 ) : selectedJob.status === 'INVOICE_PENDING' ? (
                   <>
+                    {manageJobDetail?.inspection_completed_at && manageJobDetail?.inspection_confidence !== 'CONFIRMED' && (
+                      <InspectionStatus
+                        jobId={selectedJob.id}
+                        confidence={manageJobDetail?.inspection_confidence}
+                        disputed={!!manageJobDetail?.inspection_disputed_at}
+                        onChanged={refreshManageDetail}
+                        onError={(title, message) => appAlert.show('error', title, message)}
+                      />
+                    )}
                     {manageJobDetail?.invoice?.status === 'COUNTERED' ? (
                       <>
                         <ThemedText style={styles.completeDisclaimer}>

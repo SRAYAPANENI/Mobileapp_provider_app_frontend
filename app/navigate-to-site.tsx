@@ -153,8 +153,13 @@ export default function NavigateToSiteScreen() {
   // invoice entirely — exactly the bug that made all of that look "missing".
   // This just takes them back to the Service Room, still ACCEPTED, where
   // they start the real flow.
+  // Also records "I'm here" (checked against the job's location), which
+  // tells the customer and starts the wait before "Customer not here" — if
+  // it can't (too far yet, no GPS), the Service Room offers it again.
   const handleArrivedAtLocation = () => {
     if (!jobId) return;
+    const here = gpsLoc ?? currentPosRef.current;
+    if (here) SkoFyApi.jobs.markArrived(jobId, here.latitude, here.longitude).catch(() => {});
     router.replace({ pathname: '/(tabs)', params: { openServiceRoom: 'true', jobId } } as any);
   };
 
