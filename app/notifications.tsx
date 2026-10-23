@@ -151,6 +151,9 @@ export default function NotificationsScreen() {
       case 'business_job':
         openScreen('/business-job', item.job_id, { jobId: item.job_id });
         break;
+      case 'team_job':
+        router.push('/business-jobs' as any);
+        break;
       case 'job_cost_paid':
       case 'care_update_due':
         router.push({ pathname: '/(tabs)', params: { openServiceRoom: 'true', jobId: item.job_id } } as any);

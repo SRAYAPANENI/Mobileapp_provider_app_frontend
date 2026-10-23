@@ -681,6 +681,8 @@ const ROUTED_UPDATES: Record<string, string> = {
   business_update: '/business',
   // Something happened on one of your business's jobs (hired, cancelled, done…).
   business_job: '/business-job',
+  // A new job reached your team — apply as the business and choose who does it.
+  team_job: '/business-jobs',
 };
 
 /** Where a job-update push opens, or null if it isn't one of these. */
