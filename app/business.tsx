@@ -210,7 +210,7 @@ export default function BusinessScreen() {
                   onInvite={async (phone, role: MemberRole) => {
                     try {
                       setTeam(await SkoFyApi.business.invite(phone, role));
-                      appAlert.show('success', 'Invite sent', "They'll see it under Business account in their Dodorez Pro app.");
+                      appAlert.show('success', 'Invite sent', 'Ask them to sign in to the Dodorez Pro app with this number — the invite waits under Business account.');
                     } catch (err: any) {
                       appAlert.show('error', 'Not sent', err?.message ?? 'Please try again.');
                       throw err;
