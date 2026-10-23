@@ -676,6 +676,11 @@ const ROUTED_UPDATES: Record<string, string> = {
   // A customer wants you on a schedule, or ended it (§13).
   series_proposed: '/regular-customers',
   series_answered: '/regular-customers',
+  // Your business approved, needing changes, or a certificate ending —
+  // not about a job: its business_id stands in as the notification key.
+  business_update: '/business',
+  // Something happened on one of your business's jobs (hired, cancelled, done…).
+  business_job: '/business-job',
 };
 
 /** Where a job-update push opens, or null if it isn't one of these. */
@@ -1570,7 +1575,7 @@ export function registerBackgroundHandler() {
     const route = remoteMessage.data ? updateRoute(remoteMessage.data.type) : null;
     if (remoteMessage.data && route) {
       await showJobUpdateNotification(
-        remoteMessage.data.job_id as string,
+        (remoteMessage.data.job_id ?? remoteMessage.data.business_id) as string,
         (remoteMessage.data.title as string) || 'Job update',
         (remoteMessage.data.body as string) || 'Open the app to see what changed.',
         route,
@@ -1750,7 +1755,7 @@ export function initCallManager() {
     const route = remoteMessage.data ? updateRoute(remoteMessage.data.type) : null;
     if (remoteMessage.data && route) {
       await showJobUpdateNotification(
-        remoteMessage.data.job_id as string,
+        (remoteMessage.data.job_id ?? remoteMessage.data.business_id) as string,
         (remoteMessage.data.title as string) || 'Job update',
         (remoteMessage.data.body as string) || 'Open the app to see what changed.',
         route,

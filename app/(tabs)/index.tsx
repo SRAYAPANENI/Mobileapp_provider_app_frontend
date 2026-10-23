@@ -98,6 +98,14 @@ export default function DashboardScreen() {
   const [showNotifNudge, setShowNotifNudge] = useState(false);
   const [isIdentityVerified, setIsIdentityVerified] = useState(false);
   const [pickupDropoffEnabled, setPickupDropoffEnabled] = useState(false);
+  // Taking jobs only through a business (docs/BUSINESS_PROVIDERS_DESIGN.md §7):
+  // the personal feed is empty by design — say whose jobs they get instead.
+  const [teamOnlyFor, setTeamOnlyFor] = useState<string | null>(null);
+  useEffect(() => {
+    SkoFyApi.business.mine()
+      .then((r) => setTeamOnlyFor(r.enabled && r.business && r.works_for_self === false ? r.business.name : null))
+      .catch(() => {});
+  }, []);
   const [pickupDropoffSaving, setPickupDropoffSaving] = useState(false);
   const [isExitModalVisible, setIsExitModalVisible] = useState(false);
   const lastBackPressTime = useRef(0);
@@ -180,6 +188,8 @@ export default function DashboardScreen() {
       const mapActive = (j: any) => ({
         id: String(j.job_id ?? j.id),
         title: j.title,
+        // Done for a business (docs/BUSINESS_PROVIDERS_DESIGN.md) — shown on the job.
+        businessName: j.business_name ?? null,
         description: j.description,
         jobType: j.urgency === 'HIGH' || j.urgency === 'EMERGENCY' ? 'Urgent' : 'Normal',
         status: j.job_status ?? 'ACCEPTED',
@@ -1892,7 +1902,8 @@ const filteredJobs = jobs.filter((job) => {
                 : 'Waiting for job assignments...'}
             </ThemedText>
             <ThemedText style={styles.emptySubText}>
-              {activeTab === 0 && !isAvailable ? 'Turn on availability at the top of the dashboard to see new jobs.'
+              {activeTab === 0 && teamOnlyFor ? `Your jobs come through ${teamOnlyFor} — they show under Ongoing once you're given one.`
+                : activeTab === 0 && !isAvailable ? 'Turn on availability at the top of the dashboard to see new jobs.'
                 : activeTab === 0 && skillFilter ? `No ${skillFilter} jobs right now. Tap All to see every job you qualify for.`
                 : activeTab === 0 ? 'Jobs posted by customers will appear here once assigned to you.'
                 : ''}
@@ -2002,6 +2013,9 @@ const filteredJobs = jobs.filter((job) => {
                 {/* Requirement Details */}
                 <ThemedText style={styles.requirementLabel}>REQUIREMENT DETAILS</ThemedText>
                 <ThemedText style={styles.serviceJobTitle}>{selectedJob.title}</ThemedText>
+                {!!(selectedJob as any).businessName && (
+                  <ThemedText style={styles.serviceJobDesc}>For {(selectedJob as any).businessName}</ThemedText>
+                )}
                 <ThemedText style={styles.serviceJobDesc}>{selectedJob.description}</ThemedText>
 
                 {/* Customer card */}

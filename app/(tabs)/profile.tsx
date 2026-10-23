@@ -54,6 +54,7 @@ import {
   Eye,
   EyeOff,
   BadgeDollarSign,
+  Building2,
 } from 'lucide-react-native';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { Colors, Fonts } from '@/constants/theme';
@@ -178,6 +179,13 @@ export default function ProfileScreen() {
     profileScrollRef.current?.scrollTo({ y: 0, animated: false });
   };
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  // Business accounts (docs/BUSINESS_PROVIDERS_DESIGN.md) show in Settings
+  // only once they're switched on.
+  const [businessEnabled, setBusinessEnabled] = useState(false);
+  useEffect(() => {
+    if (!isSettingsOpen) return;
+    SkoFyApi.business.mine().then((r) => setBusinessEnabled(r.enabled)).catch(() => {});
+  }, [isSettingsOpen]);
   const [isPasswordOpen, setIsPasswordOpen] = useState(false);
   const [isTermsOpen, setIsTermsOpen] = useState(false);
   const [isPhotoSheetOpen, setIsPhotoSheetOpen] = useState(false);
@@ -2379,6 +2387,22 @@ export default function ProfileScreen() {
                 </View>
                 <ChevronRight size={20} color="#D1D5DB" />
               </TouchableOpacity>
+
+              {businessEnabled && (
+                <TouchableOpacity
+                  style={[styles.settingItem, { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }]}
+                  onPress={() => {
+                    setIsSettingsOpen(false);
+                    router.push('/business' as any);
+                  }}
+                >
+                  <View style={styles.settingInfo}>
+                    <Building2 size={20} color="#6B7280" />
+                    <ThemedText style={styles.settingLabel}>Business account</ThemedText>
+                  </View>
+                  <ChevronRight size={20} color="#D1D5DB" />
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity
                 style={[styles.settingItem, { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }]}

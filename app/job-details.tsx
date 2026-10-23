@@ -280,6 +280,7 @@ export default function JobDetailsScreen() {
           jobData = {
             id: j.id?.toString() ?? id,
             title: j.title ?? 'Job',
+            businessName: j.business_name ?? null,
             description: j.description ?? '',
             jobType: ['HIGH', 'EMERGENCY'].includes(j.urgency) ? 'Urgent' : j.urgency === 'LOW' ? 'Book Slot' : 'Normal',
             status: j.status,
@@ -610,6 +611,7 @@ export default function JobDetailsScreen() {
           <View style={styles.titleSection}>
             <View style={{ flex: 1 }}>
               <Text style={styles.jobTitle}>{job.title}</Text>
+              {!!job.businessName && <Text style={styles.locationText}>For {job.businessName}</Text>}
               <View style={styles.locationLink}>
                 <MapPin size={16} color="#6B7280" />
                 <Text style={styles.locationText}>{job.location}</Text>

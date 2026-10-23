@@ -343,6 +343,82 @@ export interface CareRecord {
   updates: { id: string; note: string | null; photo_urls: string[]; created_at: string }[];
 }
 
+/** A business provider (docs/BUSINESS_PROVIDERS_DESIGN.md). */
+export type BusinessStatus = 'DRAFT' | 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED';
+export type BusinessDocumentKind = 'GENERAL_LIABILITY' | 'WORKERS_COMP' | 'LICENCE';
+export interface BusinessDocument {
+  id: string; kind: BusinessDocumentKind; file_url: string; issuer: string | null; number: string | null;
+  coverage_limit: number | null; trade: string | null; issuing_state: string | null; expires_on: string | null;
+  status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED' | 'EXPIRED'; review_note: string | null;
+}
+export interface Business {
+  id: string; name: string; legal_name: string; entity_type: 'LLC' | 'CORPORATION' | 'PARTNERSHIP' | 'SOLE_PROPRIETOR';
+  state: string; email: string | null; phone: string | null; status: BusinessStatus;
+  /** Whether its members may also work for themselves. */
+  allow_independent_work: boolean;
+  review_note: string | null; connect_onboarding_status: string;
+  documents: BusinessDocument[]; ready_for_on_site_work: boolean; missing: string[];
+}
+export interface MyBusiness {
+  enabled: boolean; business: Business | null; role: 'OWNER' | 'DISPATCHER' | 'WORKER' | null;
+  /** Two hats (§7): their own "Myself" switch, and whether it's in effect. */
+  own_switch?: boolean; works_for_self?: boolean;
+  /** General liability required for on-site work, in dollars. */
+  min_liability: number;
+}
+export interface BusinessProfileInput {
+  name: string; legal_name: string; entity_type: Business['entity_type']; state: string; email?: string; phone?: string;
+}
+export type MemberRole = 'OWNER' | 'DISPATCHER' | 'WORKER';
+export interface TeamMember {
+  id: string; provider_id: string | null; name: string | null; phone: string | null; role: MemberRole;
+  status: 'INVITED' | 'ACTIVE'; joined_at: string | null; is_identity_verified: boolean | null;
+  background_check_status: 'NOT_STARTED' | 'PENDING' | 'CLEAR' | 'CONSIDER' | 'FAILED' | null;
+}
+export interface CheckCharge {
+  id: string; name: string; amount: number; free: boolean; status: 'PENDING' | 'DUE' | 'DEDUCTED' | 'WAIVED'; created_at: string;
+}
+export interface Team { members: TeamMember[]; free_checks_left: number; check_cost: number; check_charges: CheckCharge[] }
+export interface BusinessInvite {
+  id: string; business_id: string; business_name: string; role: MemberRole; invited_by: string | null;
+  /** The location notice to read and accept before joining. */
+  notice: string;
+  /** No clear background check yet: they authorise one (this disclosure) before joining. */
+  needs_check: boolean; check_disclosure: string | null;
+}
+/** The business's jobs (docs/BUSINESS_PROVIDERS_DESIGN.md §3). */
+export interface TeamOpenJob {
+  job_id: string; title: string; description: string; urgency: string; scheduled_at: string | null; created_at: string;
+  venue: string; pricing_unit: string; lat: number | null; lng: number | null;
+  /** Members the job reached — the business can name anyone able to do it. */
+  reached_member_ids: string[]; applied: boolean;
+}
+export interface TeamActiveJob {
+  job_id: string; title: string; status: string; scheduled_at: string | null; hired_at: string | null;
+  navigation_started_at: string | null; arrived_at: string | null; checked_in_at: string | null;
+  worker_id: string | null; worker_name: string | null; customer_name: string | null;
+}
+export interface BusinessBoard { open: TeamOpenJob[]; active: TeamActiveJob[] }
+export interface TeamPosition {
+  job_id: string; title: string; status: string; worker_id: string; worker_name: string | null;
+  lat: number; lng: number; heading: number | null; job_lat: number | null; job_lng: number | null;
+}
+export interface BusinessJobDetail {
+  job_id: string; title: string; status: string; customer_id: string; customer_name: string | null;
+  scheduled_at: string | null; worker_id: string | null; worker_name: string | null; address: string | null;
+  timeline: { step: string; actor_role: string; actor_name: string | null; created_at: string; evidence: any }[];
+}
+export interface BusinessEarnings {
+  total_earned: number; pending: number; jobs_paid_out: number; owed_to_dodorez: number;
+  payouts: { job_id: string; job_title: string; purpose: string; provider_amount: number; recovered_amount: number;
+    released_at: string; worker_name: string | null }[];
+  fees: { month: string; fees_paid: number; monthly_cap: number };
+}
+export interface BusinessDocumentInput {
+  kind: BusinessDocumentKind; file: { uri: string; name: string; mimeType: string };
+  issuer: string; number: string; coverage_limit?: string; trade?: string; issuing_state?: string; expires_on?: string;
+}
+
 /** Work asked to be added mid-job (§11). */
 export interface ExtraWork {
   amount: number; description: string;
@@ -1222,6 +1298,62 @@ export const SkoFyApi = {
       request(`/series/${seriesId}/respond`, { method: 'POST', body: JSON.stringify({ accept }) }),
     end: async (seriesId: string) =>
       request(`/series/${seriesId}/change`, { method: 'POST', body: JSON.stringify({ action: 'END' }) }),
+  },
+
+  // ── Business account (docs/BUSINESS_PROVIDERS_DESIGN.md) ─────────────────
+  business: {
+    mine: async (): Promise<MyBusiness> => request('/businesses/me') as any,
+    create: async (body: BusinessProfileInput): Promise<MyBusiness> =>
+      request('/businesses/me', { method: 'POST', body: JSON.stringify(body) }) as any,
+    update: async (body: BusinessProfileInput): Promise<MyBusiness> =>
+      request('/businesses/me', { method: 'PUT', body: JSON.stringify(body) }) as any,
+    submit: async (): Promise<MyBusiness> => request('/businesses/me/submit', { method: 'POST' }) as any,
+    setIndependentWork: async (on: boolean): Promise<MyBusiness> =>
+      request('/businesses/me/independent-work', { method: 'PUT', body: JSON.stringify({ on }) }) as any,
+    setOwnWork: async (on: boolean): Promise<MyBusiness> =>
+      request('/businesses/me/own-work', { method: 'PUT', body: JSON.stringify({ on }) }) as any,
+    addDocument: async (doc: BusinessDocumentInput): Promise<MyBusiness> => {
+      const form = new FormData();
+      form.append('kind', doc.kind);
+      form.append('file', { uri: doc.file.uri, name: doc.file.name, type: doc.file.mimeType } as any);
+      form.append('issuer', doc.issuer);
+      form.append('number', doc.number);
+      if (doc.coverage_limit) form.append('coverage_limit', doc.coverage_limit);
+      if (doc.trade) form.append('trade', doc.trade);
+      if (doc.issuing_state) form.append('issuing_state', doc.issuing_state);
+      if (doc.expires_on) form.append('expires_on', doc.expires_on);
+      return requestMultipart('/businesses/me/documents', form) as any;
+    },
+    removeDocument: async (documentId: string): Promise<MyBusiness> =>
+      request(`/businesses/me/documents/${documentId}`, { method: 'DELETE' }) as any,
+    payoutsLink: async (): Promise<{ url: string }> =>
+      request('/businesses/me/payouts/onboarding', { method: 'POST' }) as any,
+    payoutsStatus: async (): Promise<{ connect_onboarding_status: string; is_demo?: boolean }> =>
+      request('/businesses/me/payouts/status') as any,
+    payoutsDashboard: async (): Promise<{ url: string }> =>
+      request('/businesses/me/payouts/dashboard', { method: 'POST' }) as any,
+    team: async (): Promise<Team> => request('/businesses/me/team') as any,
+    invite: async (phone: string, role: MemberRole): Promise<Team> =>
+      request('/businesses/me/team/invites', { method: 'POST', body: JSON.stringify({ phone, role }) }) as any,
+    changeRole: async (memberId: string, role: MemberRole): Promise<Team> =>
+      request(`/businesses/me/team/${memberId}`, { method: 'PUT', body: JSON.stringify({ role }) }) as any,
+    removeMember: async (memberId: string): Promise<Team> =>
+      request(`/businesses/me/team/${memberId}`, { method: 'DELETE' }) as any,
+    leave: async (): Promise<{ message: string }> => request('/businesses/me/leave', { method: 'POST' }) as any,
+    board: async (): Promise<BusinessBoard> => request('/businesses/me/jobs') as any,
+    job: async (jobId: string): Promise<BusinessJobDetail> => request(`/businesses/me/jobs/${jobId}`) as any,
+    positions: async (): Promise<TeamPosition[]> => request('/businesses/me/positions') as any,
+    earnings: async (): Promise<BusinessEarnings> => request('/businesses/me/earnings') as any,
+    applyForJob: async (jobId: string, workerId: string, message?: string): Promise<{ message: string }> =>
+      request(`/businesses/me/jobs/${jobId}/apply`, { method: 'POST', body: JSON.stringify({ worker_id: workerId, message }) }) as any,
+    assignJob: async (jobId: string, workerId: string): Promise<{ message: string }> =>
+      request(`/businesses/me/jobs/${jobId}/assign`, { method: 'POST', body: JSON.stringify({ worker_id: workerId }) }) as any,
+    invites: async (): Promise<BusinessInvite[]> => request('/businesses/invites') as any,
+    answerInvite: async (memberId: string, accept: boolean, acknowledgedNotice: boolean, authorizedCheck = false): Promise<{ message: string }> =>
+      request(`/businesses/invites/${memberId}`, {
+        method: 'POST',
+        body: JSON.stringify({ accept, acknowledged_notice: acknowledgedNotice, authorized_check: authorizedCheck }),
+      }) as any,
   },
 
   // ── Rates & hosting (docs/JOB_SHAPE_DESIGN.md phase 4) ───────────────────

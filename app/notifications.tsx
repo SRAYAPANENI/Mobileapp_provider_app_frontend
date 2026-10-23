@@ -132,6 +132,10 @@ export default function NotificationsScreen() {
       else router.push('/help-support' as any);
       return;
     }
+    if (item.notif_type === 'business_update') {
+      router.push('/business' as any);
+      return;
+    }
     if (!item.job_id) return;
     switch (item.notif_type) {
       case 'new_job':
@@ -144,6 +148,9 @@ export default function NotificationsScreen() {
       // straight there, not have to go find the job themselves.
       case 'invoice_accepted':
       case 'invoice_countered':
+      case 'business_job':
+        openScreen('/business-job', item.job_id, { jobId: item.job_id });
+        break;
       case 'job_cost_paid':
       case 'care_update_due':
         router.push({ pathname: '/(tabs)', params: { openServiceRoom: 'true', jobId: item.job_id } } as any);
