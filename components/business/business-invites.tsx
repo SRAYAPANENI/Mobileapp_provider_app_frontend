@@ -3,9 +3,10 @@ import { Fonts } from '@/constants/theme';
 import { BusinessInvite } from '@/services/api';
 import { CheckSquare, MapPin, ShieldCheck, Square } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Badge, Button, C, Monogram, Section, u } from './ui';
 
-const ROLE_WORDS: Record<string, string> = { DISPATCHER: 'a dispatcher', WORKER: 'a worker', OWNER: 'the owner' };
+const ROLE_WORDS: Record<string, string> = { DISPATCHER: 'Dispatcher', WORKER: 'Worker', OWNER: 'Owner' };
 
 interface Props {
   invites: BusinessInvite[];
@@ -38,55 +39,54 @@ function InviteCard({ invite, onAnswer }: { invite: BusinessInvite; onAnswer: Pr
   };
 
   return (
-    <View style={s.card}>
-      <ThemedText style={s.title}>{invite.business_name} invited you</ThemedText>
-      <ThemedText style={s.body}>
-        Join their team as {ROLE_WORDS[invite.role]}{invite.invited_by ? ` — invited by ${invite.invited_by}` : ''}.
-        {invite.needs_check ? ' Dodorez runs a background check first — at no cost to you.' : ''}
-      </ThemedText>
-      <View style={s.notice}>
-        <View style={s.row}><MapPin size={15} color="#92400E" /><ThemedText style={s.noticeTitle}>Your location</ThemedText></View>
-        <ThemedText style={s.noticeText}>{invite.notice}</ThemedText>
-      </View>
-      <TouchableOpacity style={s.row} onPress={() => setAgreed((a) => !a)}>
-        {agreed ? <CheckSquare size={20} color="#111827" /> : <Square size={20} color="#9CA3AF" />}
-        <ThemedText style={s.body}>I've read this and agree</ThemedText>
-      </TouchableOpacity>
-      {invite.needs_check && invite.check_disclosure && (
-        <>
-          <View style={s.notice}>
-            <View style={s.row}><ShieldCheck size={15} color="#92400E" /><ThemedText style={s.noticeTitle}>Background check</ThemedText></View>
-            <ThemedText style={s.noticeText}>{invite.check_disclosure}</ThemedText>
+    <Section title="Team invite">
+      <View style={s.head}>
+        <Monogram name={invite.business_name} size={48} />
+        <View style={{ flex: 1, gap: 4 }}>
+          <ThemedText style={s.title}>{invite.business_name}</ThemedText>
+          <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+            <Badge label={ROLE_WORDS[invite.role]} tone="brand" />
+            {invite.invited_by && <ThemedText style={u.muted} numberOfLines={1}>from {invite.invited_by}</ThemedText>}
           </View>
-          <TouchableOpacity style={s.row} onPress={() => setAuthorized((a) => !a)}>
-            {authorized ? <CheckSquare size={20} color="#111827" /> : <Square size={20} color="#9CA3AF" />}
-            <ThemedText style={s.body}>I authorise Dodorez to get this background check</ThemedText>
-          </TouchableOpacity>
-        </>
-      )}
-      <View style={s.row}>
-        <TouchableOpacity style={s.secondary} onPress={() => answer(false)} disabled={!!busy}>
-          {busy === 'decline' ? <ActivityIndicator color="#374151" /> : <ThemedText style={s.secondaryText}>Decline</ThemedText>}
-        </TouchableOpacity>
-        <TouchableOpacity style={[s.primary, !ready && s.dim]} onPress={() => answer(true)} disabled={!ready || !!busy}>
-          {busy === 'accept' ? <ActivityIndicator color="#111827" /> : <ThemedText style={s.primaryText}>Join the team</ThemedText>}
-        </TouchableOpacity>
+        </View>
       </View>
+      {invite.needs_check && <ThemedText style={u.body}>Dodorez runs a background check first — at no cost to you.</ThemedText>}
+
+      <Consent icon={<MapPin size={16} color={C.warn} />} title="Your location" text={invite.notice}
+        checked={agreed} onToggle={() => setAgreed((a) => !a)} label="I've read this and agree" />
+      {invite.needs_check && invite.check_disclosure && (
+        <Consent icon={<ShieldCheck size={16} color={C.warn} />} title="Background check" text={invite.check_disclosure}
+          checked={authorized} onToggle={() => setAuthorized((a) => !a)} label="I authorise Dodorez to get this background check" />
+      )}
+
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <Button kind="secondary" label="Decline" onPress={() => answer(false)} busy={busy === 'decline'} disabled={!!busy} style={{ flex: 1 }} />
+        <Button label="Join the team" onPress={() => answer(true)} busy={busy === 'accept'} disabled={!ready || !!busy} style={{ flex: 1 }} />
+      </View>
+    </Section>
+  );
+}
+
+function Consent({ icon, title, text, checked, onToggle, label }: {
+  icon: React.ReactNode; title: string; text: string; checked: boolean; onToggle: () => void; label: string;
+}) {
+  return (
+    <View style={s.consent}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>{icon}<ThemedText style={s.consentTitle}>{title}</ThemedText></View>
+      <ThemedText style={s.consentText}>{text}</ThemedText>
+      <TouchableOpacity style={s.check} onPress={onToggle} activeOpacity={0.7}>
+        {checked ? <CheckSquare size={20} color={C.ink} /> : <Square size={20} color={C.faint} />}
+        <ThemedText style={[u.label, { flex: 1 }]}>{label}</ThemedText>
+      </TouchableOpacity>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  card: { padding: 16, borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#FDE68A', gap: 10 },
-  title: { fontSize: 15, lineHeight: 21, fontFamily: Fonts.poppinsBold, color: '#111827' },
-  body: { flex: 1, fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppins, color: '#374151' },
-  notice: { padding: 12, borderRadius: 12, backgroundColor: '#FFFBEB', gap: 6 },
-  noticeTitle: { fontSize: 13, lineHeight: 18, fontFamily: Fonts.poppinsBold, color: '#92400E' },
-  noticeText: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.poppins, color: '#92400E' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  primary: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: '#FFCE48' },
-  primaryText: { fontSize: 14, lineHeight: 19, fontFamily: Fonts.poppinsBold, color: '#111827' },
-  secondary: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: '#F3F4F6' },
-  secondaryText: { fontSize: 14, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: '#374151' },
-  dim: { opacity: 0.5 },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  title: { fontSize: 17, lineHeight: 23, fontFamily: Fonts.poppinsBold, color: C.ink },
+  consent: { padding: 14, borderRadius: 14, backgroundColor: C.warnSoft, gap: 8 },
+  consentTitle: { fontSize: 13.5, lineHeight: 18, fontFamily: Fonts.poppinsBold, color: C.warn },
+  consentText: { fontSize: 12.5, lineHeight: 19, fontFamily: Fonts.poppins, color: '#78350F' },
+  check: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#F5D9A8' },
 });

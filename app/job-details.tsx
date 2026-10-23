@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   User,
   Home,
+  Users,
 } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
@@ -37,6 +38,7 @@ import { Alert } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { getJobById, JOBS_LIST } from '@/data/jobsData';
 import { useBottomInset } from '@/hooks/use-bottom-inset';
+import { useMyBusiness } from '@/hooks/use-my-business';
 
 const { width } = Dimensions.get('window');
 
@@ -147,7 +149,12 @@ export default function JobDetailsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
   const styles = React.useMemo(() => makeStyles(themeColors), [colorScheme]);
+  // An owner or dispatcher sees a job their team can take: apply as the
+  // business (docs/BUSINESS_PROVIDERS_DESIGN.md §3) or for themselves.
+  const myBusiness = useMyBusiness();
   const [job, setJob] = useState<any>(null);
+  const teamJob = job && !job.isOngoing && !job.isClosed && myBusiness.canDispatch ? myBusiness.teamJob(job.id) : undefined;
+  const businessName = myBusiness.data?.business?.name ?? 'your business';
   const [isLoading, setIsLoading] = useState(true);
   // Set when the job fetch fails permanently (404/403) — a stale notification
   // tap (direct request, new job nearby) landing here after the job expired,
@@ -862,8 +869,20 @@ export default function JobDetailsScreen() {
       </ScrollView>
 
       {/* Persistent Footer Actions */}
-      <View style={[styles.footer, { paddingBottom: Math.max(bottomInset + 8, 16) }]}>
-        {(() => {
+      <View style={[styles.footer, { paddingBottom: Math.max(bottomInset + 8, 16) }, teamJob && styles.footerStacked]}>
+        {teamJob && (
+          <TouchableOpacity
+            style={[styles.applyButtonFull, styles.footerItem, teamJob.applied && styles.appliedButton]}
+            disabled={teamJob.applied}
+            onPress={() => router.push({ pathname: '/business-jobs', params: { jobId: job.id } } as any)}
+          >
+            {teamJob.applied ? <CheckCircle2 size={20} color="#16A34A" /> : <Users size={20} color="#111827" />}
+            <Text style={[styles.applyButtonText, teamJob.applied && styles.appliedButtonText, { flexShrink: 1 }]} numberOfLines={1}>
+              {teamJob.applied ? `Applied as ${businessName} ✓` : `Apply as ${businessName}`}
+            </Text>
+          </TouchableOpacity>
+        )}
+        {!(teamJob && (teamJob.applied || myBusiness.data?.works_for_self === false)) && (() => {
           // Precedence matters here: isOngoing (I'm the hired provider) >
           // isClosed (job died — cancelled/expired/disputed, nobody won it)
           // > isLockedByOther (job moved on, someone else got it — true
@@ -875,7 +894,7 @@ export default function JobDetailsScreen() {
           const isConflictLocked = !job.isOngoing && !job.isClosed && !job.isLockedByOther && !job.myApplicationId && feasibility?.status === 'NOT_FEASIBLE';
           const disabled = job.isOngoing ? false : (isApplied || isLocked || isConflictLocked || job.isClosed || isAcceptingDirect);
           return (
-            <View style={styles.footerRow}>
+            <View style={[styles.footerRow, teamJob && styles.footerItem]}>
               {job.isDirectRequest && !job.isOngoing && !isApplied && !isLocked && !job.isClosed && (
                 <TouchableOpacity
                   style={styles.declineBtn}
@@ -912,6 +931,7 @@ export default function JobDetailsScreen() {
                   job.isOngoing && styles.ongoingButton,
                   isApplied && styles.appliedButton,
                   (isLocked || isConflictLocked) && styles.conflictButton,
+                  teamJob && !isApplied && !isLocked && !isConflictLocked && styles.secondaryApplyButton,
                 ]}
                 onPress={() => {
                   if (job.isOngoing) {
@@ -948,7 +968,8 @@ export default function JobDetailsScreen() {
                     job.isClosed ? 'No Longer Available' :
                     isLocked ? 'Locked — Not Selected' :
                     isConflictLocked ? 'Conflict Locked' :
-                    job.isDirectRequest ? 'Accept & Apply' : 'Apply Now'}
+                    job.isDirectRequest ? 'Accept & Apply' :
+                    teamJob ? 'Apply for myself' : 'Apply Now'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1547,6 +1568,19 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: t.inputFilled,
     gap: 12,
+  },
+  // Two rows when the job can also go to their team.
+  footerStacked: {
+    flexDirection: 'column',
+  },
+  footerItem: {
+    flex: 0,
+    alignSelf: 'stretch',
+  },
+  secondaryApplyButton: {
+    backgroundColor: t.inputFilled,
+    shadowColor: 'transparent',
+    elevation: 0,
   },
   footerRow: {
     flex: 1,

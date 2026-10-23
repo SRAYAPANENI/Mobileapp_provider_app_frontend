@@ -2,9 +2,10 @@ import { ThemedText } from '@/components/themed-text';
 import { Fonts } from '@/constants/theme';
 import { BusinessDocumentInput, BusinessDocumentKind } from '@/services/api';
 import * as DocumentPicker from 'expo-document-picker';
-import { FileText } from 'lucide-react-native';
+import { FileCheck2, Upload } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { ActivityIndicator, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { Button, C, Field, u } from './ui';
 
 const KINDS: { value: BusinessDocumentKind; label: string }[] = [
   { value: 'GENERAL_LIABILITY', label: 'General liability' },
@@ -24,6 +25,7 @@ function isoDate(text: string): string | null {
 
 interface Props {
   minLiability: number;
+  initialKind?: BusinessDocumentKind;
   onSubmit: (doc: BusinessDocumentInput) => Promise<void>;
   onCancel: () => void;
   onError: (message: string) => void;
@@ -31,8 +33,8 @@ interface Props {
 
 // One insurance certificate or licence: the file (the insurer's PDF, or a
 // photo of it) and what it says. Reviewed by Dodorez before it counts.
-export function BusinessDocumentForm({ minLiability, onSubmit, onCancel, onError }: Props) {
-  const [kind, setKind] = useState<BusinessDocumentKind>('GENERAL_LIABILITY');
+export function BusinessDocumentForm({ minLiability, initialKind, onSubmit, onCancel, onError }: Props) {
+  const [kind, setKind] = useState<BusinessDocumentKind>(initialKind ?? 'GENERAL_LIABILITY');
   const [file, setFile] = useState<BusinessDocumentInput['file'] | null>(null);
   const [issuer, setIssuer] = useState('');
   const [number, setNumber] = useState('');
@@ -68,66 +70,71 @@ export function BusinessDocumentForm({ minLiability, onSubmit, onCancel, onError
   };
 
   return (
-    <View style={s.wrap}>
-      <View style={s.chips}>
-        {KINDS.map((k) => (
-          <TouchableOpacity key={k.value} style={[s.chip, kind === k.value && s.chipOn]} onPress={() => setKind(k.value)}>
-            <ThemedText style={[s.chipText, kind === k.value && s.chipTextOn]}>{k.label}</ThemedText>
-          </TouchableOpacity>
-        ))}
-      </View>
-      {kind === 'GENERAL_LIABILITY' && (
-        <ThemedText style={s.hint}>Needed for work at homes and on site: at least ${minLiability.toLocaleString()} per occurrence.</ThemedText>
-      )}
+    <View style={{ gap: 14 }}>
+      <Field label="Document">
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {KINDS.map((k) => (
+            <TouchableOpacity key={k.value} style={[u.chip, kind === k.value && u.chipOn]} onPress={() => setKind(k.value)}>
+              <ThemedText style={[u.chipText, kind === k.value && u.chipTextOn]}>{k.label}</ThemedText>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {kind === 'GENERAL_LIABILITY' && (
+          <ThemedText style={u.muted}>Needed for work at homes and on site: at least ${minLiability.toLocaleString()} per occurrence.</ThemedText>
+        )}
+      </Field>
 
-      <TouchableOpacity style={s.file} onPress={pick}>
-        <FileText size={18} color="#111827" />
-        <ThemedText style={s.fileText} numberOfLines={1}>{file ? file.name : 'Choose the PDF or a photo'}</ThemedText>
+      <TouchableOpacity style={[s.drop, file && s.dropFilled]} onPress={pick} activeOpacity={0.8}>
+        {file ? <FileCheck2 size={22} color={C.ok} /> : <Upload size={22} color={C.muted} />}
+        <View style={{ flex: 1 }}>
+          <ThemedText style={s.dropTitle} numberOfLines={1}>{file ? file.name : 'Choose the file'}</ThemedText>
+          <ThemedText style={u.muted}>{file ? 'Tap to choose another' : 'PDF, or a clear photo of it'}</ThemedText>
+        </View>
       </TouchableOpacity>
 
-      <TextInput style={s.input} value={issuer} onChangeText={setIssuer} placeholderTextColor="#9CA3AF"
-        placeholder={insurance ? 'Insurer, e.g. State Farm' : 'Licensing board, e.g. Texas TDLR'} />
-      <TextInput style={s.input} value={number} onChangeText={setNumber} placeholderTextColor="#9CA3AF"
-        placeholder={insurance ? 'Policy number' : 'Licence number'} />
+      <Field label={insurance ? 'Insurer' : 'Licensing board'}>
+        <TextInput style={u.input} value={issuer} onChangeText={setIssuer} placeholderTextColor={C.faint}
+          placeholder={insurance ? 'e.g. State Farm' : 'e.g. Texas TDLR'} />
+      </Field>
+      <Field label={insurance ? 'Policy number' : 'Licence number'}>
+        <TextInput style={u.input} value={number} onChangeText={setNumber} placeholderTextColor={C.faint} placeholder="As printed on it" />
+      </Field>
       {insurance ? (
-        <TextInput style={s.input} value={limit} onChangeText={setLimit} keyboardType="number-pad" placeholderTextColor="#9CA3AF"
-          placeholder="Limit per occurrence, e.g. 1000000" />
+        <Field label="Limit per occurrence" hint="In dollars">
+          <TextInput style={u.input} value={limit} onChangeText={setLimit} keyboardType="number-pad" placeholderTextColor={C.faint}
+            placeholder="1000000" />
+        </Field>
       ) : (
-        <View style={s.row}>
-          <TextInput style={[s.input, { flex: 1 }]} value={trade} onChangeText={setTrade} placeholder="Trade, e.g. Plumbing" placeholderTextColor="#9CA3AF" />
-          <TextInput style={[s.input, { width: 80 }]} value={issuingState} autoCapitalize="characters" placeholderTextColor="#9CA3AF"
-            onChangeText={(t) => setIssuingState(t.replace(/[^a-zA-Z]/g, '').slice(0, 2))} placeholder="State" />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Field label="Trade">
+              <TextInput style={u.input} value={trade} onChangeText={setTrade} placeholder="e.g. Plumbing" placeholderTextColor={C.faint} />
+            </Field>
+          </View>
+          <Field label="State">
+            <TextInput style={[u.input, { width: 84 }]} value={issuingState} autoCapitalize="characters" placeholderTextColor={C.faint}
+              onChangeText={(t) => setIssuingState(t.replace(/[^a-zA-Z]/g, '').slice(0, 2))} placeholder="TX" />
+          </Field>
         </View>
       )}
-      <TextInput style={s.input} value={expires} onChangeText={setExpires} keyboardType="numbers-and-punctuation" placeholderTextColor="#9CA3AF"
-        placeholder={insurance ? 'Policy ends (MM/DD/YYYY)' : 'Expires (MM/DD/YYYY), if it does'} />
+      <Field label={insurance ? 'Policy ends' : 'Expires'} hint={insurance ? 'MM/DD/YYYY' : 'MM/DD/YYYY, if it does'}>
+        <TextInput style={u.input} value={expires} onChangeText={setExpires} keyboardType="numbers-and-punctuation"
+          placeholderTextColor={C.faint} placeholder="12/31/2027" />
+      </Field>
 
-      <View style={s.row}>
-        <TouchableOpacity style={s.secondary} onPress={onCancel} disabled={saving}>
-          <ThemedText style={s.secondaryText}>Cancel</ThemedText>
-        </TouchableOpacity>
-        <TouchableOpacity style={s.primary} onPress={save} disabled={saving}>
-          {saving ? <ActivityIndicator color="#111827" /> : <ThemedText style={s.primaryText}>Upload</ThemedText>}
-        </TouchableOpacity>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+        <Button kind="secondary" label="Cancel" onPress={onCancel} disabled={saving} style={{ flex: 1 }} />
+        <Button label="Upload" onPress={save} busy={saving} disabled={!file} style={{ flex: 1 }} />
       </View>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  wrap: { gap: 8 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { paddingVertical: 9, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#fff' },
-  chipOn: { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' },
-  chipText: { fontSize: 13, lineHeight: 18, fontFamily: Fonts.poppins, color: '#374151' },
-  chipTextOn: { fontFamily: Fonts.poppinsBold, color: '#111827' },
-  hint: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.poppins, color: '#6B7280' },
-  file: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1, borderStyle: 'dashed', borderColor: '#D1D5DB', backgroundColor: '#fff' },
-  fileText: { flex: 1, fontSize: 13.5, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: '#111827' },
-  input: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, padding: 12, fontSize: 14, fontFamily: Fonts.poppins, color: '#111827', backgroundColor: '#F9FAFB' },
-  row: { flexDirection: 'row', gap: 10 },
-  primary: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: '#FFCE48' },
-  primaryText: { fontSize: 14.5, lineHeight: 20, fontFamily: Fonts.poppinsBold, color: '#111827' },
-  secondary: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: '#F3F4F6' },
-  secondaryText: { fontSize: 14.5, lineHeight: 20, fontFamily: Fonts.poppinsSemiBold, color: '#374151' },
+  drop: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 14,
+    borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#CBD2DB', backgroundColor: '#FBFCFD',
+  },
+  dropFilled: { borderStyle: 'solid', borderColor: '#A7D8C3', backgroundColor: C.okSoft },
+  dropTitle: { fontSize: 14.5, lineHeight: 20, fontFamily: Fonts.poppinsSemiBold, color: C.ink },
 });

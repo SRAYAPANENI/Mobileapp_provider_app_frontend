@@ -1,8 +1,9 @@
 import { ThemedText } from '@/components/themed-text';
-import { Fonts } from '@/constants/theme';
 import { TeamMember } from '@/services/api';
+import { Check } from 'lucide-react-native';
 import React from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Badge, C, Monogram, u } from './ui';
 
 /** Whether a member can be given a job — the server's rule (can_do_jobs), shown up front. */
 export function canDoJobs(m: TeamMember): boolean {
@@ -24,22 +25,25 @@ export function MemberPicker({ members, selectedId, onSelect, preferredIds = [],
   const list = members
     .filter((m) => m.status === 'ACTIVE' && m.provider_id && m.provider_id !== excludeId)
     .sort((a, b) => Number(preferredIds.includes(b.provider_id!)) - Number(preferredIds.includes(a.provider_id!)));
-  if (list.length === 0) return <ThemedText style={s.muted}>No one else on the team yet.</ThemedText>;
+  if (list.length === 0) return <ThemedText style={u.muted}>No one else on the team yet.</ThemedText>;
   return (
     <View style={s.wrap}>
       {list.map((m) => {
         const able = canDoJobs(m);
         const on = selectedId === m.provider_id;
+        const reached = preferredIds.includes(m.provider_id!);
         return (
-          <TouchableOpacity key={m.id} style={[s.row, on && s.rowOn, !able && s.dim]} disabled={!able} onPress={() => onSelect(m)}>
-            <View style={{ flex: 1 }}>
-              <ThemedText style={s.name}>{m.name ?? m.phone}</ThemedText>
-              <ThemedText style={s.muted}>
+          <TouchableOpacity key={m.id} style={[s.row, on && s.rowOn, !able && s.dim]} disabled={!able} onPress={() => onSelect(m)} activeOpacity={0.8}>
+            <Monogram name={m.name ?? m.phone} size={36} tone={on ? 'brand' : 'neutral'} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <ThemedText style={u.label}>{m.name ?? m.phone}</ThemedText>
+              <ThemedText style={u.muted}>
                 {!able ? (m.is_identity_verified ? "Background check hasn't cleared" : 'ID not verified yet')
-                  : preferredIds.includes(m.provider_id!) ? 'This job reached them' : m.role === 'DISPATCHER' ? 'Dispatcher' : 'Worker'}
+                  : m.role === 'DISPATCHER' ? 'Dispatcher' : m.role === 'OWNER' ? 'Owner' : 'Worker'}
               </ThemedText>
             </View>
-            {on && <ThemedText style={s.check}>✓</ThemedText>}
+            {able && reached && <Badge label="Matched" tone="ok" />}
+            <View style={[s.radio, on && s.radioOn]}>{on && <Check size={13} color="#FFFFFF" strokeWidth={3} />}</View>
           </TouchableOpacity>
         );
       })}
@@ -48,11 +52,10 @@ export function MemberPicker({ members, selectedId, onSelect, preferredIds = [],
 }
 
 const s = StyleSheet.create({
-  wrap: { gap: 6 },
-  row: { flexDirection: 'row', alignItems: 'center', padding: 10, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#fff' },
-  rowOn: { borderColor: '#FDE68A', backgroundColor: '#FFFBEB' },
-  name: { fontSize: 14, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: '#111827' },
-  muted: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.poppins, color: '#6B7280' },
-  check: { fontSize: 16, fontFamily: Fonts.poppinsBold, color: '#111827' },
-  dim: { opacity: 0.5 },
+  wrap: { gap: 8 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: '#DDE1E7', backgroundColor: C.card },
+  rowOn: { borderColor: C.ink, borderWidth: 1.5 },
+  radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: '#CBD2DB', alignItems: 'center', justifyContent: 'center' },
+  radioOn: { backgroundColor: C.ink, borderColor: C.ink },
+  dim: { opacity: 0.45 },
 });

@@ -55,6 +55,8 @@ import { KeepPreview } from '@/components/keep-preview';
 import { ExtraWorkPanel } from '@/components/extra-work-panel';
 import { ReportIssueModal } from '@/components/report-issue-modal';
 import { useGoodsHoldHeld } from '@/hooks/use-goods-hold';
+import { useMyBusiness } from '@/hooks/use-my-business';
+import { BusinessHomeCard } from '@/components/business/business-home-card';
 import notifee from '@notifee/react-native';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -98,14 +100,13 @@ export default function DashboardScreen() {
   const [showNotifNudge, setShowNotifNudge] = useState(false);
   const [isIdentityVerified, setIsIdentityVerified] = useState(false);
   const [pickupDropoffEnabled, setPickupDropoffEnabled] = useState(false);
-  // Taking jobs only through a business (docs/BUSINESS_PROVIDERS_DESIGN.md §7):
-  // the personal feed is empty by design — say whose jobs they get instead.
-  const [teamOnlyFor, setTeamOnlyFor] = useState<string | null>(null);
-  useEffect(() => {
-    SkoFyApi.business.mine()
-      .then((r) => setTeamOnlyFor(r.enabled && r.business && r.works_for_self === false ? r.business.name : null))
-      .catch(() => {});
-  }, []);
+  // Their business (docs/BUSINESS_PROVIDERS_DESIGN.md): the home card, and
+  // which feed jobs their team can take. Taking jobs only through a business
+  // (§7), the personal feed is empty by design — say whose jobs they get instead.
+  const myBusiness = useMyBusiness();
+  const refreshBusiness = myBusiness.refresh;
+  const teamOnlyFor = myBusiness.data?.enabled && myBusiness.data.business && myBusiness.data.works_for_self === false
+    ? myBusiness.data.business.name : null;
   const [pickupDropoffSaving, setPickupDropoffSaving] = useState(false);
   const [isExitModalVisible, setIsExitModalVisible] = useState(false);
   const lastBackPressTime = useRef(0);
@@ -282,9 +283,10 @@ export default function DashboardScreen() {
 
   const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
+    refreshBusiness();
     await loadJobs();
     setRefreshing(false);
-  }, [loadJobs]);
+  }, [loadJobs, refreshBusiness]);
 
   const appAlert = useAppAlert();
   const [activeTab, setActiveTab] = useState(0); // 0: All, 1: Ongoing, 2: Booked, 3: Applied
@@ -1484,6 +1486,11 @@ const filteredJobs = jobs.filter((job) => {
                   <ThemedText style={styles.directRequestText}>DIRECT REQUEST</ThemedText>
                 </View>
               )}
+              {!job.isOngoing && myBusiness.teamJob(job.id) && (
+                <View style={styles.teamJobBadge}>
+                  <ThemedText style={styles.directRequestText}>FOR YOUR TEAM</ThemedText>
+                </View>
+              )}
               {job.isRepeatCustomer && !job.isOngoing && (
                 <View style={styles.repeatRequestBadge}>
                   <ThemedText style={styles.repeatRequestBadgeText}>
@@ -1791,6 +1798,8 @@ const filteredJobs = jobs.filter((job) => {
             </View>
           </View>
         </View>
+
+        <BusinessHomeCard state={myBusiness} />
 
         {isAvailable && repeatRequestCount > 0 && (
           <TouchableOpacity
@@ -3196,6 +3205,12 @@ const styles = StyleSheet.create({
     gap: 6,
     marginBottom: 4,
     flexWrap: 'wrap',
+  },
+  teamJobBadge: {
+    backgroundColor: '#111827',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
   directRequestBadge: {
     backgroundColor: '#6366F1',

@@ -5,14 +5,12 @@ import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { BusinessBoard, SkoFyApi, Team, TeamActiveJob, TeamOpenJob } from '@/services/api';
-import { router, useFocusEffect } from 'expo-router';
-import { Briefcase, ChevronLeft, Clock } from 'lucide-react-native';
-import React, { useCallback, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Briefcase, Check, ChevronLeft, Clock, Inbox, Map as MapIcon } from 'lucide-react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StatusBar, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { Badge, Button, C, jobStage, Monogram, Row, Section, u } from '@/components/business/ui';
 
-const STAGE: Record<string, string> = {
-  ACCEPTED: 'Booked', INSPECTING: 'Inspecting', INVOICE_PENDING: 'Quote sent', IN_PROGRESS: 'Working', DISPUTED: 'Under review',
-};
 const when = (iso: string | null) => iso
   ? new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
   : 'As soon as possible';
@@ -21,7 +19,10 @@ const when = (iso: string | null) => iso
 // §3): open jobs that reached anyone on the team — apply as the business,
 // naming who'd do it — and jobs under way, which can go to another member
 // until someone sets off. Each job then runs in the assigned member's app.
+// Opened with a jobId (job details' "Apply as", a team-job alert), it goes
+// straight to choosing who'd do that job.
 export default function BusinessJobsScreen() {
+  const { jobId } = useLocalSearchParams<{ jobId?: string }>();
   const bottomInset = useBottomInset();
   const appAlert = useAppAlert();
   const [board, setBoard] = useState<BusinessBoard | null>(null);
@@ -32,6 +33,7 @@ export default function BusinessJobsScreen() {
   const [workerId, setWorkerId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const scroll = useRef<ScrollView>(null);
 
   const load = useCallback(async () => {
     try {
@@ -44,6 +46,20 @@ export default function BusinessJobsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const opened = useRef<string | null>(null);
+  useEffect(() => {
+    if (!board || !jobId || opened.current === jobId) return;
+    opened.current = jobId;
+    const job = board.open.find((j) => j.job_id === jobId);
+    if (job && !job.applied) setApplying(job);
+    else if (!board.active.some((j) => j.job_id === jobId)) {
+      // A stale alert: the job closed, or was taken, since it was sent.
+      appAlert.show('info', job ? 'Already applied' : 'No longer open',
+        job ? 'Your business has applied for this job — the customer chooses next.' : "This job isn't open for your team any more.");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [board, jobId]);
 
   const close = () => { setApplying(null); setAssigning(null); setWorkerId(null); setMessage(''); };
 
@@ -71,75 +87,91 @@ export default function BusinessJobsScreen() {
       <StatusBar barStyle="dark-content" />
       <View style={s.header}>
         <TouchableOpacity style={s.back} onPress={() => router.back()}>
-          <ChevronLeft size={24} color="#111827" />
+          <ChevronLeft size={22} color={C.ink} />
         </TouchableOpacity>
         <ThemedText style={[s.headerTitle, { flex: 1 }]}>Team jobs</ThemedText>
-        <TouchableOpacity onPress={() => router.push('/business-map' as any)}>
-          <ThemedText style={s.link}>Team map</ThemedText>
-        </TouchableOpacity>
+        <Button small kind="secondary" label="Map" icon={<MapIcon size={15} color={C.ink} />} onPress={() => router.push('/business-map' as any)} />
       </View>
-      {!board || !team ? <ActivityIndicator style={{ marginTop: 40 }} color="#111827" /> : (
-        <ScrollView contentContainerStyle={padBottom([s.body, { paddingBottom: 32 }], bottomInset)} keyboardShouldPersistTaps="handled"
+      {!board || !team ? <ActivityIndicator style={{ marginTop: 40 }} color={C.ink} /> : (
+        <ScrollView ref={scroll} contentContainerStyle={padBottom([s.body, { paddingBottom: 40 }], bottomInset)} keyboardShouldPersistTaps="handled"
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />}>
 
           {(applying || assigning) && (
-            <View style={[s.card, s.cardFocus]}>
-              <ThemedText style={s.cardTitle}>{applying ? `Apply for “${applying.title}”` : `Give “${assigning!.title}” to…`}</ThemedText>
-              <ThemedText style={s.muted}>{applying ? 'Who would do it?' : "Only until someone sets off — then it's theirs to finish."}</ThemedText>
+            <Section title={applying ? 'Apply as your business' : 'Give to someone else'}>
+              <View style={{ gap: 2 }}>
+                <ThemedText style={s.focusTitle}>{applying ? applying.title : assigning!.title}</ThemedText>
+                <ThemedText style={u.muted}>{applying ? 'Who would do it? The customer sees your business and them.' : "Only until someone sets off — then it's theirs to finish."}</ThemedText>
+              </View>
               <MemberPicker members={team.members} selectedId={workerId} onSelect={(m) => setWorkerId(m.provider_id)}
                 preferredIds={applying?.reached_member_ids} excludeId={assigning?.worker_id} />
               {applying && (
-                <TextInput style={s.input} value={message} onChangeText={setMessage} multiline maxLength={1000}
-                  placeholder="A note for the customer (optional)" placeholderTextColor="#9CA3AF" />
+                <TextInput style={[u.input, { minHeight: 72, textAlignVertical: 'top' }]} value={message} onChangeText={setMessage} multiline maxLength={1000}
+                  placeholder="A note for the customer (optional)" placeholderTextColor={C.faint} />
               )}
-              <View style={s.row}>
-                <TouchableOpacity style={s.secondary} onPress={close} disabled={busy}>
-                  <ThemedText style={s.secondaryText}>Cancel</ThemedText>
-                </TouchableOpacity>
-                <TouchableOpacity style={[s.primary, !workerId && s.dim]} onPress={submit} disabled={!workerId || busy}>
-                  {busy ? <ActivityIndicator color="#111827" /> : <ThemedText style={s.primaryText}>{applying ? 'Apply' : 'Give it to them'}</ThemedText>}
-                </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <Button kind="secondary" label="Cancel" onPress={close} disabled={busy} style={{ flex: 1 }} />
+                <Button label={applying ? 'Apply' : 'Give it to them'} onPress={submit} busy={busy} disabled={!workerId} style={{ flex: 1 }} />
               </View>
-            </View>
+            </Section>
           )}
 
-          <ThemedText style={s.section}>Under way</ThemedText>
-          {board.active.length === 0 && <ThemedText style={s.muted}>No jobs under way.</ThemedText>}
-          {board.active.map((j) => (
-            <TouchableOpacity key={j.job_id} style={s.card} activeOpacity={0.8}
-              onPress={() => router.push({ pathname: '/business-job', params: { jobId: j.job_id } } as any)}>
-              <View style={s.row}><Briefcase size={16} color="#111827" /><ThemedText style={[s.cardTitle, { flex: 1 }]}>{j.title}</ThemedText>
-                <ThemedText style={s.badge}>{STAGE[j.status] ?? j.status}</ThemedText></View>
-              <ThemedText style={s.muted}>{j.customer_name ?? 'Customer'} · {when(j.scheduled_at)}</ThemedText>
-              <ThemedText style={s.item}>{j.worker_name ?? 'Unassigned'}{setOff(j) ? ' — on it' : ''}</ThemedText>
-              {j.status === 'ACCEPTED' && !setOff(j) && (
-                <TouchableOpacity onPress={() => { close(); setAssigning(j); }}><ThemedText style={s.link}>Give to someone else</ThemedText></TouchableOpacity>
-              )}
-              <ThemedText style={s.muted}>Steps and conversation ›</ThemedText>
-            </TouchableOpacity>
-          ))}
-
-          <ThemedText style={s.section}>Open jobs for your team</ThemedText>
-          {board.open.length === 0 && <ThemedText style={s.muted}>Nothing new right now. Jobs that reach anyone on your team show here.</ThemedText>}
-          {board.open.map((j) => (
-            <View key={j.job_id} style={s.card}>
-              <ThemedText style={s.cardTitle}>{j.title}</ThemedText>
-              <ThemedText style={s.muted} numberOfLines={2}>{j.description}</ThemedText>
-              <View style={s.row}><Clock size={14} color="#6B7280" /><ThemedText style={s.muted}>{when(j.scheduled_at)}</ThemedText></View>
-              <View style={s.row}>
-                <TouchableOpacity style={s.secondary} onPress={() => router.push({ pathname: '/job-details', params: { id: j.job_id } } as any)}>
-                  <ThemedText style={s.secondaryText}>Details</ThemedText>
+          <Section title={`Open for your team · ${board.open.length}`} flush>
+            {board.open.length === 0 && (
+              <Row last icon={<Inbox size={18} color={C.muted} />} title="Nothing new right now" detail="Jobs that reach anyone on your team show here" />
+            )}
+            {board.open.map((j, i) => (
+              <View key={j.job_id} style={[s.job, i < board.open.length - 1 && s.jobLine]}>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => router.push({ pathname: '/job-details', params: { id: j.job_id } } as any)} style={{ gap: 4 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <ThemedText style={[s.jobTitle, { flex: 1 }]} numberOfLines={1}>{j.title}</ThemedText>
+                    {(j.urgency === 'EMERGENCY' || j.urgency === 'HIGH') && <Badge label={j.urgency === 'EMERGENCY' ? 'Emergency' : 'Urgent'} tone="bad" />}
+                  </View>
+                  <ThemedText style={u.muted} numberOfLines={2}>{j.description}</ThemedText>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Clock size={13} color={C.muted} /><ThemedText style={u.muted}>{when(j.scheduled_at)}</ThemedText>
+                    {j.reached_member_ids.length > 0 && <ThemedText style={u.muted}>· {j.reached_member_ids.length} matched on your team</ThemedText>}
+                  </View>
                 </TouchableOpacity>
                 {j.applied ? (
-                  <ThemedText style={[s.item, { flex: 1, textAlign: 'center' }]}>Applied ✓</ThemedText>
+                  <Badge label="Applied" tone="ok" icon={<Check size={12} color={C.ok} />} />
                 ) : (
-                  <TouchableOpacity style={s.primary} onPress={() => { close(); setApplying(j); }}>
-                    <ThemedText style={s.primaryText}>Apply as the business</ThemedText>
-                  </TouchableOpacity>
+                  <Button small label="Apply as the business" style={{ alignSelf: 'flex-start' }}
+                    onPress={() => { close(); setApplying(j); scroll.current?.scrollTo({ y: 0, animated: true }); }} />
                 )}
               </View>
-            </View>
-          ))}
+            ))}
+          </Section>
+
+          <Section title={`Under way · ${board.active.length}`} flush>
+            {board.active.length === 0 && (
+              <Row last icon={<Briefcase size={18} color={C.muted} />} title="No jobs under way" detail="Jobs a customer hires your team for show here" />
+            )}
+            {board.active.map((j, i) => {
+              const canMove = j.status === 'ACCEPTED' && !setOff(j);
+              const lastOne = i === board.active.length - 1;
+              return (
+                <View key={j.job_id} style={!lastOne && s.jobLine}>
+                  <Row last chevron onPress={() => router.push({ pathname: '/business-job', params: { jobId: j.job_id } } as any)}
+                    icon={<Monogram name={j.worker_name ?? '?'} size={38} tone={j.worker_name ? 'brand' : 'neutral'} />}
+                    title={j.title}
+                    detail={
+                      <View style={{ gap: 4 }}>
+                        <ThemedText style={u.muted} numberOfLines={1}>
+                          {j.worker_name ?? 'Unassigned'} · {j.customer_name ?? 'Customer'} · {when(j.scheduled_at)}
+                        </ThemedText>
+                        <Badge {...jobStage(j.status, setOff(j))} />
+                      </View>
+                    } />
+                  {canMove && (
+                    <View style={{ paddingLeft: 50, paddingBottom: 12 }}>
+                      <Button small kind="secondary" label="Give to someone else" style={{ alignSelf: 'flex-start' }}
+                        onPress={() => { close(); setAssigning(j); scroll.current?.scrollTo({ y: 0, animated: true }); }} />
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </Section>
         </ScrollView>
       )}
       {appAlert.element}
@@ -148,24 +180,13 @@ export default function BusinessJobsScreen() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F9FAFB' },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12 },
-  back: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
-  headerTitle: { fontSize: 18, lineHeight: 24, fontFamily: Fonts.poppinsBold, color: '#111827' },
-  body: { paddingHorizontal: 16, gap: 10 },
-  section: { fontSize: 13, lineHeight: 18, fontFamily: Fonts.poppinsBold, color: '#374151', marginTop: 8 },
-  card: { padding: 14, borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', gap: 6 },
-  cardFocus: { borderColor: '#FDE68A' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  cardTitle: { fontSize: 15, lineHeight: 21, fontFamily: Fonts.poppinsBold, color: '#111827' },
-  item: { fontSize: 13.5, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: '#111827' },
-  muted: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.poppins, color: '#6B7280' },
-  badge: { fontSize: 11.5, lineHeight: 16, fontFamily: Fonts.poppinsBold, color: '#92400E' },
-  link: { fontSize: 13, lineHeight: 18, fontFamily: Fonts.poppinsSemiBold, color: '#2563EB' },
-  input: { minHeight: 60, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, padding: 12, fontSize: 14, fontFamily: Fonts.poppins, color: '#111827', backgroundColor: '#F9FAFB', textAlignVertical: 'top' },
-  primary: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: '#FFCE48' },
-  primaryText: { fontSize: 14, lineHeight: 19, fontFamily: Fonts.poppinsBold, color: '#111827' },
-  secondary: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: '#F3F4F6' },
-  secondaryText: { fontSize: 14, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: '#374151' },
-  dim: { opacity: 0.5 },
+  container: { flex: 1, backgroundColor: C.bg },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12 },
+  back: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: C.card, borderWidth: 1, borderColor: C.line },
+  headerTitle: { fontSize: 22, lineHeight: 30, fontFamily: Fonts.poppinsBold, color: C.ink },
+  body: { paddingHorizontal: 16, gap: 20 },
+  focusTitle: { fontSize: 16, lineHeight: 22, fontFamily: Fonts.poppinsBold, color: C.ink },
+  job: { paddingVertical: 14, gap: 10 },
+  jobLine: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E2E8F0' },
+  jobTitle: { fontSize: 15, lineHeight: 21, fontFamily: Fonts.poppinsBold, color: C.ink },
 });

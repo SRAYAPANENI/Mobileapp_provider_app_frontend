@@ -2,72 +2,83 @@ import { useAppAlert } from '@/components/app-alert';
 import { BusinessDocumentForm } from '@/components/business/business-document-form';
 import { BusinessInvites } from '@/components/business/business-invites';
 import { BusinessProfileForm } from '@/components/business/business-profile-form';
+import { SetupChecklist } from '@/components/business/setup-checklist';
 import { TeamSection } from '@/components/business/team-section';
+import { Badge, Button, C, Monogram, Progress, Row, Section, Tone, u } from '@/components/business/ui';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
-import { BusinessDocument, BusinessEarnings, BusinessInvite, MemberRole, MyBusiness, SkoFyApi, Team, TeamMember } from '@/services/api';
-import { router, useFocusEffect } from 'expo-router';
+import { useMyBusiness } from '@/hooks/use-my-business';
+import {
+  BusinessDocument, BusinessDocumentKind, BusinessEarnings, BusinessInvite, MemberRole, SkoFyApi, Team, TeamMember,
+} from '@/services/api';
+import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { Building2, CheckCircle2, ChevronLeft, CircleAlert, FileText, Landmark, Trash2 } from 'lucide-react-native';
-import React, { useCallback, useState } from 'react';
+import {
+  AlertTriangle, BadgeCheck, Briefcase, Building2, ChevronLeft, FileText, Landmark, LogOut, Map as MapIcon, Pencil, Plus, ShieldCheck, Trash2, Users,
+} from 'lucide-react-native';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, ScrollView, StatusBar, StyleSheet, Switch, TouchableOpacity, View } from 'react-native';
 
-const STATUS_TEXT: Record<string, { title: string; body: string }> = {
-  DRAFT: { title: 'Set up your business', body: 'Add your insurance and licences, set up payouts, then send it for review.' },
-  PENDING_REVIEW: { title: 'With our team for review', body: "We check your details, insurance and licences — usually within 2 business days." },
-  APPROVED: { title: 'Approved', body: 'Your business is verified on Dodorez.' },
-  REJECTED: { title: 'Needs changes', body: '' },
+const STATUS_BADGE: Record<string, { label: string; tone: Tone }> = {
+  DRAFT: { label: 'Setting up', tone: 'neutral' },
+  PENDING_REVIEW: { label: 'In review', tone: 'info' },
+  APPROVED: { label: 'Verified', tone: 'ok' },
+  REJECTED: { label: 'Needs changes', tone: 'bad' },
 };
-const DOC_NAMES: Record<string, string> = {
-  GENERAL_LIABILITY: 'General liability', WORKERS_COMP: "Workers' comp", LICENCE: 'Trade licence',
-};
-const DOC_STATUS: Record<string, { label: string; color: string }> = {
-  PENDING_REVIEW: { label: 'In review', color: '#92400E' },
-  APPROVED: { label: 'Approved', color: '#065F46' },
-  REJECTED: { label: 'Not accepted', color: '#B91C1C' },
-  EXPIRED: { label: 'Expired', color: '#B91C1C' },
+const ENTITY: Record<string, string> = { LLC: 'LLC', CORPORATION: 'Corporation', PARTNERSHIP: 'Partnership', SOLE_PROPRIETOR: 'Sole proprietor' };
+const DOC_NAMES: Record<string, string> = { GENERAL_LIABILITY: 'General liability', WORKERS_COMP: "Workers' comp", LICENCE: 'Trade licence' };
+const DOC_STATUS: Record<string, { label: string; tone: Tone }> = {
+  PENDING_REVIEW: { label: 'In review', tone: 'info' },
+  APPROVED: { label: 'Approved', tone: 'ok' },
+  REJECTED: { label: 'Not accepted', tone: 'bad' },
+  EXPIRED: { label: 'Expired', tone: 'bad' },
 };
 const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+const date = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 // A business account (docs/BUSINESS_PROVIDERS_DESIGN.md): a company that
 // provides through its team. The owner sets it up here — company details,
 // insurance and licences, payouts with Stripe as a company — and sends it for
-// review. Tax ID, owners and bank account are collected by Stripe, never here.
+// review, then runs the team from it. Tax ID, owners and bank account are
+// collected by Stripe, never here.
 export default function BusinessScreen() {
   const bottomInset = useBottomInset();
   const appAlert = useAppAlert();
-  const [data, setData] = useState<MyBusiness | null>(null);
-  const [invites, setInvites] = useState<BusinessInvite[]>([]);
+  const scroll = useRef<ScrollView>(null);
+  const { data, invites, board, canDispatch, refresh } = useMyBusiness();
   const [team, setTeam] = useState<Team | null>(null);
   const [earnings, setEarnings] = useState<BusinessEarnings | null>(null);
   const [editing, setEditing] = useState(false);
-  const [addingDoc, setAddingDoc] = useState(false);
+  const [addingDoc, setAddingDoc] = useState<BusinessDocumentKind | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    SkoFyApi.business.mine().then((next) => {
-      setData(next);
-      if (!next.enabled) return;
-      SkoFyApi.business.invites().then(setInvites).catch(() => setInvites([]));
-      if (next.role === 'OWNER' || next.role === 'DISPATCHER') SkoFyApi.business.team().then(setTeam).catch(() => setTeam(null));
-      else setTeam(null);
-      if (next.role === 'OWNER' && next.business) SkoFyApi.business.earnings().then(setEarnings).catch(() => setEarnings(null));
-      else setEarnings(null);
-    }).catch((err: any) => appAlert.show('error', 'Could not load', err?.message ?? 'Please try again.'));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useFocusEffect(load);
+  const role = data?.role;
+  const business = data?.business;
+  const owner = role === 'OWNER';
 
-  const run = async (key: string, action: () => Promise<MyBusiness | void>, success?: string) => {
+  // The team and money, for those who see them, each time the business
+  // reloads; the rest comes from useMyBusiness.
+  useEffect(() => {
+    const has = !!data?.enabled && !!data.business;
+    if (has && (data!.role === 'OWNER' || data!.role === 'DISPATCHER')) SkoFyApi.business.team().then(setTeam).catch(() => setTeam(null));
+    else setTeam(null);
+    if (has && data!.role === 'OWNER') SkoFyApi.business.earnings().then(setEarnings).catch(() => setEarnings(null));
+    else setEarnings(null);
+  }, [data]);
+  const reload = refresh;
+
+  const run = async (key: string, action: () => Promise<unknown>, success?: string) => {
     setBusy(key);
     try {
-      const next = await action();
-      if (next) setData(next);
+      await action();
+      reload();
       if (success) appAlert.show('success', 'Done', success);
+      return true;
     } catch (err: any) {
       appAlert.show('error', 'Not done', err?.message ?? 'Please try again.');
+      return false;
     } finally {
       setBusy(null);
     }
@@ -78,9 +89,7 @@ export default function BusinessScreen() {
     // Same return URL as an individual's payout setup (STRIPE_CONNECT_RETURN_URL).
     await WebBrowser.openAuthSessionAsync(url, 'skofyserviceproviderapp://connect-return');
     await SkoFyApi.business.payoutsStatus();
-    return SkoFyApi.business.mine();
   });
-
   const managePayouts = () => run('payouts', async () => {
     const { url } = await SkoFyApi.business.payoutsDashboard();
     await WebBrowser.openBrowserAsync(url);
@@ -90,7 +99,7 @@ export default function BusinessScreen() {
     try {
       const { message } = await SkoFyApi.business.answerInvite(invite.id, accept, acknowledged, authorizedCheck);
       appAlert.show('success', accept ? 'Welcome to the team' : 'Declined', message);
-      load();
+      reload();
     } catch (err: any) {
       appAlert.show('error', 'Not done', err?.message ?? 'Please try again.');
     }
@@ -105,211 +114,249 @@ export default function BusinessScreen() {
     ]);
   const leaveTeam = () => appAlert.show('warning', 'Leave this team?', "You won't get its jobs any more.", [
     { text: 'Stay', variant: 'secondary' },
-    { text: 'Leave', variant: 'primary', onPress: () => run('leave', async () => { await SkoFyApi.business.leave(); load(); }) },
+    { text: 'Leave', variant: 'primary', onPress: () => run('leave', () => SkoFyApi.business.leave()) },
   ]);
-
   const removeDoc = (doc: BusinessDocument) => appAlert.show('warning', 'Remove this document?', DOC_NAMES[doc.kind], [
     { text: 'Keep', variant: 'secondary' },
     { text: 'Remove', variant: 'primary', onPress: () => run(doc.id, () => SkoFyApi.business.removeDocument(doc.id)) },
   ]);
+  const startUpload = (kind: BusinessDocumentKind) => {
+    setAddingDoc(kind);
+    scroll.current?.scrollTo({ y: 0, animated: true });
+  };
 
-  const business = data?.business;
-  const owner = data?.role === 'OWNER';
   const canEdit = owner && business?.status !== 'PENDING_REVIEW';
+  const approved = business?.status === 'APPROVED';
   const payoutsDone = business?.connect_onboarding_status === 'COMPLETE';
+  // Not on Stripe, yet not missing either: demo payouts (recorded, not sent).
+  const demoPayouts = !!business && !payoutsDone && !business.missing.some((m) => m.startsWith('Payouts'));
+  const openJobs = board?.open.filter((j) => !j.applied).length ?? 0;
 
   return (
     <ThemedView style={s.container}>
       <StatusBar barStyle="dark-content" />
       <View style={s.header}>
         <TouchableOpacity style={s.back} onPress={() => router.back()}>
-          <ChevronLeft size={24} color="#111827" />
+          <ChevronLeft size={22} color={C.ink} />
         </TouchableOpacity>
-        <ThemedText style={s.headerTitle}>Business account</ThemedText>
+        <ThemedText style={s.headerTitle}>Business</ThemedText>
       </View>
 
-      {!data ? <ActivityIndicator style={{ marginTop: 40 }} color="#111827" /> : !data.enabled ? (
-        <View style={s.body}><ThemedText style={s.muted}>Business accounts are coming soon.</ThemedText></View>
+      {!data ? <ActivityIndicator style={{ marginTop: 40 }} color={C.ink} /> : !data.enabled ? (
+        <View style={s.body}>
+          <Section><ThemedText style={u.body}>Business accounts are coming soon.</ThemedText></Section>
+        </View>
       ) : (
-        <ScrollView contentContainerStyle={padBottom([s.body, { paddingBottom: 32 }], bottomInset)} keyboardShouldPersistTaps="handled">
+        <ScrollView ref={scroll} contentContainerStyle={padBottom([s.body, { paddingBottom: 40 }], bottomInset)} keyboardShouldPersistTaps="handled">
           <BusinessInvites invites={invites} onAnswer={answerInvite} />
+
           {!business ? (
-            <View style={s.card}>
-              <View style={s.row}><Building2 size={18} color="#111827" /><ThemedText style={s.cardTitle}>Work as a business</ThemedText></View>
-              <ThemedText style={s.muted}>
-                For a registered company — an LLC, corporation, partnership or sole proprietor — with its own insurance.
-                Customers see your business name, and it's paid to the company's bank account.
-              </ThemedText>
-              <BusinessProfileForm submitLabel="Create business"
-                onSubmit={(input) => run('create', () => SkoFyApi.business.create(input), 'Business created.')} />
-            </View>
+            <>
+              <View style={s.intro}>
+                <View style={s.introIcon}><Building2 size={28} color={C.brandInk} /></View>
+                <ThemedText style={s.introTitle}>Run your business on Dodorez</ThemedText>
+                <ThemedText style={[u.body, { textAlign: 'center' }]}>
+                  For a registered company with its own insurance — an LLC, corporation, partnership or sole proprietor.
+                </ThemedText>
+              </View>
+              <Section flush>
+                <Row icon={<Users size={18} color={C.ink} />} title="One account for your team" detail="Apply for jobs and choose who does each one" />
+                <Row icon={<BadgeCheck size={18} color={C.ink} />} title="A verified business" detail="Customers see your company name" />
+                <Row last icon={<Landmark size={18} color={C.ink} />} title="Paid to the company" detail="Straight to your business bank account" />
+              </Section>
+              <Section title="Business details">
+                <BusinessProfileForm submitLabel="Create business"
+                  onSubmit={async (input) => { await run('create', () => SkoFyApi.business.create(input), 'Business created.'); }} />
+              </Section>
+            </>
           ) : (
             <>
-              <View style={[s.card, business.status === 'REJECTED' && s.cardWarn]}>
-                <ThemedText style={s.cardTitle}>{STATUS_TEXT[business.status].title}</ThemedText>
-                <ThemedText style={s.muted}>{business.status === 'REJECTED' ? business.review_note : STATUS_TEXT[business.status].body}</ThemedText>
-                {business.ready_for_on_site_work ? (
-                  <View style={s.row}><CheckCircle2 size={16} color="#065F46" /><ThemedText style={s.ok}>Ready to take on-site jobs</ThemedText></View>
-                ) : (
-                  <>
-                    <ThemedText style={s.label}>Still needed to take jobs</ThemedText>
-                    {business.missing.map((m) => (
-                      <View key={m} style={s.row}><CircleAlert size={15} color="#92400E" /><ThemedText style={s.item}>{m}</ThemedText></View>
-                    ))}
-                  </>
-                )}
-                {owner && (business.status === 'DRAFT' || business.status === 'REJECTED') && (
-                  <TouchableOpacity style={s.primary} disabled={busy === 'submit'}
-                    onPress={() => run('submit', SkoFyApi.business.submit, "Sent for review — we'll let you know.")}>
-                    {busy === 'submit' ? <ActivityIndicator color="#111827" /> : <ThemedText style={s.primaryText}>Send for review</ThemedText>}
+              {/* Who the business is */}
+              <View style={[u.card, s.hero]}>
+                <Monogram name={business.name} size={56} />
+                <View style={{ flex: 1, gap: 4 }}>
+                  <ThemedText style={s.heroName} numberOfLines={2}>{business.name}</ThemedText>
+                  <ThemedText style={u.muted} numberOfLines={1}>
+                    {business.legal_name} · {ENTITY[business.entity_type]} · {business.state}
+                  </ThemedText>
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 2 }}>
+                    <Badge {...STATUS_BADGE[business.status]} icon={approved ? <BadgeCheck size={12} color={C.ok} /> : undefined} />
+                    {!owner && role && <Badge label={role === 'DISPATCHER' ? 'Dispatcher' : 'Worker'} tone="brand" />}
+                  </View>
+                </View>
+                {canEdit && !editing && (
+                  <TouchableOpacity style={s.iconButton} onPress={() => setEditing(true)} hitSlop={8}>
+                    <Pencil size={17} color={C.ink} />
                   </TouchableOpacity>
                 )}
               </View>
 
-              {owner && (
-                <View style={s.card}>
-                  <View style={s.row}>
-                    <ThemedText style={[s.cardTitle, { flex: 1 }]}>Team can also work for themselves</ThemedText>
-                    <Switch value={business.allow_independent_work} trackColor={{ true: '#FFCE48' }} disabled={busy === 'indep'}
-                      onValueChange={(on) => run('indep', () => SkoFyApi.business.setIndependentWork(on))} />
-                  </View>
-                  <ThemedText style={s.muted}>
-                    If on, members can take their own jobs too — never customers they served for {business.name} in the last year.
-                    You never see their own jobs.
-                  </ThemedText>
+              {editing && (
+                <Section title="Edit details">
+                  {approved && <ThemedText style={[u.muted, { color: C.warn }]}>Changing the legal name, type or state sends it back for review.</ThemedText>}
+                  <BusinessProfileForm initial={business} submitLabel="Save" onCancel={() => setEditing(false)}
+                    onSubmit={async (input) => { if (await run('edit', () => SkoFyApi.business.update(input))) setEditing(false); }} />
+                </Section>
+              )}
+
+              {addingDoc && (
+                <Section title="Add a document">
+                  <BusinessDocumentForm key={addingDoc} minLiability={data.min_liability} initialKind={addingDoc} onCancel={() => setAddingDoc(null)}
+                    onError={(message) => appAlert.show('error', 'Not uploaded', message)}
+                    onSubmit={async (doc) => {
+                      if (await run('doc', () => SkoFyApi.business.addDocument(doc), "Uploaded — we'll review it.")) setAddingDoc(null);
+                    }} />
+                </Section>
+              )}
+
+              {owner && !approved && (
+                <SetupChecklist business={business} minLiability={data.min_liability} canAct={canEdit} busy={busy}
+                  onUpload={startUpload} onPayouts={setUpPayouts}
+                  onSubmit={() => run('submit', SkoFyApi.business.submit, "Sent for review — we'll let you know.")} />
+              )}
+
+              {approved && !business.ready_for_on_site_work && (
+                <Section title="Needs attention">
+                  <ThemedText style={u.body}>Your team can’t be hired until this is fixed:</ThemedText>
+                  {business.missing.map((m) => (
+                    <View key={m} style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+                      <AlertTriangle size={16} color={C.warn} style={{ marginTop: 2 }} />
+                      <ThemedText style={[u.body, { flex: 1 }]}>{m}</ThemedText>
+                    </View>
+                  ))}
+                  {owner && business.missing.some((m) => m.startsWith('Payouts')) && (
+                    <Button label="Set up payouts" busy={busy === 'payouts'} onPress={setUpPayouts} />
+                  )}
+                  {owner && business.missing.some((m) => !m.startsWith('Payouts')) && (
+                    <Button kind="secondary" label="Upload a document" onPress={() => startUpload(
+                      business.missing.some((m) => m.startsWith('A trade licence')) ? 'LICENCE' : 'GENERAL_LIABILITY')} />
+                  )}
+                </Section>
+              )}
+
+              {canDispatch && (
+                <View style={s.tiles}>
+                  <Tile icon={<Briefcase size={20} color={C.ink} />} title="Team jobs" onPress={() => router.push('/business-jobs' as any)}
+                    detail={openJobs ? `${openJobs} open for your team` : 'Apply and assign'} hot={openJobs > 0} />
+                  <Tile icon={<MapIcon size={20} color={C.ink} />} title="Team map" onPress={() => router.push('/business-map' as any)}
+                    detail={board?.active.length ? `${board.active.length} under way` : 'Where everyone is'} />
                 </View>
               )}
 
               {!owner && (
-                <View style={s.card}>
-                  <ThemedText style={s.cardTitle}>You're on the {business.name} team</ThemedText>
-                  <ThemedText style={s.muted}>As {data.role === 'DISPATCHER' ? 'a dispatcher' : 'a worker'}. While you're on its jobs, {business.name} can see your location.</ThemedText>
+                <Section title="Your membership" flush>
                   {business.allow_independent_work ? (
-                    <View style={s.row}>
-                      <ThemedText style={[s.item, { flex: 1 }]}>Also take jobs for myself</ThemedText>
-                      <Switch value={!!data.own_switch} trackColor={{ true: '#FFCE48' }} disabled={busy === 'own'}
-                        onValueChange={(on) => run('own', () => SkoFyApi.business.setOwnWork(on))} />
-                    </View>
+                    <Row icon={<Briefcase size={18} color={C.ink} />} title="Also take jobs for myself"
+                      detail={`Never customers you served for ${business.name} in the last year`}
+                      right={<Switch value={!!data.own_switch} trackColor={{ true: C.brand, false: '#E2E8F0' }} disabled={busy === 'own'}
+                        onValueChange={(on) => { run('own', () => SkoFyApi.business.setOwnWork(on)); }} />} />
                   ) : (
-                    <ThemedText style={s.muted}>Your jobs come through {business.name}.</ThemedText>
+                    <Row icon={<Briefcase size={18} color={C.ink} />} title={`Your jobs come through ${business.name}`}
+                      detail="They show under Ongoing once you're given one" />
                   )}
-                  <TouchableOpacity style={s.secondary} onPress={leaveTeam} disabled={busy === 'leave'}>
-                    <ThemedText style={s.secondaryText}>Leave the team</ThemedText>
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {(data.role === 'OWNER' || data.role === 'DISPATCHER') && (
-                <TouchableOpacity style={s.primary} onPress={() => router.push('/business-jobs' as any)}>
-                  <ThemedText style={s.primaryText}>Team jobs — apply and assign</ThemedText>
-                </TouchableOpacity>
+                  <Row icon={<ShieldCheck size={18} color={C.ink} />} title="Your location"
+                    detail={`${business.name} can see it only while you're on its jobs`} />
+                  <Row last icon={<LogOut size={18} color={C.bad} />} tone="bad" onPress={leaveTeam}
+                    title={<ThemedText style={[u.label, { color: C.bad }]}>Leave the team</ThemedText>} />
+                </Section>
               )}
 
               {team && (
                 <TeamSection team={team} canManage={owner}
-                  onInvite={async (phone, role: MemberRole) => {
+                  onInvite={async (phone, r: MemberRole) => {
                     try {
-                      setTeam(await SkoFyApi.business.invite(phone, role));
-                      appAlert.show('success', 'Invite sent', 'Ask them to sign in to the Dodorez Pro app with this number — the invite waits under Business account.');
+                      setTeam(await SkoFyApi.business.invite(phone, r));
+                      appAlert.show('success', 'Invite sent', 'Ask them to sign in to the Dodorez Pro app with this number — the invite waits under Business.');
                     } catch (err: any) {
                       appAlert.show('error', 'Not sent', err?.message ?? 'Please try again.');
                       throw err;
                     }
                   }}
-                  onChangeRole={(m, role) => teamAction(m.id, () => SkoFyApi.business.changeRole(m.id, role))}
+                  onChangeRole={(m, r) => teamAction(m.id, () => SkoFyApi.business.changeRole(m.id, r))}
                   onRemove={removeMember} />
               )}
 
-              <View style={s.card}>
-                <View style={s.row}>
-                  <Building2 size={18} color="#111827" />
-                  <ThemedText style={[s.cardTitle, { flex: 1 }]}>{business.name}</ThemedText>
-                  {canEdit && !editing && <TouchableOpacity onPress={() => setEditing(true)}><ThemedText style={s.link}>Edit</ThemedText></TouchableOpacity>}
-                </View>
-                {editing ? (
-                  <BusinessProfileForm initial={business} submitLabel="Save" onCancel={() => setEditing(false)}
-                    onSubmit={(input) => run('edit', async () => { const next = await SkoFyApi.business.update(input); setEditing(false); return next; })} />
-                ) : (
-                  <>
-                    <ThemedText style={s.item}>{business.legal_name} · {business.entity_type.replace('_', ' ').toLowerCase()} · {business.state}</ThemedText>
-                    {(business.email || business.phone) && <ThemedText style={s.muted}>{[business.email, business.phone].filter(Boolean).join(' · ')}</ThemedText>}
-                    {business.status === 'APPROVED' && canEdit && (
-                      <ThemedText style={s.hint}>Changing the legal name, type or state sends it back for review.</ThemedText>
-                    )}
-                  </>
-                )}
-              </View>
-
-              {owner && earnings && (
-                <View style={s.card}>
-                  <ThemedText style={s.cardTitle}>Money</ThemedText>
-                  <View style={s.row}>
-                    <View style={{ flex: 1 }}><ThemedText style={s.muted}>Paid out</ThemedText><ThemedText style={s.cardTitle}>{usd(earnings.total_earned)}</ThemedText></View>
-                    <View style={{ flex: 1 }}><ThemedText style={s.muted}>Held for jobs</ThemedText><ThemedText style={s.cardTitle}>{usd(earnings.pending)}</ThemedText></View>
+              {owner && earnings && approved && (
+                <Section title="Money">
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <Stat label="Paid out" value={usd(earnings.total_earned)} />
+                    <Stat label="Held for jobs" value={usd(earnings.pending)} />
                   </View>
-                  <ThemedText style={s.muted}>
-                    Fees this month {usd(earnings.fees.fees_paid)} of the {usd(earnings.fees.monthly_cap)} cap
-                    {earnings.owed_to_dodorez > 0 ? ` · ${usd(earnings.owed_to_dodorez)} comes out of your next payouts` : ''}
-                  </ThemedText>
-                  {earnings.payouts.slice(0, 5).map((p) => (
-                    <ThemedText key={`${p.job_id}-${p.purpose}`} style={s.muted}>
-                      {p.job_title}{p.worker_name ? ` (${p.worker_name})` : ''} · {usd(p.provider_amount)}
-                    </ThemedText>
-                  ))}
-                </View>
+                  <View style={{ gap: 6 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <ThemedText style={u.label}>Fees this month</ThemedText>
+                      <ThemedText style={u.muted}>{usd(earnings.fees.fees_paid)} of {usd(earnings.fees.monthly_cap)} cap</ThemedText>
+                    </View>
+                    <Progress value={earnings.fees.monthly_cap ? earnings.fees.fees_paid / earnings.fees.monthly_cap : 0} />
+                  </View>
+                  {earnings.owed_to_dodorez > 0 && (
+                    <ThemedText style={[u.muted, { color: C.warn }]}>{usd(earnings.owed_to_dodorez)} comes out of your next payouts.</ThemedText>
+                  )}
+                  {earnings.payouts.length > 0 && (
+                    <View>
+                      {earnings.payouts.slice(0, 5).map((p, i, all) => (
+                        <Row key={`${p.job_id}-${p.purpose}`} last={i === all.length - 1} title={p.job_title}
+                          detail={[p.worker_name, new Date(p.released_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })].filter(Boolean).join(' · ')}
+                          right={<ThemedText style={u.label}>{usd(p.provider_amount)}</ThemedText>} />
+                      ))}
+                    </View>
+                  )}
+                </Section>
+              )}
+
+              <Section title="Insurance & licences" flush
+                action={owner && !addingDoc ? (
+                  <Button small kind="ghost" label="Add" icon={<Plus size={16} color={C.info} />} onPress={() => startUpload('GENERAL_LIABILITY')} />
+                ) : undefined}>
+                {business.documents.length === 0 ? (
+                  <Row last icon={<FileText size={18} color={C.muted} />} title="Nothing uploaded yet"
+                    detail={`General liability (${usd(data.min_liability)}+) and your trade licences`} />
+                ) : business.documents.map((doc, i) => (
+                  <Row key={doc.id} last={i === business.documents.length - 1} onPress={() => Linking.openURL(doc.file_url)}
+                    icon={<FileText size={18} color={C.ink} />} tone={DOC_STATUS[doc.status].tone}
+                    title={`${DOC_NAMES[doc.kind]}${doc.trade ? ` · ${doc.trade}` : ''}`}
+                    detail={
+                      <View style={{ gap: 4 }}>
+                        <ThemedText style={u.muted} numberOfLines={1}>
+                          {[doc.issuer, doc.coverage_limit ? usd(doc.coverage_limit) : null, doc.expires_on ? `ends ${date(doc.expires_on)}` : null]
+                            .filter(Boolean).join(' · ') || 'Tap to view'}
+                        </ThemedText>
+                        {doc.review_note && doc.status === 'REJECTED' && <ThemedText style={[u.muted, { color: C.bad }]}>{doc.review_note}</ThemedText>}
+                        <Badge {...DOC_STATUS[doc.status]} />
+                      </View>
+                    }
+                    right={owner && doc.status !== 'APPROVED' ? (
+                      <TouchableOpacity onPress={() => removeDoc(doc)} disabled={busy === doc.id} hitSlop={10}>
+                        <Trash2 size={18} color={C.faint} />
+                      </TouchableOpacity>
+                    ) : undefined} />
+                ))}
+              </Section>
+
+              {owner && (approved || payoutsDone) && (
+                <Section title="Payouts" flush>
+                  <Row last icon={<Landmark size={18} color={C.ink} />} tone={payoutsDone ? 'ok' : demoPayouts ? 'info' : 'warn'}
+                    title={payoutsDone ? 'Paid to your company' : demoPayouts ? 'Test mode' : 'Set up payouts'}
+                    detail={payoutsDone ? 'Through Stripe, to the business bank account'
+                      : demoPayouts ? 'Payouts are recorded, not sent, until Stripe is set up'
+                      : 'Stripe checks the company and takes the bank account'}
+                    right={<Button small kind="secondary" label={payoutsDone ? 'Manage' : 'Set up'} busy={busy === 'payouts'}
+                      onPress={payoutsDone ? managePayouts : setUpPayouts} />} />
+                </Section>
               )}
 
               {owner && (
-                <View style={s.card}>
-                  <View style={s.row}><Landmark size={18} color="#111827" /><ThemedText style={s.cardTitle}>Payouts</ThemedText></View>
-                  <ThemedText style={s.muted}>
-                    {payoutsDone ? "Set up — you're paid to the company's bank account."
-                      : 'Stripe verifies the company (tax ID and owners) and takes the bank account. Dodorez never sees them.'}
-                  </ThemedText>
-                  <TouchableOpacity style={payoutsDone ? s.secondary : s.primary} disabled={busy === 'payouts'}
-                    onPress={payoutsDone ? managePayouts : setUpPayouts}>
-                    {busy === 'payouts' ? <ActivityIndicator color="#111827" /> : (
-                      <ThemedText style={payoutsDone ? s.secondaryText : s.primaryText}>
-                        {payoutsDone ? 'Manage payouts' : business.connect_onboarding_status === 'NOT_STARTED' ? 'Set up payouts with Stripe' : 'Continue payout setup'}
-                      </ThemedText>
-                    )}
-                  </TouchableOpacity>
-                </View>
+                <Section title="Settings" flush>
+                  <Row last icon={<Users size={18} color={C.ink} />} title="Team can also work for themselves"
+                    detail={`Never customers they served for ${business.name} in the last year. You never see their own jobs.`}
+                    right={<Switch value={business.allow_independent_work} trackColor={{ true: C.brand, false: '#E2E8F0' }} disabled={busy === 'indep'}
+                      onValueChange={(on) => { run('indep', () => SkoFyApi.business.setIndependentWork(on)); }} />} />
+                </Section>
               )}
 
-              <View style={s.card}>
-                <View style={s.row}><FileText size={18} color="#111827" /><ThemedText style={s.cardTitle}>Insurance and licences</ThemedText></View>
-                {business.documents.length === 0 && (
-                  <ThemedText style={s.muted}>Upload your general liability certificate ({usd(data.min_liability)} or more) and the licences your trades need.</ThemedText>
-                )}
-                {business.documents.map((doc) => (
-                  <View key={doc.id} style={s.doc}>
-                    <View style={{ flex: 1, gap: 2 }}>
-                      <ThemedText style={s.item}>{DOC_NAMES[doc.kind]}{doc.trade ? ` — ${doc.trade}` : ''}</ThemedText>
-                      <ThemedText style={s.muted}>
-                        {[doc.issuer, doc.number, doc.coverage_limit ? usd(doc.coverage_limit) : null,
-                          doc.expires_on ? `ends ${new Date(doc.expires_on + 'T00:00:00').toLocaleDateString()}` : null].filter(Boolean).join(' · ')}
-                      </ThemedText>
-                      <ThemedText style={[s.status, { color: DOC_STATUS[doc.status].color }]}>{DOC_STATUS[doc.status].label}</ThemedText>
-                      {doc.review_note && doc.status === 'REJECTED' && <ThemedText style={s.hint}>{doc.review_note}</ThemedText>}
-                      <TouchableOpacity onPress={() => Linking.openURL(doc.file_url)}><ThemedText style={s.link}>View file</ThemedText></TouchableOpacity>
-                    </View>
-                    {owner && doc.status !== 'APPROVED' && (
-                      <TouchableOpacity onPress={() => removeDoc(doc)} disabled={busy === doc.id}><Trash2 size={18} color="#9CA3AF" /></TouchableOpacity>
-                    )}
-                  </View>
-                ))}
-                {owner && (addingDoc ? (
-                  <BusinessDocumentForm minLiability={data.min_liability} onCancel={() => setAddingDoc(false)}
-                    onError={(message) => appAlert.show('error', 'Not uploaded', message)}
-                    onSubmit={(doc) => run('doc', async () => { const next = await SkoFyApi.business.addDocument(doc); setAddingDoc(false); return next; },
-                      "Uploaded — we'll review it.")} />
-                ) : (
-                  <TouchableOpacity style={s.secondary} onPress={() => setAddingDoc(true)}>
-                    <ThemedText style={s.secondaryText}>Add insurance or a licence</ThemedText>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              {(business.email || business.phone) && (
+                <ThemedText style={[u.muted, { textAlign: 'center' }]}>{[business.email, business.phone].filter(Boolean).join('  ·  ')}</ThemedText>
+              )}
             </>
           )}
         </ScrollView>
@@ -319,26 +366,42 @@ export default function BusinessScreen() {
   );
 }
 
+function Tile({ icon, title, detail, onPress, hot }: { icon: React.ReactNode; title: string; detail: string; onPress: () => void; hot?: boolean }) {
+  return (
+    <TouchableOpacity style={[u.card, s.tile, hot && s.tileHot]} activeOpacity={0.8} onPress={onPress}>
+      <View style={[s.tileIcon, hot && { backgroundColor: C.brand }]}>{icon}</View>
+      <ThemedText style={s.tileTitle}>{title}</ThemedText>
+      <ThemedText style={u.muted} numberOfLines={1}>{detail}</ThemedText>
+    </TouchableOpacity>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={s.stat}>
+      <ThemedText style={u.muted}>{label}</ThemedText>
+      <ThemedText style={s.statValue}>{value}</ThemedText>
+    </View>
+  );
+}
+
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F9FAFB' },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12 },
-  back: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
-  headerTitle: { fontSize: 18, lineHeight: 24, fontFamily: Fonts.poppinsBold, color: '#111827' },
-  body: { paddingHorizontal: 16, gap: 12 },
-  card: { padding: 16, borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', gap: 8 },
-  cardWarn: { borderColor: '#FDE68A', backgroundColor: '#FFFBEB' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  cardTitle: { fontSize: 15, lineHeight: 21, fontFamily: Fonts.poppinsBold, color: '#111827' },
-  label: { fontSize: 12.5, lineHeight: 17, fontFamily: Fonts.poppinsSemiBold, color: '#374151', marginTop: 4 },
-  item: { flex: 1, fontSize: 13.5, lineHeight: 19, fontFamily: Fonts.poppins, color: '#111827' },
-  muted: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.poppins, color: '#6B7280' },
-  hint: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.poppins, color: '#92400E' },
-  ok: { fontSize: 13.5, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: '#065F46' },
-  status: { fontSize: 12, lineHeight: 16, fontFamily: Fonts.poppinsBold },
-  link: { fontSize: 13, lineHeight: 18, fontFamily: Fonts.poppinsSemiBold, color: '#2563EB' },
-  doc: { flexDirection: 'row', gap: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
-  primary: { paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: '#FFCE48', marginTop: 4 },
-  primaryText: { fontSize: 14.5, lineHeight: 20, fontFamily: Fonts.poppinsBold, color: '#111827' },
-  secondary: { paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: '#F3F4F6', marginTop: 4 },
-  secondaryText: { fontSize: 14, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: '#374151' },
+  container: { flex: 1, backgroundColor: C.bg },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12 },
+  back: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: C.card, borderWidth: 1, borderColor: C.line },
+  headerTitle: { fontSize: 22, lineHeight: 30, fontFamily: Fonts.poppinsBold, color: C.ink },
+  body: { paddingHorizontal: 16, gap: 20 },
+  hero: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  heroName: { fontSize: 19, lineHeight: 25, fontFamily: Fonts.poppinsBold, color: C.ink },
+  iconButton: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg, alignSelf: 'flex-start' },
+  intro: { alignItems: 'center', gap: 8, paddingTop: 8, paddingHorizontal: 8 },
+  introIcon: { width: 64, height: 64, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: C.brandSoft, marginBottom: 4 },
+  introTitle: { fontSize: 21, lineHeight: 28, fontFamily: Fonts.poppinsBold, color: C.ink, textAlign: 'center' },
+  tiles: { flexDirection: 'row', gap: 12 },
+  tile: { flex: 1, gap: 4 },
+  tileHot: { borderColor: '#F7DC8B', backgroundColor: '#FFFDF5' },
+  tileIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: C.brandSoft, marginBottom: 6 },
+  tileTitle: { fontSize: 15, lineHeight: 21, fontFamily: Fonts.poppinsBold, color: C.ink },
+  stat: { flex: 1, padding: 12, borderRadius: 14, backgroundColor: C.bg, gap: 2 },
+  statValue: { fontSize: 19, lineHeight: 26, fontFamily: Fonts.poppinsBold, color: C.ink },
 });

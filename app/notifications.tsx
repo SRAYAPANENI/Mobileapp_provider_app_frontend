@@ -152,7 +152,7 @@ export default function NotificationsScreen() {
         openScreen('/business-job', item.job_id, { jobId: item.job_id });
         break;
       case 'team_job':
-        router.push('/business-jobs' as any);
+        openScreen('/business-jobs', item.job_id, { jobId: item.job_id });
         break;
       case 'job_cost_paid':
       case 'care_update_due':
