@@ -11,7 +11,7 @@ import * as Location from 'expo-location';
 import { router, useFocusEffect } from 'expo-router';
 import { AlertTriangle, ChevronDown, Eye, EyeOff, LogOut } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { BackHandler, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View, Alert } from 'react-native';
 import { TextInput } from '@/components/scaled-text';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import type { CountryCode } from 'react-native-country-picker-modal';
@@ -105,9 +105,11 @@ export default function LoginScreen() {
       try {
         setIsLoading(true);
         const fullIdentifier = passwordIdentifierType === 'email' ? identifier : `+${callingCode}${identifier}`;
-        await SkoFyApi.auth.loginWithPassword(fullIdentifier, password);
+        const signedIn = await SkoFyApi.auth.loginWithPassword(fullIdentifier, password);
         registerFcmToken();
         router.replace('/(tabs)' as any);
+        // Logging in cancelled a deletion they'd asked for — say so.
+        if (signedIn.account_restored) Alert.alert('Welcome back', 'Your account deletion is cancelled — your account stays open.');
       } catch (err: any) {
         showFeedback('error', 'Login Failed', err?.message || 'Incorrect credentials.');
       } finally {
@@ -158,6 +160,7 @@ export default function LoginScreen() {
       }
       registerFcmToken();
       router.replace('/(tabs)' as any);
+      if (user.account_restored) Alert.alert('Welcome back', 'Your account deletion is cancelled — your account stays open.');
     } catch (err: any) {
       showFeedback('error', 'Login Failed', err?.message || 'Invalid OTP. Please try again.');
     } finally {
