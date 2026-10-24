@@ -57,6 +57,8 @@ import { ReportIssueModal } from '@/components/report-issue-modal';
 import { useGoodsHoldHeld } from '@/hooks/use-goods-hold';
 import { useMyBusiness } from '@/hooks/use-my-business';
 import { BusinessHomeCard } from '@/components/business/business-home-card';
+import { TeamPanel } from '@/components/business/team-panel';
+import { WorkspaceSwitch, type Workspace } from '@/components/business/workspace-switch';
 import notifee from '@notifee/react-native';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -105,6 +107,18 @@ export default function DashboardScreen() {
   // (§7), the personal feed is empty by design — say whose jobs they get instead.
   const myBusiness = useMyBusiness();
   const refreshBusiness = myBusiness.refresh;
+  // Myself | Team: an owner or dispatcher flips the dashboard between their
+  // own jobs and the team's — remembered between visits.
+  const WORKSPACE_KEY = 'dodorez_home_workspace';
+  const [workspace, setWorkspace] = useState<Workspace>('me');
+  useEffect(() => {
+    SecureStore.getItemAsync(WORKSPACE_KEY).then((v) => { if (v === 'team') setWorkspace('team'); }).catch(() => {});
+  }, []);
+  const chooseWorkspace = (next: Workspace) => {
+    setWorkspace(next);
+    SecureStore.setItemAsync(WORKSPACE_KEY, next).catch(() => {});
+  };
+  const teamMode = myBusiness.canDispatch && workspace === 'team';
   const teamOnlyFor = myBusiness.data?.enabled && myBusiness.data.business && myBusiness.data.works_for_self === false
     ? myBusiness.data.business.name : null;
   const [pickupDropoffSaving, setPickupDropoffSaving] = useState(false);
@@ -1800,8 +1814,13 @@ const filteredJobs = jobs.filter((job) => {
         </View>
 
         <BusinessHomeCard state={myBusiness} />
+        {myBusiness.canDispatch && myBusiness.data?.business && (
+          <WorkspaceSwitch businessName={myBusiness.data.business.name} value={workspace} onChange={chooseWorkspace}
+            teamCount={myBusiness.board?.open.filter((j) => !j.applied).length ?? 0}
+            attention={!myBusiness.data.business.ready_for_on_site_work} />
+        )}
 
-        {isAvailable && repeatRequestCount > 0 && (
+        {!teamMode && isAvailable && repeatRequestCount > 0 && (
           <TouchableOpacity
             style={styles.repeatRequestsBanner}
             activeOpacity={0.85}
@@ -1818,7 +1837,7 @@ const filteredJobs = jobs.filter((job) => {
           </TouchableOpacity>
         )}
 
-        <View style={styles.sliderContainer}>
+        <View style={[styles.sliderContainer, teamMode && { display: 'none' }]}>
           {tabs.map((tab, index) => {
             const count = getTabCount(index);
             const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: tabPulseScales[index].value }] }));
@@ -1850,7 +1869,7 @@ const filteredJobs = jobs.filter((job) => {
             );
           })}
         </View>
-        {activeTab === 0 && isAvailable && (
+        {activeTab === 0 && isAvailable && !teamMode && (
           <SkillFilterBar
             jobs={browsableJobs}
             mySkills={mySkills}
@@ -1883,7 +1902,9 @@ const filteredJobs = jobs.filter((job) => {
           />
         }
       >
-        {isLoading ? (
+        {teamMode ? (
+          <TeamPanel state={myBusiness} />
+        ) : isLoading ? (
           // Only reachable on a genuine first-ever open (or an unreadable
           // cache) — the mount effect above primes `jobs` from cache
           // otherwise, which already skips past this with real content.

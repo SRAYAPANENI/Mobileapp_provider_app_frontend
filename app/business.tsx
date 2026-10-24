@@ -2,6 +2,7 @@ import { useAppAlert } from '@/components/app-alert';
 import { BusinessDocumentForm } from '@/components/business/business-document-form';
 import { BusinessInvites } from '@/components/business/business-invites';
 import { BusinessProfileForm } from '@/components/business/business-profile-form';
+import { OwnWorkSetting } from '@/components/business/own-work-setting';
 import { SetupChecklist } from '@/components/business/setup-checklist';
 import { TeamSection } from '@/components/business/team-section';
 import { Badge, Button, C, Monogram, Progress, Row, Section, Tone, u } from '@/components/business/ui';
@@ -19,7 +20,7 @@ import {
   AlertTriangle, BadgeCheck, Briefcase, Building2, ChevronLeft, FileText, Landmark, LogOut, Map as MapIcon, Pencil, Plus, ShieldCheck, Trash2, Users,
 } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, ScrollView, StatusBar, StyleSheet, Switch, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Linking, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
 
 const STATUS_BADGE: Record<string, { label: string; tone: Tone }> = {
   DRAFT: { label: 'Setting up', tone: 'neutral' },
@@ -244,13 +245,13 @@ export default function BusinessScreen() {
               )}
 
               {!owner && (
+                <>
+                {business.allow_independent_work && (
+                  <OwnWorkSetting who="member" businessName={business.name} value={!!data.own_switch} busy={busy === 'own'}
+                    onChange={(on) => { run('own', () => SkoFyApi.business.setOwnWork(on)); }} />
+                )}
                 <Section title="Your membership" flush>
-                  {business.allow_independent_work ? (
-                    <Row icon={<Briefcase size={18} color={C.ink} />} title="Also take jobs for myself"
-                      detail={`Never customers you served for ${business.name} in the last year`}
-                      right={<Switch value={!!data.own_switch} trackColor={{ true: C.brand, false: '#E2E8F0' }} disabled={busy === 'own'}
-                        onValueChange={(on) => { run('own', () => SkoFyApi.business.setOwnWork(on)); }} />} />
-                  ) : (
+                  {!business.allow_independent_work && (
                     <Row icon={<Briefcase size={18} color={C.ink} />} title={`Your jobs come through ${business.name}`}
                       detail="They show under Ongoing once you're given one" />
                   )}
@@ -259,6 +260,7 @@ export default function BusinessScreen() {
                   <Row last icon={<LogOut size={18} color={C.bad} />} tone="bad" onPress={leaveTeam}
                     title={<ThemedText style={[u.label, { color: C.bad }]}>Leave the team</ThemedText>} />
                 </Section>
+                </>
               )}
 
               {team && (
@@ -288,6 +290,10 @@ export default function BusinessScreen() {
                       <ThemedText style={u.muted}>{usd(earnings.fees.fees_paid)} of {usd(earnings.fees.monthly_cap)} cap</ThemedText>
                     </View>
                     <Progress value={earnings.fees.monthly_cap ? earnings.fees.fees_paid / earnings.fees.monthly_cap : 0} />
+                    <ThemedText style={[u.muted, { fontSize: 12 }]}>
+                      Each member who earns has their own {usd(earnings.fees.monthly_cap / Math.max(earnings.fees.cap_seats ?? 1, 1))} cap
+                      {(earnings.fees.cap_seats ?? 1) > 1 ? ` (${earnings.fees.cap_seats} so far)` : ''} — past it, {earnings.fees.rules?.after_cap_percent ?? 2}% on their work for the rest of the month.
+                    </ThemedText>
                   </View>
                   {earnings.owed_to_dodorez > 0 && (
                     <ThemedText style={[u.muted, { color: C.warn }]}>{usd(earnings.owed_to_dodorez)} comes out of your next payouts.</ThemedText>
@@ -346,12 +352,8 @@ export default function BusinessScreen() {
               )}
 
               {owner && (
-                <Section title="Settings" flush>
-                  <Row last icon={<Users size={18} color={C.ink} />} title="Team can also work for themselves"
-                    detail={`Never customers they served for ${business.name} in the last year. You never see their own jobs.`}
-                    right={<Switch value={business.allow_independent_work} trackColor={{ true: C.brand, false: '#E2E8F0' }} disabled={busy === 'indep'}
-                      onValueChange={(on) => { run('indep', () => SkoFyApi.business.setIndependentWork(on)); }} />} />
-                </Section>
+                <OwnWorkSetting who="owner" businessName={business.name} value={business.allow_independent_work} busy={busy === 'indep'}
+                  onChange={(on) => { run('indep', () => SkoFyApi.business.setIndependentWork(on)); }} />
               )}
 
               {(business.email || business.phone) && (

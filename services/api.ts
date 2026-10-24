@@ -412,7 +412,8 @@ export interface BusinessEarnings {
   total_earned: number; pending: number; jobs_paid_out: number; owed_to_dodorez: number;
   payouts: { job_id: string; job_title: string; purpose: string; provider_amount: number; recovered_amount: number;
     released_at: string; worker_name: string | null }[];
-  fees: { month: string; fees_paid: number; monthly_cap: number };
+  /** Each member who earned this month has their own cap: monthly_cap = that cap × cap_seats. */
+  fees: { month: string; fees_paid: number; monthly_cap: number; cap_seats?: number; rules?: { after_cap_percent: number } };
 }
 export interface BusinessDocumentInput {
   kind: BusinessDocumentKind; file: { uri: string; name: string; mimeType: string };
