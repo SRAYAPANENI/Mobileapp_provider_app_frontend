@@ -2,7 +2,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Fonts } from '@/constants/theme';
 import { ChevronRight } from 'lucide-react-native';
 import React from 'react';
-import { ActivityIndicator, StyleProp, StyleSheet, TouchableOpacity, View, ViewStyle } from 'react-native';
+import { ActivityIndicator, Platform, StyleProp, StyleSheet, Switch, TouchableOpacity, View, ViewStyle } from 'react-native';
 
 // The business screens' building blocks (docs/BUSINESS_PROVIDERS_DESIGN.md) —
 // one look for sections, rows, badges and buttons, so each screen is laid out
@@ -109,6 +109,16 @@ const BUTTONS = {
   ghost: { bg: 'transparent', fg: C.info, border: 'transparent' },
   danger: { bg: C.card, fg: C.bad, border: '#F3C9C9' },
 };
+
+/** On/off, in the app's colours — a white thumb on Android too, where the
+ * system accent (teal) is the default and clashes with the yellow track. */
+export function Toggle({ value, onChange, disabled }: { value: boolean; onChange: (on: boolean) => void; disabled?: boolean }) {
+  return (
+    <Switch value={value} onValueChange={onChange} disabled={disabled}
+      trackColor={{ true: C.brand, false: '#E2E8F0' }} ios_backgroundColor="#E2E8F0"
+      thumbColor={Platform.OS === 'ios' ? undefined : value ? '#FFFFFF' : '#F8FAFC'} />
+  );
+}
 
 /** A labelled form field. */
 export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {

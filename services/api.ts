@@ -363,6 +363,10 @@ export interface MyBusiness {
   enabled: boolean; business: Business | null; role: 'OWNER' | 'DISPATCHER' | 'WORKER' | null;
   /** Two hats (§7): their own "Myself" switch, and whether it's in effect. */
   own_switch?: boolean; works_for_self?: boolean;
+  /** Whether their business lets them work for themselves; null as its owner. */
+  own_work_allowed?: boolean | null;
+  /** Asked to leave: the day they go (sooner if released). */
+  leave_at?: string | null;
   /** General liability required for on-site work, in dollars. */
   min_liability: number;
 }
@@ -373,6 +377,10 @@ export type MemberRole = 'OWNER' | 'DISPATCHER' | 'WORKER';
 export interface TeamMember {
   id: string; provider_id: string | null; name: string | null; phone: string | null; role: MemberRole;
   status: 'INVITED' | 'ACTIVE'; joined_at: string | null; is_identity_verified: boolean | null;
+  /** Whether the business lets them also take jobs for themselves (§7). */
+  own_work_allowed?: boolean;
+  /** Asked to leave: the day they go. */
+  leave_at?: string | null;
   background_check_status: 'NOT_STARTED' | 'PENDING' | 'CLEAR' | 'CONSIDER' | 'FAILED' | null;
 }
 export interface CheckCharge {
@@ -1338,9 +1346,15 @@ export const SkoFyApi = {
       request('/businesses/me/team/invites', { method: 'POST', body: JSON.stringify({ phone, role }) }) as any,
     changeRole: async (memberId: string, role: MemberRole): Promise<Team> =>
       request(`/businesses/me/team/${memberId}`, { method: 'PUT', body: JSON.stringify({ role }) }) as any,
+    setMemberOwnWork: async (memberId: string, on: boolean): Promise<Team> =>
+      request(`/businesses/me/team/${memberId}/own-work`, { method: 'PUT', body: JSON.stringify({ on }) }) as any,
     removeMember: async (memberId: string): Promise<Team> =>
       request(`/businesses/me/team/${memberId}`, { method: 'DELETE' }) as any,
-    leave: async (): Promise<{ message: string }> => request('/businesses/me/leave', { method: 'POST' }) as any,
+    /** Asks to leave: they go on leave_at, after the notice — sooner if released. */
+    leave: async (): Promise<{ message: string; leave_at: string; jobs_after?: number }> => request('/businesses/me/leave', { method: 'POST' }) as any,
+    cancelLeave: async (): Promise<{ message: string }> => request('/businesses/me/leave', { method: 'DELETE' }) as any,
+    releaseMember: async (memberId: string): Promise<Team> =>
+      request(`/businesses/me/team/${memberId}/release`, { method: 'POST' }) as any,
     board: async (): Promise<BusinessBoard> => request('/businesses/me/jobs') as any,
     job: async (jobId: string): Promise<BusinessJobDetail> => request(`/businesses/me/jobs/${jobId}`) as any,
     positions: async (): Promise<TeamPosition[]> => request('/businesses/me/positions') as any,

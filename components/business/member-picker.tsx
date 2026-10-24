@@ -39,6 +39,7 @@ export function MemberPicker({ members, selectedId, onSelect, preferredIds = [],
               <ThemedText style={u.label}>{m.name ?? m.phone}</ThemedText>
               <ThemedText style={u.muted}>
                 {!able ? (m.is_identity_verified ? "Background check hasn't cleared" : 'ID not verified yet')
+                  : m.leave_at ? `Leaving ${new Date(m.leave_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} — only jobs before then`
                   : m.role === 'DISPATCHER' ? 'Dispatcher' : m.role === 'OWNER' ? 'Owner' : 'Worker'}
               </ThemedText>
             </View>

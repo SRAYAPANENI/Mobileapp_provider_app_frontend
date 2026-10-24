@@ -113,10 +113,18 @@ export default function BusinessScreen() {
       { text: m.status === 'INVITED' ? 'Cancel invite' : 'Remove', variant: 'primary',
         onPress: () => teamAction(m.id, () => SkoFyApi.business.removeMember(m.id)) },
     ]);
-  const leaveTeam = () => appAlert.show('warning', 'Leave this team?', "You won't get its jobs any more.", [
+  // Leaving is on notice: they ask, and go a week later — sooner if the
+  // owner releases them. The owner can't keep them.
+  const leaveTeam = () => appAlert.show('warning', 'Ask to leave?',
+    `You'll leave ${business?.name ?? 'the team'} in 7 days — sooner if they release you. Finish or hand back your team jobs before then.`, [
     { text: 'Stay', variant: 'secondary' },
-    { text: 'Leave', variant: 'primary', onPress: () => run('leave', () => SkoFyApi.business.leave()) },
+    { text: 'Ask to leave', variant: 'primary', onPress: () => run('leave', async () => {
+      // The server says when, and which team jobs fall after that.
+      const { message } = await SkoFyApi.business.leave();
+      appAlert.show('success', 'You asked to leave', message);
+    }) },
   ]);
+  const stayOnTeam = () => run('leave', () => SkoFyApi.business.cancelLeave(), "You're staying on the team.");
   const removeDoc = (doc: BusinessDocument) => appAlert.show('warning', 'Remove this document?', DOC_NAMES[doc.kind], [
     { text: 'Keep', variant: 'secondary' },
     { text: 'Remove', variant: 'primary', onPress: () => run(doc.id, () => SkoFyApi.business.removeDocument(doc.id)) },
@@ -246,19 +254,27 @@ export default function BusinessScreen() {
 
               {!owner && (
                 <>
-                {business.allow_independent_work && (
+                {data.own_work_allowed && (
                   <OwnWorkSetting who="member" businessName={business.name} value={!!data.own_switch} busy={busy === 'own'}
                     onChange={(on) => { run('own', () => SkoFyApi.business.setOwnWork(on)); }} />
                 )}
                 <Section title="Your membership" flush>
-                  {!business.allow_independent_work && (
+                  {!data.own_work_allowed && (
                     <Row icon={<Briefcase size={18} color={C.ink} />} title={`Your jobs come through ${business.name}`}
                       detail="They show under Ongoing once you're given one" />
                   )}
                   <Row icon={<ShieldCheck size={18} color={C.ink} />} title="Your location"
                     detail={`${business.name} can see it only while you're on its jobs`} />
-                  <Row last icon={<LogOut size={18} color={C.bad} />} tone="bad" onPress={leaveTeam}
-                    title={<ThemedText style={[u.label, { color: C.bad }]}>Leave the team</ThemedText>} />
+                  {data.leave_at ? (
+                    <Row last icon={<LogOut size={18} color={C.warn} />} tone="warn"
+                      title={`Leaving on ${new Date(data.leave_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
+                      detail={`Sooner if ${business.name} releases you. Finish or hand back your team jobs first.`}
+                      right={<Button small kind="secondary" label="Stay" busy={busy === 'leave'} onPress={stayOnTeam} />} />
+                  ) : (
+                    <Row last icon={<LogOut size={18} color={C.bad} />} tone="bad" onPress={leaveTeam}
+                      title={<ThemedText style={[u.label, { color: C.bad }]}>Ask to leave the team</ThemedText>}
+                      detail="You go after 7 days’ notice — sooner if they release you" />
+                  )}
                 </Section>
                 </>
               )}
@@ -275,7 +291,12 @@ export default function BusinessScreen() {
                     }
                   }}
                   onChangeRole={(m, r) => teamAction(m.id, () => SkoFyApi.business.changeRole(m.id, r))}
-                  onRemove={removeMember} />
+                  onRemove={removeMember}
+                  onRelease={(m) => appAlert.show('warning', `Release ${m.name ?? 'them'} now?`,
+                    'They leave the team today instead of at the end of their notice.', [
+                      { text: 'Keep notice', variant: 'secondary' },
+                      { text: 'Release now', variant: 'primary', onPress: () => teamAction(m.id, () => SkoFyApi.business.releaseMember(m.id)) },
+                    ])} />
               )}
 
               {owner && earnings && approved && (
@@ -353,7 +374,9 @@ export default function BusinessScreen() {
 
               {owner && (
                 <OwnWorkSetting who="owner" businessName={business.name} value={business.allow_independent_work} busy={busy === 'indep'}
-                  onChange={(on) => { run('indep', () => SkoFyApi.business.setIndependentWork(on)); }} />
+                  onChange={(on) => { run('indep', () => SkoFyApi.business.setIndependentWork(on)); }}
+                  members={team?.members} busyMemberId={busy}
+                  onMemberChange={(m, on) => { teamAction(m.id, () => SkoFyApi.business.setMemberOwnWork(m.id, on)); }} />
               )}
 
               {(business.email || business.phone) && (

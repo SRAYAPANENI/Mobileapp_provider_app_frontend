@@ -20,12 +20,16 @@ interface Props {
   onInvite: (phone: string, role: MemberRole) => Promise<void>;
   onChangeRole: (member: TeamMember, role: MemberRole) => void;
   onRemove: (member: TeamMember) => void;
+  /** Let someone who asked to leave go now. */
+  onRelease?: (member: TeamMember) => void;
 }
+
+const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
 // The team: who's on it and their checks, and — for the owner — inviting
 // people by phone, changing roles and removing them. A member can do jobs
 // once their ID is verified and their background check is clear.
-export function TeamSection({ team, canManage, onInvite, onChangeRole, onRemove }: Props) {
+export function TeamSection({ team, canManage, onInvite, onChangeRole, onRemove, onRelease }: Props) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const active = team.members.filter((m) => m.status === 'ACTIVE').length;
@@ -48,6 +52,7 @@ export function TeamSection({ team, canManage, onInvite, onChangeRole, onRemove 
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <ThemedText style={u.label} numberOfLines={1}>{m.name ?? m.phone}</ThemedText>
                     <Badge label={m.status === 'INVITED' ? 'Invited' : ROLE_LABEL[m.role]} tone={m.role === 'OWNER' ? 'brand' : 'neutral'} />
+                    {m.leave_at && <Badge label={`Leaving ${shortDate(m.leave_at)}`} tone="warn" />}
                   </View>
                 }
                 detail={m.status === 'ACTIVE' ? (
@@ -64,7 +69,10 @@ export function TeamSection({ team, canManage, onInvite, onChangeRole, onRemove 
               />
               {open === m.id && (
                 <View style={{ flexDirection: 'row', gap: 8, paddingBottom: 12, paddingLeft: 50 }}>
-                  {m.status === 'ACTIVE' && (
+                  {m.leave_at && onRelease && (
+                    <Button small kind="secondary" label="Release now" onPress={() => { setOpen(null); onRelease(m); }} />
+                  )}
+                  {m.status === 'ACTIVE' && !m.leave_at && (
                     <Button small kind="secondary" label={`Make ${m.role === 'WORKER' ? 'dispatcher' : 'worker'}`}
                       onPress={() => { setOpen(null); onChangeRole(m, m.role === 'WORKER' ? 'DISPATCHER' : 'WORKER'); }} />
                   )}
