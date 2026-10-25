@@ -1373,6 +1373,11 @@ export const SkoFyApi = {
     removeMember: async (memberId: string): Promise<Team> =>
       request(`/businesses/me/team/${memberId}`, { method: 'DELETE' }) as any,
     /** Asks to leave: they go on leave_at, after the notice — sooner if released. */
+    /** What would stop the business closing now (owner). */
+    closureStatus: async (): Promise<{ blockers: string[] }> => request('/businesses/me/close') as any,
+    /** Closes it: the team is released, no more work, history kept. */
+    close: async (confirmName: string): Promise<{ message: string; released: number }> =>
+      request('/businesses/me/close', { method: 'POST', body: JSON.stringify({ confirm_name: confirmName }) }) as any,
     leave: async (): Promise<{ message: string; leave_at: string; jobs_after?: number }> => request('/businesses/me/leave', { method: 'POST' }) as any,
     cancelLeave: async (): Promise<{ message: string }> => request('/businesses/me/leave', { method: 'DELETE' }) as any,
     releaseMember: async (memberId: string): Promise<Team> =>

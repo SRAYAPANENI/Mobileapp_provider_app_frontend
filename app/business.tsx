@@ -1,4 +1,5 @@
 import { useAppAlert } from '@/components/app-alert';
+import { CloseBusiness } from '@/components/business/close-business';
 import { BusinessDocumentForm } from '@/components/business/business-document-form';
 import { BusinessInvites } from '@/components/business/business-invites';
 import { BusinessProfileForm } from '@/components/business/business-profile-form';
@@ -377,6 +378,12 @@ export default function BusinessScreen() {
                   onChange={(on) => { run('indep', () => SkoFyApi.business.setIndependentWork(on)); }}
                   members={team?.members} busyMemberId={busy}
                   onMemberChange={(m, on) => { teamAction(m.id, () => SkoFyApi.business.setMemberOwnWork(m.id, on)); }} />
+              )}
+
+              {owner && (
+                <CloseBusiness businessName={business.name}
+                  onClosed={(message) => { appAlert.show('success', 'Business closed', message); reload(); }}
+                  onError={(message) => appAlert.show('error', 'Not closed', message)} />
               )}
 
               {(business.email || business.phone) && (
