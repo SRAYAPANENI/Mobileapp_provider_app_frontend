@@ -7,11 +7,10 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   CheckCheck,
   ChevronLeft,
-  MapPin,
   Phone,
   Send,
-  XCircle
 } from 'lucide-react-native';
+import { describeChatEvent, parseChatEvent } from '@/services/chat-events';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, BackHandler, FlatList, Keyboard, Linking, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, Vibration, View } from 'react-native';
 import { Text, TextInput } from '@/components/scaled-text';
@@ -72,12 +71,6 @@ interface ChatMessage {
   // Flagged by the server (docs/MONEY_RULES_DESIGN.md §10).
   off_app?: 'CONTACT' | 'PAYMENT' | null;
   sent_at: string;
-}
-
-function formatCallLogDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 type CallState = 'idle' | 'connecting' | 'calling' | 'ringing' | 'connected' | 'ended';
@@ -969,54 +962,10 @@ export default function ChatScreen() {
 
   const renderMessage = ({ item }: { item: ChatMessage }) => {
     if (item.message_type === 'SYSTEM') {
-      let log: { event?: string; duration_seconds?: number; connected?: boolean; reason?: string; outcome?: string } = {};
-      try { log = JSON.parse(item.message); } catch {}
-      const isMine = item.sender_id === myUserId;
-      const otherName = name || 'them';
-      let label = 'Voice call';
-      let LogIcon = Phone;
-      if (log.event === 'call') {
-        // Written by the server, one per call; the sender is the caller.
-        if (log.outcome === 'completed') label = `Voice call · ${formatCallLogDuration(log.duration_seconds ?? 0)}`;
-        else if (log.outcome === 'declined') label = isMine ? `${otherName} declined your call` : `You declined a call from ${otherName}`;
-        else if (log.outcome === 'busy') label = isMine ? `${otherName} was on another call` : `Missed call from ${otherName}`;
-        else if (log.outcome === 'cancelled') label = isMine ? 'Call cancelled' : `Missed call from ${otherName}`;
-        else label = isMine ? `${otherName} didn't answer` : `Missed call from ${otherName}`;
-      } else if (log.event === 'call_started') {
-        label = isMine ? `You called ${otherName}` : `${otherName} called you`;
-      } else if (log.event === 'call_ended') {
-        label = log.connected
-          ? `Voice call · ${formatCallLogDuration(log.duration_seconds ?? 0)}`
-          : `Missed call from ${otherName}`;
-      } else if (log.event === 'job_started') {
-        LogIcon = MapPin;
-        label = isMine ? 'You arrived and started the job' : `${otherName} arrived and started the job`;
-      } else if (log.event === 'job_cancelled') {
-        LogIcon = XCircle;
-        label = isMine
-          ? `You cancelled the job${log.reason ? `: ${log.reason}` : ''}`
-          : `${otherName} cancelled the job${log.reason ? `: ${log.reason}` : ''}`;
-      } else if (log.event === 'job_reopened') {
-        LogIcon = XCircle;
-        label = isMine
-          ? `You cancelled — other applicants are still available${log.reason ? `: ${log.reason}` : ''}`
-          : `${otherName} cancelled, but other applicants are still available${log.reason ? `: ${log.reason}` : ''}`;
-      } else if (log.event === 'customer_absent') {
-        // The provider waited at the address and nobody came (§3).
-        LogIcon = XCircle;
-        label = "You waited and the customer wasn't there — the job is cancelled and the visiting fee is yours";
-      } else if (log.event === 'inspection_report') {
-        // The inspection report, sent for the customer to confirm (§4).
-        LogIcon = MapPin;
-        label = 'You sent the inspection report';
-      } else if (log.event === 'inspection_not_done') {
-        LogIcon = XCircle;
-        label = `${otherName} says the inspection isn't finished yet`;
-      } else if (log.event === 'pickup_refused') {
-        // A pickup from a person: this provider didn't take the item.
-        LogIcon = XCircle;
-        label = `You didn't take the item${log.reason ? `: ${log.reason.toLowerCase()}` : ''} — the job is cancelled`;
-      }
+      // Job events, in words (services/chat-events.ts — shared with a business owner's view).
+      const { label, Icon: LogIcon } = describeChatEvent(parseChatEvent(item.message), {
+        mine: item.sender_id === myUserId, otherName: name || 'them',
+      });
       return (
         <Animated.View entering={FadeInLeft} style={styles.callLogWrapper}>
           <View style={styles.callLogBubble}>

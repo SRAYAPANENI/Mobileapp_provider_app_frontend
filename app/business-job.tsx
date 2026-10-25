@@ -3,6 +3,7 @@ import { Badge, C, jobStage, Monogram, Row, Section, u } from '@/components/busi
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
+import { describeChatEvent, parseChatEvent } from '@/services/chat-events';
 import { useBottomInset } from '@/hooks/use-bottom-inset';
 import { BusinessJobDetail, SkoFyApi } from '@/services/api';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -22,7 +23,7 @@ const STEP_WORDS: Record<string, string> = {
 const time = (iso: string) => new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-interface Message { id: string; sender_id: string; message: string; message_type: string; created_at: string }
+interface Message { id: string; sender_id: string; message: string; message_type: string; sent_at: string }
 
 // One of the business's jobs for its owner and dispatchers
 // (docs/BUSINESS_PROVIDERS_DESIGN.md §4): who's on it, each step as it
@@ -130,11 +131,25 @@ export default function BusinessJobScreen() {
                 <ThemedText style={[u.muted, { flex: 1 }]}>The customer is told your business can see this chat.</ThemedText>
               </View>
               {messages.length === 0 && <ThemedText style={[u.muted, { textAlign: 'center', paddingVertical: 8 }]}>No messages yet.</ThemedText>}
-              {[...messages].reverse().slice(-30).map((m) => {
+              {/* Oldest first, as the server sends them; the last 30. */}
+              {messages.slice(-30).map((m) => {
                 const from = side(m);
+                if (m.message_type === 'SYSTEM') {
+                  // A job event (a quote, an inspection, a call…), in words.
+                  const { label, Icon } = describeChatEvent(parseChatEvent(m.message), {
+                    mine: false, otherName: '', observer: true, actorName: who(m),
+                  });
+                  return (
+                    <View key={m.id} style={s.event}>
+                      <Icon size={14} color={C.muted} />
+                      <ThemedText style={s.eventText}>{label}</ThemedText>
+                      <ThemedText style={s.meta}>{clock(m.sent_at)}</ThemedText>
+                    </View>
+                  );
+                }
                 return (
                   <View key={m.id} style={[s.bubbleWrap, from === 'team' && { alignItems: 'flex-end' }]}>
-                    <ThemedText style={s.meta}>{who(m)} · {clock(m.created_at)}</ThemedText>
+                    <ThemedText style={s.meta}>{who(m)} · {clock(m.sent_at)}</ThemedText>
                     <View style={[s.bubble, from === 'team' ? s.bubbleTeam : from === 'worker' ? s.bubbleWorker : s.bubbleCustomer]}>
                       <ThemedText style={s.bubbleText}>
                         {m.message_type === 'IMAGE' ? 'Sent a photo' : m.message}
@@ -177,6 +192,9 @@ const s = StyleSheet.create({
   line: { flex: 1, width: 2, backgroundColor: '#D7EDE3', marginVertical: 2 },
   notice: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 12, backgroundColor: C.bg },
   bubbleWrap: { gap: 3, alignItems: 'flex-start' },
+  event: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: '92%',
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: C.bg },
+  eventText: { flexShrink: 1, fontSize: 13, lineHeight: 18, fontFamily: Fonts.poppinsSemiBold, color: C.body },
   meta: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.poppinsSemiBold, color: C.faint, paddingHorizontal: 4 },
   bubble: { maxWidth: '85%', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 16 },
   bubbleCustomer: { backgroundColor: '#F1F5F9', borderTopLeftRadius: 4 },
