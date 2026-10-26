@@ -71,6 +71,8 @@ interface ChatMessage {
   // Flagged by the server (docs/MONEY_RULES_DESIGN.md §10).
   off_app?: 'CONTACT' | 'PAYMENT' | null;
   sent_at: string;
+  // Your business's owner or a dispatcher wrote it — "Sumanth · ABC Plumbing".
+  sender_label?: string | null;
 }
 
 type CallState = 'idle' | 'connecting' | 'calling' | 'ringing' | 'connected' | 'ended';
@@ -986,6 +988,7 @@ export default function ChatScreen() {
           isProvider ? styles.providerMessageWrapper : styles.userMessageWrapper
         ]}
       >
+        {!isProvider && item.sender_label && <ThemedText style={styles.senderLabel}>{item.sender_label}</ThemedText>}
         <View style={[
           styles.messageBubble,
           isProvider ? styles.providerBubble : styles.userBubble
@@ -1240,6 +1243,14 @@ function makeStyles(t: typeof Colors.light) {
     },
     userMessageWrapper: {
       alignSelf: 'flex-start',
+    },
+    senderLabel: {
+      fontSize: 11,
+      lineHeight: 16,
+      fontFamily: Fonts.poppinsMedium,
+      color: '#6B7280',
+      marginBottom: 4,
+      marginLeft: 4,
     },
     messageBubble: {
       paddingHorizontal: 16,

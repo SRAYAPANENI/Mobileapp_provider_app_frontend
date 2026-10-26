@@ -6,6 +6,7 @@ import { Fonts } from '@/constants/theme';
 import { describeChatEvent, parseChatEvent } from '@/services/chat-events';
 import { useBottomInset } from '@/hooks/use-bottom-inset';
 import { BusinessJobDetail, SkoFyApi } from '@/services/api';
+import { setWatchedBusinessJob } from '@/services/callManager';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Calendar, Check, ChevronLeft, Eye, Map as MapIcon, MapPin, Send, User } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -23,7 +24,7 @@ const STEP_WORDS: Record<string, string> = {
 const time = (iso: string) => new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-interface Message { id: string; sender_id: string; message: string; message_type: string; sent_at: string }
+interface Message { id: string; sender_id: string; message: string; message_type: string; sent_at: string; sender_label?: string | null }
 
 // One of the business's jobs for its owner and dispatchers
 // (docs/BUSINESS_PROVIDERS_DESIGN.md §4): who's on it, each step as it
@@ -54,6 +55,12 @@ export default function BusinessJobScreen() {
     return () => clearInterval(id);
   }, [load]);
 
+  // New messages here arrive by refresh — no push for the job on screen.
+  useEffect(() => {
+    setWatchedBusinessJob(jobId ?? null);
+    return () => setWatchedBusinessJob(null);
+  }, [jobId]);
+
   const send = async () => {
     if (!jobId || !draft.trim()) return;
     setSending(true);
@@ -70,7 +77,7 @@ export default function BusinessJobScreen() {
 
   const side = (m: Message): 'customer' | 'worker' | 'team' =>
     m.sender_id === job?.customer_id ? 'customer' : m.sender_id === job?.worker_id ? 'worker' : 'team';
-  const who = (m: Message) => ({ customer: job?.customer_name ?? 'Customer', worker: job?.worker_name ?? 'Team member', team: 'Your team' })[side(m)];
+  const who = (m: Message) => ({ customer: job?.customer_name ?? 'Customer', worker: job?.worker_name ?? 'Team member', team: m.sender_label ?? 'Your team' })[side(m)];
   const setOff = !!job?.timeline.some((e) => e.step === 'TRACK_EN_ROUTE');
   const live = job && ['ACCEPTED', 'INSPECTING', 'INVOICE_PENDING', 'IN_PROGRESS'].includes(job.status);
 

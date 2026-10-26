@@ -467,6 +467,16 @@ export function setActiveChatJob(jobId: string | null) {
   activeChatJobId = jobId;
 }
 
+// The team job an owner or dispatcher has open (business-job.tsx). Kept apart
+// from activeChatJobId on purpose: that one also mutes call rings, and an
+// owner can be the one doing the job.
+let watchedBusinessJobId: string | null = null;
+
+/** Call from business-job.tsx on mount (its jobId) and unmount (null). */
+export function setWatchedBusinessJob(jobId: string | null) {
+  watchedBusinessJobId = jobId;
+}
+
 const MISSED_CALL_CHANNEL_ID = 'missed_calls_v2';
 
 /** One-shot "Missed call" notice — replaces the incoming-call notification
@@ -1755,6 +1765,8 @@ export function initCallManager() {
       return;
     }
     const route = remoteMessage.data ? updateRoute(remoteMessage.data.type) : null;
+    // Already looking at this team job: the screen refreshes itself.
+    if (remoteMessage.data?.type === 'business_job' && remoteMessage.data.job_id === watchedBusinessJobId) return;
     if (remoteMessage.data && route) {
       await showJobUpdateNotification(
         (remoteMessage.data.job_id ?? remoteMessage.data.business_id) as string,
