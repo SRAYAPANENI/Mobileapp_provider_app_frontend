@@ -675,6 +675,8 @@ const DASHBOARD_JOB_UPDATES = new Set([
   'payment_reversed',
   // A pet or home in your care: an update is due (JOB_SHAPE_DESIGN phase 4).
   'care_update_due',
+  // The pickup code was renewed — the job's card shows it.
+  'pickup_code',
 ]);
 
 /** Pushes that open a screen of their own rather than the dashboard. */
@@ -695,8 +697,9 @@ const ROUTED_UPDATES: Record<string, string> = {
   team_job: '/business-jobs',
 };
 
-/** Where a job-update push opens, or null if it isn't one of these. */
-function updateRoute(type: unknown): string | null {
+/** Where a job-update push opens, or null if it isn't one of these — the
+ * notifications list opens the same place. */
+export function updateRoute(type: unknown): string | null {
   if (DASHBOARD_JOB_UPDATES.has(type as string)) return '/';
   return ROUTED_UPDATES[type as string] ?? null;
 }

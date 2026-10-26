@@ -29,6 +29,7 @@ import { router, useFocusEffect } from 'expo-router';
 import Animated, { FadeInUp, LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SkoFyApi } from '@/services/api';
+import { updateRoute } from '@/services/callManager';
 import { openScreen, useOpenScreen } from '@/services/openScreens';
 import { useAppAlert } from '@/components/app-alert';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
@@ -148,22 +149,27 @@ export default function NotificationsScreen() {
       // straight there, not have to go find the job themselves.
       case 'invoice_accepted':
       case 'invoice_countered':
+      case 'job_cost_paid':
+      case 'care_update_due':
+      case 'pickup_code':
+        router.push({ pathname: '/(tabs)', params: { openServiceRoom: 'true', jobId: item.job_id } } as any);
+        break;
       case 'business_job':
         openScreen('/business-job', item.job_id, { jobId: item.job_id });
         break;
       case 'team_job':
         openScreen('/business-jobs', item.job_id, { jobId: item.job_id });
         break;
-      case 'job_cost_paid':
-      case 'care_update_due':
-        router.push({ pathname: '/(tabs)', params: { openServiceRoom: 'true', jobId: item.job_id } } as any);
-        break;
       case 'chat_message':
       case 'incoming_call':
         openScreen('/chat', item.job_id, { jobId: item.job_id });
         break;
-      default:
-        router.push('/(tabs)');
+      default: {
+        // Everything else opens where its push opens (services/callManager.ts).
+        const route = updateRoute(item.notif_type);
+        if (route && route !== '/') openScreen(route, item.job_id, { jobId: item.job_id });
+        else router.push('/(tabs)');
+      }
     }
   };
 
