@@ -42,8 +42,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, TextInput } from '@/components/scaled-text';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import type { CountryCode } from 'react-native-country-picker-modal';
-import { UsPhonePrefix, US_CALLING_CODE, US_PHONE_INPUT_MAX, formatUsPhone, usPhoneDigits } from '@/components/us-phone-prefix';
+import { UsPhonePrefix, US_CALLING_CODE, US_PHONE_INPUT_MAX, formatUsPhone, isUsPhone, usPhoneDigits } from '@/components/us-phone-prefix';
 import Animated, {
   FadeIn,
   FadeInLeft,
@@ -196,7 +195,6 @@ export default function RegisterScreen() {
   }, [tagSkillSearch, formData.skills]);
 
   // US launch: US numbers only — the server accepts only +1 numbers.
-  const countryCode: CountryCode = 'US';
   const callingCode = US_CALLING_CODE;
   const [showPassword, setShowPassword] = useState(false);
   const [showOtp, setShowOtp] = useState(false);
@@ -404,19 +402,6 @@ export default function RegisterScreen() {
   };
 
 
-  const getPhoneNumberLength = (cca2: CountryCode) => {
-    const lengths: Record<string, number> = {
-      'IN': 10,
-      'US': 10,
-      'GB': 10,
-      'AE': 9,
-      'KW': 8,
-      'QA': 8,
-      'SA': 9,
-    };
-    return lengths[cca2] || 10; // Default to 10
-  };
-
   const [profileImageBase64, setProfileImageBase64] = useState<{ data: string; mime: string } | null>(null);
   const [checkingFace, setCheckingFace] = useState(false);
 
@@ -569,14 +554,20 @@ export default function RegisterScreen() {
   };
 
   const handleSendOtp = async () => {
-    const requiredLength = getPhoneNumberLength(countryCode);
-    if (formData.mobileNumber.length === requiredLength) {
-      try {
-        await SkoFyApi.auth.sendOTP(`+${callingCode}${formData.mobileNumber}`);
-        setIsOtpSent(true);
-      } catch (error) {
-        showAlert('error', 'OTP Error', 'Failed to send OTP. Please check your mobile number.');
+    if (!isUsPhone(formData.mobileNumber)) {
+      showAlert('error', 'Invalid Number', 'Enter a valid 10-digit phone number.');
+      return;
+    }
+    try {
+      await SkoFyApi.auth.sendOTP(`+${callingCode}${formData.mobileNumber}`, 'register');
+      setIsOtpSent(true);
+    } catch (error: any) {
+      // Already registered here: the server says so before sending a code.
+      if (error?.error_code === 'ALREADY_REGISTERED') {
+        showAlert('error', 'Already Registered', 'This mobile number already has a provider account. Please use "Login here" below instead.');
+        return;
       }
+      showAlert('error', 'OTP Error', error?.message || 'Failed to send OTP. Please check your mobile number.');
     }
   };
 

@@ -1,4 +1,5 @@
 import AnimatedBackground from '@/components/animated-background';
+import { useAppAlert } from '@/components/app-alert';
 import AnimatedBrandMark from '@/components/animated-brand-mark';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -9,13 +10,12 @@ import { SkoFyApi, TokenStore } from '@/services/api';
 import { registerFcmToken } from '@/services/callManager';
 import * as Location from 'expo-location';
 import { router, useFocusEffect } from 'expo-router';
-import { AlertTriangle, ChevronDown, Eye, EyeOff, LogOut } from 'lucide-react-native';
+import { AlertTriangle, Eye, EyeOff, LogOut } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View, Alert } from 'react-native';
+import { BackHandler, Modal, Platform, ScrollView, StyleSheet, ToastAndroid, TouchableOpacity, View, Alert } from 'react-native';
 import { TextInput } from '@/components/scaled-text';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import type { CountryCode } from 'react-native-country-picker-modal';
-import { UsPhonePrefix, US_CALLING_CODE, US_PHONE_INPUT_MAX, formatUsPhone, usPhoneDigits } from '@/components/us-phone-prefix';
+import { UsPhonePrefix, US_CALLING_CODE, US_PHONE_INPUT_MAX, formatUsPhone, isUsPhone, usPhoneDigits } from '@/components/us-phone-prefix';
 import Animated, { FadeIn, FadeInUp, FadeOut, Layout } from 'react-native-reanimated';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 
@@ -31,15 +31,22 @@ export default function LoginScreen() {
   const [passwordIdentifierType, setPasswordIdentifierType] = useState<'phone' | 'email'>('phone');
   const [emailInput, setEmailInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [showOtp, setShowOtp] = useState(false);
+  const [showOtp, setShowOtp] = useState(true);
   // US launch: US numbers only — the server accepts only +1 numbers.
-  const countryCode: CountryCode = 'US';
   const callingCode = US_CALLING_CODE;
   const [isOtpSent, setIsOtpSent] = useState(false);
+  // Seconds until "Resend" works again — stops a stream of texts from repeated taps.
+  const [resendIn, setResendIn] = useState(0);
   const [isExitModalVisible, setIsExitModalVisible] = useState(false);
 
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
   const lastBackPressTime = useRef<number>(0);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((n) => n - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
 
   useEffect(() => {
     let isMounted = true;
@@ -63,6 +70,7 @@ export default function LoginScreen() {
           setIsExitModalVisible(true);
         } else {
           lastBackPressTime.current = currentTime;
+          if (Platform.OS === 'android') ToastAndroid.show('Press back again to exit', ToastAndroid.SHORT);
         }
         return true;
       };
@@ -90,6 +98,24 @@ export default function LoginScreen() {
   };
 
   const { setIsLoading, showFeedback } = useAppContext();
+  const appAlert = useAppAlert();
+
+  // No account for this number in this app (or only in the other one): the
+  // server says so before any code is sent — offer Register, number filled in.
+  const offerRegister = (err: any): boolean => {
+    if (err?.error_code !== 'NO_ACCOUNT' && err?.error_code !== 'OTHER_ROLE_ONLY') return false;
+    // A choice: a mistyped number just needs correcting, not Register.
+    appAlert.show(
+      'error',
+      err.error_code === 'NO_ACCOUNT' ? 'No Account Found' : 'Not a Provider Account Yet',
+      err.message,
+      [
+        { text: 'Change number', variant: 'secondary' },
+        { text: 'Register', variant: 'primary', onPress: () => router.push({ pathname: '/register', params: { prefillPhone: phoneNumber } }) },
+      ],
+    );
+    return true;
+  };
 
   const handleLogin = async () => {
     if (loginMethod === 'otp' && !isOtpSent) {
@@ -102,6 +128,10 @@ export default function LoginScreen() {
         showFeedback('error', 'Missing Fields', `Please enter your ${passwordIdentifierType === 'email' ? 'email' : 'phone number'} and password.`);
         return;
       }
+      if (passwordIdentifierType === 'phone' && !isUsPhone(identifier)) {
+        showFeedback('error', 'Invalid Number', 'Enter a valid 10-digit phone number.');
+        return;
+      }
       try {
         setIsLoading(true);
         const fullIdentifier = passwordIdentifierType === 'email' ? identifier : `+${callingCode}${identifier}`;
@@ -111,10 +141,15 @@ export default function LoginScreen() {
         // Logging in cancelled a deletion they'd asked for — say so.
         if (signedIn.account_restored) Alert.alert('Welcome back', 'Your account deletion is cancelled — your account stays open.');
       } catch (err: any) {
+        if (offerRegister(err)) return;
         showFeedback('error', 'Login Failed', err?.message || 'Incorrect credentials.');
       } finally {
         setIsLoading(false);
       }
+      return;
+    }
+    if (!/^\d{6}$/.test(otp)) {
+      showFeedback('error', 'Invalid Code', 'Enter the 6-digit code sent to your phone.');
       return;
     }
     try {
@@ -168,39 +203,27 @@ export default function LoginScreen() {
     }
   };
 
-  const getPhoneNumberLength = (cca2: CountryCode) => {
-    const lengths: Record<string, number> = {
-      'IN': 10,
-      'US': 10,
-      'GB': 10,
-      'AE': 9,
-      'KW': 8,
-      'QA': 8,
-      'SA': 9,
-    };
-    return lengths[cca2] || 10;
-  };
-
   const handleSendOtp = async () => {
-    const requiredLength = getPhoneNumberLength(countryCode);
     // Matches forgot-password.tsx's fix for the same bug: a length-only
     // check silently no-op'd on an invalid number (button just did
     // nothing, no feedback) and let an obviously-fake number like
     // 1234567890 through, which only failed with a confusing 422 from the
     // server — the backend always forces a +1 prefix and only ever
     // validates as a 10-digit US number regardless of country selected.
-    if (phoneNumber.length !== requiredLength || !/^[2-9]/.test(phoneNumber)) {
-      showFeedback('error', 'Invalid Number', `Enter a valid ${requiredLength}-digit phone number.`);
+    if (!isUsPhone(phoneNumber)) {
+      showFeedback('error', 'Invalid Number', 'Enter a valid 10-digit phone number.');
       return;
     }
     try {
       setIsLoading(true);
-      const res = await SkoFyApi.auth.sendOTP(`+${callingCode}${phoneNumber}`);
+      const res = await SkoFyApi.auth.sendOTP(`+${callingCode}${phoneNumber}`, 'login');
       setIsOtpSent(true);
+      setResendIn(30);
       if (res.mock_otp) {
         showFeedback('info', 'Dev Mode', `Your OTP is: ${res.mock_otp}`);
       }
     } catch (err: any) {
+      if (offerRegister(err)) return;
       showFeedback('error', 'Failed to Send OTP', err?.message || 'Please check your number and try again.');
     } finally {
       setIsLoading(false);
@@ -254,7 +277,9 @@ export default function LoginScreen() {
                       style={getInputStyle('phone')}
                       placeholder="Mobile number"
                       placeholderTextColor={themeColors.icon}
-                      keyboardType="numeric"
+                      keyboardType="phone-pad"
+                      autoComplete="tel-national"
+                      textContentType="telephoneNumber"
                       numberOfLines={1}
                       value={formatUsPhone(phoneNumber)}
                       onChangeText={(text) => {
@@ -276,24 +301,26 @@ export default function LoginScreen() {
                   >
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                       <ThemedText style={styles.label}>One Time Password</ThemedText>
-                      <TouchableOpacity onPress={() => setIsOtpSent(false)}>
+                      <TouchableOpacity onPress={() => { setIsOtpSent(false); setOtp(''); setResendIn(0); }}>
                         <ThemedText style={[styles.linkText, { color: themeColors.brand, fontSize: 12, marginBottom: 8 }]}>Change Number</ThemedText>
                       </TouchableOpacity>
                     </View>
                     <View style={styles.otpInputContainer}>
                       <TextInput
                         style={[getInputStyle('otp'), { paddingRight: 48 }]}
-                        placeholder="Enter 4-6 digit OTP"
+                        placeholder="Enter 6-digit code"
                         placeholderTextColor={themeColors.icon}
-                        keyboardType="numeric"
+                        keyboardType="number-pad"
+                        autoComplete="sms-otp"
+                        textContentType="oneTimeCode"
                         secureTextEntry={!showOtp}
                         value={otp}
-                        onChangeText={setOtp}
+                        onChangeText={(text) => setOtp(text.replace(/\D/g, ''))}
                         onFocus={() => setFocusedInput('otp')}
                         onBlur={() => setFocusedInput(null)}
                         maxLength={6}
                       />
-                      <TouchableOpacity style={styles.eyeIcon} onPress={() => setShowOtp(!showOtp)}>
+                      <TouchableOpacity style={styles.eyeIcon} hitSlop={12} onPress={() => setShowOtp(!showOtp)}>
                         {showOtp ? (
                           <EyeOff size={20} color={themeColors.icon} />
                         ) : (
@@ -301,9 +328,12 @@ export default function LoginScreen() {
                         )}
                       </TouchableOpacity>
                     </View>
-                    <TouchableOpacity style={[styles.resendRow, { backgroundColor: themeColors.background }]} onPress={handleSendOtp}>
+                    <TouchableOpacity style={[styles.resendRow, { backgroundColor: themeColors.background }]} onPress={handleSendOtp} disabled={resendIn > 0}>
                       <ThemedText style={styles.resendRowText}>
-                        Didn't get a code? <ThemedText style={[styles.resendRowText, styles.resendRowTextBold, { color: themeColors.brand }]}>Resend</ThemedText>
+                        Didn't get a code?{' '}
+                        <ThemedText style={[styles.resendRowText, styles.resendRowTextBold, { color: resendIn > 0 ? themeColors.icon : themeColors.brand }]}>
+                          {resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend'}
+                        </ThemedText>
                       </ThemedText>
                     </TouchableOpacity>
                   </Animated.View>
@@ -348,7 +378,9 @@ export default function LoginScreen() {
                         style={getInputStyle('phone-pwd')}
                         placeholder="Mobile number"
                         placeholderTextColor={themeColors.icon}
-                        keyboardType="numeric"
+                        keyboardType="phone-pad"
+                        autoComplete="tel-national"
+                        textContentType="telephoneNumber"
                         numberOfLines={1}
                         value={formatUsPhone(phoneNumber)}
                         onChangeText={(text) => setPhoneNumber(usPhoneDigits(text))}
@@ -364,10 +396,14 @@ export default function LoginScreen() {
                   <ThemedText style={styles.label}>Password</ThemedText>
                   <View style={styles.passwordInputContainer}>
                     <TextInput
-                      style={getInputStyle('password')}
+                      style={[getInputStyle('password'), { paddingRight: 48 }]}
                       placeholder="Enter your password"
                       placeholderTextColor={themeColors.icon}
                       secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="current-password"
+                      textContentType="password"
                       value={password}
                       onChangeText={setPassword}
                       onFocus={() => setFocusedInput('password')}
@@ -375,6 +411,7 @@ export default function LoginScreen() {
                     />
                     <TouchableOpacity
                       style={styles.eyeIcon}
+                      hitSlop={12}
                       onPress={() => setShowPassword(!showPassword)}
                     >
                       {showPassword ? (
@@ -424,6 +461,8 @@ export default function LoginScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
+      {appAlert.element}
+
       {/* Exit Confirmation Modal */}
       <Modal visible={isExitModalVisible} transparent animationType="fade">
         <View style={styles.exitModalOverlay}>
@@ -455,7 +494,7 @@ export default function LoginScreen() {
                 }}
               >
                 <ThemedText style={styles.exitConfirmText}>Yes</ThemedText>
-                <LogOut size={18} color="#fff" />
+                <LogOut size={18} color={themeColors.background} />
               </TouchableOpacity>
             </View>
           </Animated.View>
@@ -700,7 +739,7 @@ function makeStyles(t: typeof Colors.light) {
     fontSize: 16,
     lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
-    color: '#fff',
+    color: t.background,
   },
   });
 }
