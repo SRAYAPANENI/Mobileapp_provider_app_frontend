@@ -4,11 +4,13 @@ import { useCodeTimer } from '@/hooks/use-code-timer';
 import { API_BASE_URL } from '@/services/api-config';
 import AnimatedBrandMark from '@/components/animated-brand-mark';
 import { AcceptedIdDocuments } from '@/components/accepted-id-documents';
+import { byProfession, mainProfession, prefetchSkillCatalogue, SkillPicker, type PickedSkill } from '@/components/skill-picker';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { SkoFyApi } from '@/services/api';
+import { isEmail, tidyEmail } from '@/services/email';
 import { registerFcmToken } from '@/services/callManager';
 import { GooglePlacesService, GooglePlaceSuggestion } from '@/services/google-places';
 import { Image } from 'expo-image';
@@ -56,39 +58,15 @@ import Animated, {
 } from 'react-native-reanimated';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 
-// Must match the `profession` values seeded in skofy-backend/scripts/seed_skills.py exactly —
-// addSkillsByName() resolves by (name, profession) and getMySkills()/job matching rely on consistent naming.
-const PROFESSIONS_DATA = [
-  { id: '1', name: 'AC Technician', skills: ['Gas Refilling', 'Leak Repair', 'Cooling Fix', 'Filter Cleaning', 'AC Installation', 'Outer Unit Service', 'PCB Repair', 'Thermostat Replacement', 'Duct Sealing', 'Noise Reduction', 'Inverter AC Service', 'Cassette AC Service', 'Window AC Repair'] },
-  { id: '2', name: 'Electrician', skills: ['Wiring', 'Switchboard Repair', 'Short Circuit Fix', 'Lighting Installation', 'Fan Repair', 'Panel Upgrade', 'Inverter Installation', 'Solar Wiring', 'MCB Replacement', 'Earthing Setup', 'Power Backup Setup', 'CCTV Wiring', 'Doorbell Installation', 'Exhaust Fan Fitting', 'Geyser Wiring'] },
-  { id: '3', name: 'Plumber', skills: ['Pipe Leak Fix', 'Tap Repair', 'Drain Cleaning', 'Toilet Repair', 'Water Heater Install', 'Tank Cleaning', 'Basin Installation', 'Shower Fitting', 'Sewer Line Repair', 'Bathroom Renovation', 'Borewell Motor Repair', 'Overhead Tank Installation', 'Underground Tank Cleaning', 'Water Pump Repair'] },
-  { id: '4', name: 'Carpenter', skills: ['Furniture Assembly', 'Cabinet Installation', 'Door Installation', 'Wood Repair', 'Trim Work', 'Wardrobe Installation', 'False Ceiling Work', 'Window Frame Repair', 'Modular Kitchen Fitting', 'Staircase Work', 'Wooden Flooring', 'Sofa Repair', 'Bed Frame Assembly', 'TV Unit Installation'] },
-  { id: '5', name: 'Painter', skills: ['Interior Painting', 'Exterior Painting', 'Wallpaper Removal', 'Drywall Repair', 'Cabinet Refinishing', 'Texture Coat', 'Waterproof Paint', 'Wood Polish', 'Graffiti Removal', 'Stencil Painting', 'Metal Painting', 'Epoxy Floor Coating', 'Enamel Paint', 'Anti-Fungal Coating'] },
-  { id: '6', name: 'House Cleaning', skills: ['Deep Cleaning', 'Move-in Cleaning', 'Carpet Cleaning', 'Window Cleaning', 'Regular Sweeping', 'Sofa Cleaning', 'Kitchen Deep Clean', 'Bathroom Scrubbing', 'Marble Polishing', 'Curtain Washing', 'Post-Construction Cleaning', 'Terrace Cleaning', 'Chimney Cleaning', 'Water Tank Cleaning', 'Mattress Cleaning'] },
-  { id: '7', name: 'Vehicle Mechanic', skills: ['Engine Diagnostics', 'Brake Repair', 'Oil Change', 'Tire Replacement', 'Battery Testing', 'Car AC Repair', 'Denting & Painting', 'Transmission Repair', 'Bike Service', 'Car Washing', 'Windshield Repair', 'Headlight Restoration', 'Puncture Repair', 'Spark Plug Replacement', 'Car Interior Cleaning'] },
-  { id: '8', name: 'Gardener', skills: ['Lawn Mowing', 'Tree Trimming', 'Garden Design', 'Weed Control', 'Irrigation Repair', 'Plant Potting', 'Hedge Trimming', 'Vertical Garden Setup', 'Terrace Garden Setup', 'Composting Setup', 'Fertilization', 'Plant Disease Treatment', 'Garden Lighting'] },
-  { id: '9', name: 'Appliance Repair', skills: ['Washing Machine Repair', 'Refrigerator Repair', 'Microwave Repair', 'Dishwasher Repair', 'Oven Repair', 'Geyser Repair', 'Water Purifier Repair', 'Mixer Grinder Repair', 'TV Repair', 'Induction Cooktop Repair', 'Air Purifier Service', 'Chimney Repair', 'Dryer Repair', 'Pressure Cooker Repair'] },
-  { id: '10', name: 'Home Salon', skills: ['Haircut – Men', 'Haircut – Women', 'Hair Color', 'Hair Smoothening', 'Manicure', 'Pedicure', 'Facial', 'Waxing', 'Threading', 'Mehendi / Henna', 'Makeup – Bridal', 'Makeup – Party', 'Head Massage', 'Body Scrub', 'Bleach'] },
-  { id: '11', name: 'Pest Control', skills: ['Ant Control', 'Rodent Control', 'Bed Bug Treatment', 'Termite Treatment', 'Mosquito Control', 'Cockroach Treatment', 'Spider Control', 'Lizard Repellent', 'Fly Control', 'Fumigation', 'Pre-Construction Termite', 'Garden Pest Control'] },
-  { id: '12', name: 'Water Purifier Technician', skills: ['RO Service', 'UV Filter Replacement', 'Membrane Replacement', 'Carbon Filter Service', 'TDS Check & Fix', 'Motor Repair – Purifier', 'Annual Maintenance', 'Installation – RO System', 'Water Softener Service'] },
-  { id: '13', name: 'CCTV & Security', skills: ['CCTV Installation', 'DVR / NVR Setup', 'IP Camera Config', 'Video Doorbell Install', 'Alarm System Setup', 'Access Control Install', 'Intercom Setup', 'Motion Sensor Install', 'Remote Monitoring Setup'] },
-  { id: '14', name: 'Solar Technician', skills: ['Solar Panel Installation', 'Inverter Setup – Solar', 'Panel Cleaning', 'Battery Bank Setup', 'Grid-Tie Configuration', 'Energy Audit', 'Fault Diagnosis – Solar', 'Wiring – Solar System'] },
-  { id: '15', name: 'Waterproofing', skills: ['Roof Waterproofing', 'Bathroom Waterproofing', 'Terrace Waterproofing', 'Basement Waterproofing', 'Wall Seepage Fix', 'External Wall Coating', 'Swimming Pool Sealing', 'Overhead Tank Sealing'] },
-  { id: '16', name: 'Packers & Movers', skills: ['Local Home Shifting', 'Office Relocation', 'Furniture Disassembly', 'Packing & Wrapping', 'Vehicle Transport', 'Storage Services', 'Piano & Heavy Item Move', 'International Relocation'] },
-  { id: '17', name: 'Interior Designer', skills: ['Space Planning', '3D Visualization', 'Modular Kitchen Design', 'Bedroom Design', 'Living Room Design', 'False Ceiling Design', 'Lighting Design', 'Colour Consultation', 'Furniture Selection', 'Home Décor Styling', 'Bathroom Design', 'Office Interior Design'] },
-  { id: '18', name: 'Fitness Trainer', skills: ['Weight Loss Training', 'Strength & Conditioning', 'Yoga Sessions', 'Zumba', 'Pilates', 'Crossfit', 'Diet & Nutrition Plan', 'Post-Natal Fitness', 'Kids Fitness', 'Senior Fitness', 'Marathon Coaching'] },
-  { id: '19', name: 'Physiotherapist', skills: ['Back Pain Treatment', 'Sports Injury Rehab', 'Post-Surgery Rehab', 'Neck Pain Treatment', 'Knee Pain Therapy', 'Electrotherapy', 'Dry Needling', 'Elderly Mobility Care', 'Stroke Rehabilitation', 'Manual Therapy'] },
-  { id: '20', name: 'Home Tutor', skills: ['Mathematics', 'Physics', 'Chemistry', 'Biology', 'English Language', 'Hindi Language', 'Computer Science', 'IIT-JEE Preparation', 'NEET Preparation', 'CBSE Board Coaching', 'Primary School Tuition', 'Music Lessons', 'Art & Drawing Classes'] },
-  { id: '21', name: 'Cook / Chef', skills: ['Daily Meal Cooking', 'Party Catering', 'North Indian Cuisine', 'South Indian Cuisine', 'Chinese Cuisine', 'Continental Cuisine', 'Baking & Pastry', 'Healthy Meal Prep', 'Jain / Vegan Cooking', 'Biryani Specialist', 'Tandoor Cooking', 'Dessert Making'] },
-  { id: '22', name: 'Caretaker', skills: ['Elder Companion Care', 'Medication Reminder', 'Mobility Assistance', 'Baby Care', 'Child Supervision', 'Night Duty Caretaking', 'Post-Hospitalization Care', 'Special Needs Care'] },
-  { id: '23', name: 'IT Support', skills: ['Computer Repair', 'Laptop Repair', 'Virus Removal', 'Data Recovery', 'Network Setup', 'WiFi Configuration', 'Smart TV Setup', 'Printer Setup', 'Software Installation', 'Data Backup', 'CCTV Network Config', 'Smart Home Automation'] },
-  { id: '24', name: 'Event Decorator', skills: ['Birthday Decoration', 'Wedding Decoration', 'Baby Shower Decoration', 'Corporate Event Setup', 'Floral Arrangement', 'Balloon Decoration', 'Stage Setup', 'Lighting – Events', 'Mehendi Ceremony Decor', 'Table & Chair Rental'] },
-  { id: '25', name: 'Photography', skills: ['Wedding Photography', 'Portrait Photography', 'Product Photography', 'Real Estate Photography', 'Event Photography', 'Drone Photography', 'Video Editing', 'Maternity Shoot', 'Baby Photography', 'Pre-Wedding Shoot'] },
-  { id: '26', name: 'Laundry', skills: ['Wash & Fold', 'Dry Cleaning', 'Ironing', 'Shoe Cleaning', 'Curtain Dry Cleaning', 'Sofa Cover Washing', 'Pickup & Delivery', 'Stain Removal'] },
-  { id: '27', name: 'Mason', skills: ['Tile Fixing', 'Plastering', 'Brick Work', 'Floor Levelling', 'Concrete Work', 'Wall Construction', 'Demolition', 'Kitchen Counter Fitting', 'Marble / Granite Fixing', 'Roof Repair'] },
-  { id: '28', name: 'Welder', skills: ['Gate Fabrication', 'Grille / Railing Work', 'Sheet Metal Work', 'Stainless Steel Work', 'Aluminium Fabrication', 'Structural Welding', 'TIG Welding', 'MIG Welding', 'Portable Welding'] },
-  { id: '29', name: 'Glass & Glazing', skills: ['Window Glass Replacement', 'Shower Enclosure Install', 'Glass Partition Install', 'Mirror Fitting', 'Toughened Glass Work', 'Windshield Replacement', 'Glass Door Installation'] },
-];
+// Runs the tasks at most `limit` at a time — uploads in parallel without
+// choking a phone's connection with six videos at once.
+async function runLimited(tasks: (() => Promise<void>)[], limit: number): Promise<void> {
+  let next = 0;
+  const worker = async () => {
+    while (next < tasks.length) await tasks[next++]();
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+}
 
 export default function RegisterScreen() {
   const bottomInset = useBottomInset();
@@ -96,9 +74,6 @@ export default function RegisterScreen() {
   const themeColors = Colors[colorScheme];
   const styles = React.useMemo(() => makeStyles(themeColors), [colorScheme]);
 
-  // Professions — fetched live from backend once the user is OTP-verified (authenticated)
-  const [professionsList, setProfessionsList] = useState<string[]>(PROFESSIONS_DATA.map(p => p.name));
-  const [profSkills, setProfSkills] = useState<Record<string, { id: string; name: string }[]>>({});
 
   // Set by login.tsx when it redirects here after finding no Provider
   // profile for a number (is_new_role) — see that screen's own comment.
@@ -123,22 +98,20 @@ export default function RegisterScreen() {
     idNumber: '',
     password: '',
     confirmPassword: '',
-    primaryProfession: '',
-    skills: [] as string[],
+    skills: [] as PickedSkill[],
     experience: '',
   });
 
-  const [showProfessionModal, setShowProfessionModal] = useState(false);
-  const [showSkillsModal, setShowSkillsModal] = useState(false);
 
-  const availableSkills = useMemo(() => {
-    if (!formData.primaryProfession) return [];
-    const backendSkills = profSkills[formData.primaryProfession];
-    if (backendSkills && backendSkills.length > 0) return backendSkills.map(s => s.name);
-    // Offline fallback — use normalized comparison to avoid issues with whitespace
-    const prof = PROFESSIONS_DATA.find(p => p.name.trim() === formData.primaryProfession.trim());
-    return prof ? prof.skills : [];
-  }, [formData.primaryProfession, profSkills]);
+  // Skills from any profession (a handyman who also mows lawns and tutors).
+  const MAX_SIGNUP_SKILLS = 10;
+  const [showSkillPicker, setShowSkillPicker] = useState(false);
+  // "Show me as": the one title on job cards — the provider's choice, else the
+  // profession most of their skills are in.
+  const [shownAs, setShownAs] = useState('');
+  const [showShownAsModal, setShowShownAsModal] = useState(false);
+  const headline = shownAs && formData.skills.some(s => s.profession === shownAs) ? shownAs : mainProfession(formData.skills);
+  const skillNames = useMemo(() => formData.skills.map(s => s.name), [formData.skills]);
 
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [idDocumentImage, setIdDocumentImage] = useState<string | null>(null);
@@ -147,6 +120,8 @@ export default function RegisterScreen() {
   const [workProofBase64, setWorkProofBase64] = useState<{ data: string; mime: string } | null>(null);
   const [proofOfSkillsMedia, setProofOfSkillsMedia] = useState<{ uri: string, skill: string, description: string, type: 'image' | 'video', mime?: string }[]>([]);
   const [isOtpSent, setIsOtpSent] = useState(false);
+  // The server's answer that this email belongs to someone else, shown under the field.
+  const [emailTaken, setEmailTaken] = useState(false);
   // How long the code lasts, and when "Resend" works again.
   const codeTimer = useCodeTimer();
   const [isOtpVerified, setIsOtpVerified] = useState(false);
@@ -157,33 +132,6 @@ export default function RegisterScreen() {
   // the current_password it would then require.
   const [isAddingRole, setIsAddingRole] = useState(false);
 
-  // Once authenticated (OTP verified), fetch the real profession list from the backend
-  useEffect(() => {
-    if (!isOtpVerified) return;
-    SkoFyApi.skills.professions()
-      .then((list) => {
-        if (Array.isArray(list) && list.length > 0) setProfessionsList(list);
-      })
-      .catch((err) => {
-        // Falls back to the static PROFESSIONS_DATA already in state — fine
-        // for the user, but log it so a backend outage here is visible.
-        console.error('Failed to fetch professions list:', err);
-      });
-  }, [isOtpVerified]);
-
-  // Fetch real skills (with backend UUIDs) for the selected profession
-  useEffect(() => {
-    if (!isOtpVerified || !formData.primaryProfession) return;
-    SkoFyApi.skills.list(formData.primaryProfession)
-      .then((list: any) => {
-        if (Array.isArray(list) && list.length > 0) {
-          setProfSkills(prev => ({ ...prev, [formData.primaryProfession]: list.map((s: any) => ({ id: s.id, name: s.name })) }));
-        }
-      })
-      .catch((err) => {
-        console.error('Failed to fetch skills list:', err);
-      });
-  }, [isOtpVerified, formData.primaryProfession]);
 
   const [showTagModal, setShowTagModal] = useState(false);
   const [pendingMediaBatch, setPendingMediaBatch] = useState<{ uri: string, type: 'image' | 'video', mime?: string }[]>([]);
@@ -194,9 +142,33 @@ export default function RegisterScreen() {
   // Only skills the provider actually selected for their profession can be tagged on proof media —
   // not the full ALL_SKILLS catalog across every profession.
   const filteredRegisterSkills = useMemo(() => {
-    if (!tagSkillSearch.trim()) return formData.skills;
-    return formData.skills.filter(s => s.toLowerCase().includes(tagSkillSearch.toLowerCase()));
-  }, [tagSkillSearch, formData.skills]);
+    if (!tagSkillSearch.trim()) return skillNames;
+    return skillNames.filter(s => s.toLowerCase().includes(tagSkillSearch.toLowerCase()));
+  }, [tagSkillSearch, skillNames]);
+
+  const toggleSkill = (skill: PickedSkill) => {
+    if (formData.skills.some(s => s.id === skill.id)) {
+      setFormData(prev => ({ ...prev, skills: prev.skills.filter(s => s.id !== skill.id) }));
+      // Proof media tagged to a skill they dropped no longer applies.
+      setProofOfSkillsMedia(prev => prev.filter(m => m.skill !== skill.name));
+    } else if (formData.skills.length < MAX_SIGNUP_SKILLS) {
+      setFormData(prev => ({ ...prev, skills: [...prev.skills, skill] }));
+    }
+  };
+
+  // Signed in from here on: load the skill list now so the picker opens ready.
+  useEffect(() => {
+    if (isOtpVerified) prefetchSkillCatalogue();
+  }, [isOtpVerified]);
+
+  const openSkillPicker = () => {
+    // The catalogue needs the signed-in session the code check gives.
+    if (!isOtpVerified) {
+      showAlert('error', 'Verify Your Number First', 'Verify your mobile number above, then pick your skills.');
+      return;
+    }
+    setShowSkillPicker(true);
+  };
 
   // US launch: US numbers only — the server accepts only +1 numbers.
   const callingCode = US_CALLING_CODE;
@@ -211,12 +183,20 @@ export default function RegisterScreen() {
     message: string;
   }>({ visible: false, type: 'success', title: '', message: '' });
 
+  // Runs once the alert is dismissed — e.g. leave for Profile only after the
+  // provider has read which documents didn't upload (the alert lives on this
+  // screen, so leaving first would close it unseen).
+  const afterAlert = useRef<(() => void) | null>(null);
+
   const showAlert = (type: 'success' | 'error' | 'delete', title: string, message: string) => {
     setCustomAlert({ visible: true, type, title, message });
   };
 
   const hideAlert = () => {
     setCustomAlert({ ...customAlert, visible: false });
+    const next = afterAlert.current;
+    afterAlert.current = null;
+    next?.();
   };
 
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -231,6 +211,12 @@ export default function RegisterScreen() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // What the save is doing now, shown on the button ("Uploading proofs 2 of 5…").
+  const [saveStage, setSaveStage] = useState('');
+  // Steps already saved: "Try again" after a failure picks up where it stopped
+  // instead of re-uploading everything (and setting the password twice, which
+  // the server refuses). Keys carry the value, so an edited field is re-sent.
+  const savedSteps = useRef(new Set<string>());
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedCity, setSelectedCity] = useState<string | undefined>(undefined);
@@ -260,7 +246,7 @@ export default function RegisterScreen() {
     if (isOtpVerified) completed++;
     if (formData.address) completed++;
     if (addressType) completed++; // Always has a value
-    if (formData.primaryProfession && formData.skills.length > 0) completed++;
+    if (formData.skills.length > 0) completed++;
     if (formData.experience) completed++;
     if (workProofImage) completed++;
     if (!isAddingRole && formData.password && formData.password === formData.confirmPassword && formData.password.length >= 6) completed++;
@@ -280,7 +266,7 @@ export default function RegisterScreen() {
     if (!formData.fullName) missing.push('Full Name');
     if (!isOtpVerified) missing.push('Mobile Number Verification (tap "Verify with OTP")');
     if (!formData.address) missing.push('Address');
-    if (!(formData.primaryProfession && formData.skills.length > 0)) missing.push('Profession & Skills');
+    if (formData.skills.length === 0) missing.push('Skills');
     if (!formData.experience) missing.push('Years of Experience');
     if (!workProofImage) missing.push('Work Proof document');
     if (!isAddingRole && !(formData.password && formData.password === formData.confirmPassword && formData.password.length >= 6)) {
@@ -562,11 +548,22 @@ export default function RegisterScreen() {
       showAlert('error', 'Invalid Number', 'Enter a valid 10-digit phone number.');
       return;
     }
+    if (formData.email.trim() && !isEmail(formData.email)) {
+      showAlert('error', 'Invalid Email', 'Enter a valid email, like name@example.com, or leave it blank.');
+      return;
+    }
+    const email = formData.email.trim() ? tidyEmail(formData.email) : undefined;
     try {
-      const res = await SkoFyApi.auth.sendOTP(`+${callingCode}${formData.mobileNumber}`, 'register');
+      const res = await SkoFyApi.auth.sendOTP(`+${callingCode}${formData.mobileNumber}`, 'register', email);
       setIsOtpSent(true);
       codeTimer.start(res.expires_in_seconds);
     } catch (error: any) {
+      // Someone else's email: said before any code is sent.
+      if (error?.error_code === 'EMAIL_ALREADY_EXISTS') {
+        setEmailTaken(true);
+        showAlert('error', 'Email Already Used', "This email is already used by another account. Use a different email, or log in if it's yours.");
+        return;
+      }
       // Already registered here: the server says so before sending a code.
       if (error?.error_code === 'ALREADY_REGISTERED') {
         showAlert('error', 'Already Registered', 'This mobile number already has a provider account. Please use "Login here" below instead.');
@@ -611,6 +608,8 @@ export default function RegisterScreen() {
         }
         const isNewUser = resumedIsNewUser != null ? resumedIsNewUser === '1' : user.is_new_user;
         setIsAddingRole(!isNewUser);
+        // A new sign-in (maybe another number): nothing is saved for it yet.
+        savedSteps.current.clear();
         setIsOtpVerified(true);
         setIsOtpSent(false);
         showAlert('success', 'Verified', 'Mobile number verified successfully! ✨');
@@ -711,7 +710,7 @@ export default function RegisterScreen() {
                   placeholder="you@example.com"
                   placeholderTextColor={themeColors.icon}
                   value={formData.email}
-                  onChangeText={(text) => setFormData(prev => ({ ...prev, email: text }))}
+                  onChangeText={(text) => { setFormData(prev => ({ ...prev, email: text })); setEmailTaken(false); }}
                   onFocus={() => setFocusedInput('email')}
                   onBlur={() => setFocusedInput(null)}
                   keyboardType="email-address"
@@ -719,9 +718,9 @@ export default function RegisterScreen() {
                   autoCorrect={false}
                 />
               </View>
-              {!!formData.email && !formData.email.includes('@') && (
+              {!!formData.email.trim() && (!isEmail(formData.email) || emailTaken) && (
                 <ThemedText style={{ fontSize: 12, lineHeight: 18, color: '#EF4444', marginTop: 4, fontFamily: Fonts.poppins }}>
-                  Please enter a valid email address.
+                  {emailTaken ? 'This email is already used by another account.' : 'Enter a valid email, like name@example.com.'}
                 </ThemedText>
               )}
             </View>
@@ -1110,43 +1109,45 @@ export default function RegisterScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <ThemedText style={styles.fieldLabel}>Primary Profession<ThemedText style={styles.requiredMark}> *</ThemedText></ThemedText>
-              <TouchableOpacity
-                style={[getInputStyle('primaryProfession'), { justifyContent: 'center' }]}
-                onPress={() => setShowProfessionModal(true)}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Text style={{ color: formData.primaryProfession ? themeColors.text : themeColors.icon, fontFamily: Fonts.poppins, fontSize: 15, lineHeight: 21 }}>
-                    {formData.primaryProfession || 'Select Profession'}
+              <ThemedText style={styles.fieldLabel}>Skills you offer<ThemedText style={styles.requiredMark}> *</ThemedText></ThemedText>
+              <ThemedText style={styles.skillsHint}>Pick from any profession: a handyman who also mows lawns and tutors can add all three.</ThemedText>
+              {byProfession(formData.skills).map(group => (
+                <View key={group.profession} style={styles.skillGroup}>
+                  <ThemedText style={styles.skillGroupTitle}>{group.profession}</ThemedText>
+                  <View style={styles.skillChips}>
+                    {group.skills.map(skill => (
+                      <TouchableOpacity key={skill.id} onPress={() => toggleSkill(skill)} style={styles.skillChip} hitSlop={4}>
+                        <ThemedText style={styles.skillChipText}>{skill.name}</ThemedText>
+                        <X size={14} color={themeColors.text} />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              ))}
+              <TouchableOpacity style={[getInputStyle('skills'), { justifyContent: 'center' }]} onPress={openSkillPicker}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Plus size={18} color={themeColors.text} />
+                  <Text style={{ flex: 1, color: themeColors.text, fontFamily: Fonts.poppinsSemiBold, fontSize: 15, lineHeight: 21 }}>
+                    {formData.skills.length > 0 ? 'Add or change skills' : 'Choose your skills'}
                   </Text>
-                  <ChevronDown size={20} color={themeColors.icon} />
+                  <Text style={{ color: themeColors.icon, fontFamily: Fonts.poppins, fontSize: 13 }}>{formData.skills.length}/{MAX_SIGNUP_SKILLS}</Text>
                 </View>
               </TouchableOpacity>
+              <ThemedText style={styles.skillsHint}>Each skill gets jobs once you pass its short test. Add more anytime from your profile.</ThemedText>
             </View>
 
-            <View style={styles.inputGroup}>
-              <ThemedText style={styles.fieldLabel}>Skills<ThemedText style={styles.requiredMark}> *</ThemedText></ThemedText>
-              <TouchableOpacity
-                style={[getInputStyle('skills'), { justifyContent: 'center' }]}
-                onPress={() => {
-                  if (!formData.primaryProfession) {
-                    showAlert('error', 'Profession Required', 'Please select a primary profession first to see relevant skills.');
-                    return;
-                  }
-                  setShowSkillsModal(true);
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Text style={{ color: formData.skills.length > 0 ? themeColors.text : themeColors.icon, fontFamily: Fonts.poppins, fontSize: 15, lineHeight: 21, flex: 1, marginRight: 8 }} numberOfLines={1}>
-                    {formData.skills.length > 0 ? formData.skills.join(', ') : 'Select Skills'}
-                  </Text>
-                  <ChevronDown size={20} color={themeColors.icon} />
-                </View>
-              </TouchableOpacity>
-              <ThemedText style={{ fontSize: 11, lineHeight: 17, color: themeColors.icon, fontFamily: Fonts.poppins, marginTop: 6 }}>
-                You can add more skills and other professions anytime from your profile after signing up.
-              </ThemedText>
-            </View>
+            {formData.skills.length > 0 && (
+              <View style={styles.inputGroup}>
+                <ThemedText style={styles.fieldLabel}>Show me as</ThemedText>
+                <TouchableOpacity style={[getInputStyle('shownAs'), { justifyContent: 'center' }]} onPress={() => setShowShownAsModal(true)}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={{ color: themeColors.text, fontFamily: Fonts.poppins, fontSize: 15, lineHeight: 21 }}>{headline}</Text>
+                    <ChevronDown size={20} color={themeColors.icon} />
+                  </View>
+                </TouchableOpacity>
+                <ThemedText style={styles.skillsHint}>Your main title on job cards, picked from your skills. Change it if you like.</ThemedText>
+              </View>
+            )}
 
             <View style={styles.inputGroup}>
               <ThemedText style={styles.fieldLabel}>Years of Experience<ThemedText style={styles.requiredMark}> *</ThemedText></ThemedText>
@@ -1318,11 +1319,21 @@ export default function RegisterScreen() {
                   showAlert('error', 'Almost There', `Please complete: ${missing.join(', ')}.`);
                   return;
                 }
-                if (formData.email && !formData.email.includes('@')) {
+                if (formData.email.trim() && !isEmail(formData.email)) {
                   showAlert('error', 'Invalid Email', 'Please enter a valid email address or leave it blank.');
                   return;
                 }
                 setIsSubmitting(true);
+                setSaveStage('Saving your profile...');
+                const done = savedSteps.current;
+                // Runs a step once; a retry skips it if it already went through.
+                const step = async (key: string, run: () => Promise<unknown>) => {
+                  if (done.has(key)) return;
+                  await run();
+                  done.add(key);
+                };
+                // A short stand-in for a picked file, so a different file is a new step.
+                const fileKey = (f: { data: string }) => `${f.data.length}:${f.data.slice(-24)}`;
                 try {
                   // Prefer the city resolved by Google Places / GPS reverse-geocode (accurate,
                   // pulled from the address's actual "locality" component). Only fall back to
@@ -1332,104 +1343,131 @@ export default function RegisterScreen() {
                     ? formData.address.split(',').map(s => s.trim()).find(s => s.length > 2)
                     : undefined);
 
+                  // First and always: it creates the provider profile the rest hangs on,
+                  // and is safe to send again.
                   await SkoFyApi.auth.updateProfile({
                     name: formData.fullName,
-                    email: formData.email.trim() || undefined,
+                    email: formData.email.trim() ? tidyEmail(formData.email) : undefined,
                     bio: formData.experience
-                      ? `${formData.experience} years of experience as a ${formData.primaryProfession}`
+                      ? `${formData.experience} years of experience as a ${headline}`
                       : undefined,
                     years_experience: parseInt(formData.experience, 10) || 0,
                     city: cityFromAddress,
                   });
 
-                  // Save id_number and city via provider PATCH
+                  // The rest of the account, all at once: none depends on another.
+                  setSaveStage('Setting up your account...');
+                  const essentials: Promise<void>[] = [
+                    // Skipped when adding a role to an existing account — a
+                    // password already exists for this identity, and
+                    // setPassword() would require current_password to change it.
+                    ...(formData.password && !isAddingRole
+                      ? [step('password', async () => {
+                        // If an earlier try's reply was lost (timeout), the password may
+                        // already be set — the server then asks for the "current" one.
+                        // On a brand-new account, that password can only be ours.
+                        const sentBefore = done.has('password:sent');
+                        done.add('password:sent');
+                        await SkoFyApi.auth.setPassword(formData.password).catch((err) => {
+                          if (!(sentBefore && err?.error_code === 'CURRENT_PASSWORD_REQUIRED')) throw err;
+                        });
+                      })] : []),
+                    // By catalogue id, so each keeps its own profession (they can come
+                    // from several) and nothing new is ever created by name.
+                    ...formData.skills.map(skill => step(`skill:${skill.id}`, () => SkoFyApi.skills.addSkill(skill.id))),
+                  ];
                   if (formData.idNumber || selectedCoords) {
-                    await SkoFyApi.provider.updateProfile({
+                    essentials.push(step(`provider:${formData.idNumber}|${cityFromAddress}`, () => SkoFyApi.provider.updateProfile({
                       id_number: formData.idNumber || undefined,
                       city: cityFromAddress,
-                    });
+                    })));
                   }
-
-                  // Save skills
-                  if (formData.skills.length > 0 && formData.primaryProfession) {
-                    await SkoFyApi.skills.addSkillsByName(
-                      formData.skills.map(s => ({ name: s, profession: formData.primaryProfession }))
-                    );
+                  if (selectedCoords) {
+                    essentials.push(step(`location:${selectedCoords.lat},${selectedCoords.lng}`,
+                      () => SkoFyApi.provider.updateLocation(selectedCoords.lat, selectedCoords.lng)));
                   }
-
                   if (profileImageBase64) {
-                    await SkoFyApi.provider.uploadProfileImage(profileImageBase64.data, profileImageBase64.mime);
+                    essentials.push(step(`photo:${fileKey(profileImageBase64)}`,
+                      () => SkoFyApi.provider.uploadProfileImage(profileImageBase64.data, profileImageBase64.mime)));
                   }
+                  // allSettled, so every step gets its chance before a failure is
+                  // shown — the retry then only redoes what didn't go through.
+                  const failure = (await Promise.allSettled(essentials)).find(r => r.status === 'rejected');
+                  if (failure) throw (failure as PromiseRejectedResult).reason;
 
                   // Save ID proof, work proof, and skill proof documents (non-fatal — visible
                   // in profile afterwards, but shouldn't block account creation if upload fails).
                   // Failures here used to be totally silent — the account would be created with
                   // no documents and nobody (user or us, debugging) would know why.
                   const failedDocs: string[] = [];
+                  const uploads: { key: string; label: string; run: () => Promise<unknown> }[] = [];
                   if (idDocumentBase64) {
-                    await SkoFyApi.provider.addDocument({
+                    uploads.push({ key: `id:${fileKey(idDocumentBase64)}`, label: 'ID proof', run: () => SkoFyApi.provider.addDocument({
                       doc_type: 'ID_PROOF',
                       image_base64: idDocumentBase64.data,
                       mime_type: idDocumentBase64.mime,
-                    }).catch((err) => {
-                      console.error('Failed to upload ID proof:', err);
-                      failedDocs.push('ID proof');
-                    });
+                    }) });
                   }
                   if (workProofBase64) {
-                    await SkoFyApi.provider.addDocument({
+                    uploads.push({ key: `work:${fileKey(workProofBase64)}`, label: 'Work proof', run: () => SkoFyApi.provider.addDocument({
                       doc_type: 'WORK_PROOF',
                       image_base64: workProofBase64.data,
                       mime_type: workProofBase64.mime,
-                    }).catch((err) => {
-                      console.error('Failed to upload work proof:', err);
-                      failedDocs.push('Work proof');
-                    });
+                    }) });
                   }
                   // Skill-proof media (image or video) always goes through the multipart
                   // upload path — keeps a single, reliable code path for both media types.
                   for (const item of proofOfSkillsMedia) {
-                    await SkoFyApi.provider.addDocumentFile({
+                    uploads.push({ key: `proof:${item.uri}`, label: `${item.skill} proof`, run: () => SkoFyApi.provider.addDocumentFile({
                       fileUri: item.uri,
                       mimeType: item.mime ?? (item.type === 'video' ? 'video/mp4' : 'image/jpeg'),
                       doc_type: 'SKILL_PROOF',
                       skill_name: item.skill,
                       description: item.description || undefined,
-                    }).catch((err) => {
-                      console.error(`Failed to upload skill proof for ${item.skill}:`, err);
-                      failedDocs.push(`${item.skill} proof`);
+                    }) });
+                  }
+                  const toUpload = uploads.filter(u => !done.has(u.key));
+                  let finished = 0;
+                  if (toUpload.length > 0) setSaveStage(`Uploading documents 0 of ${toUpload.length}...`);
+                  await runLimited(toUpload.map(u => async () => {
+                    await step(u.key, u.run).catch((err) => {
+                      console.error(`Failed to upload ${u.label}:`, err);
+                      failedDocs.push(u.label);
                     });
-                  }
+                    finished++;
+                    setSaveStage(`Uploading documents ${finished} of ${toUpload.length}...`);
+                  }), 2);
 
-                  // Save GPS coords if available
-                  if (selectedCoords) {
-                    await SkoFyApi.provider.updateLocation(selectedCoords.lat, selectedCoords.lng);
-                  }
-
-                  // Skipped when adding a role to an existing account — a
-                  // password already exists for this identity, and
-                  // setPassword() would require current_password to change it.
-                  if (formData.password && !isAddingRole) {
-                    await SkoFyApi.auth.setPassword(formData.password);
-                  }
+                  // Land on Profile (not the dashboard) so they immediately see their skills
+                  // section and discover they can add more skills/professions anytime.
+                  const goToProfile = () => router.replace('/(tabs)/profile' as any);
                   if (failedDocs.length > 0) {
+                    setSaveStage('Account created');
+                    afterAlert.current = goToProfile;
                     showAlert(
                       'error',
                       'Account Created',
                       `Your account is ready, but these documents didn't upload: ${failedDocs.join(', ')}. Please re-upload them from your profile.`,
                     );
+                  } else {
+                    goToProfile();
                   }
-                  // Land on Profile (not the dashboard) so they immediately see their skills
-                  // section and discover they can add more skills/professions anytime.
-                  router.replace('/(tabs)/profile' as any);
                 } catch (e: any) {
                   showAlert('error', 'Registration Failed', e?.message ?? 'Failed to create account. Please try again.');
                   setIsSubmitting(false);
+                  setSaveStage('');
                 }
               }}
               disabled={isSubmitting}
             >
-              <ThemedText style={styles.createButtonText}>{isSubmitting ? 'Creating Account...' : 'Create Account'}</ThemedText>
+              {isSubmitting ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <ActivityIndicator size="small" color="#000" />
+                  <ThemedText style={styles.createButtonText}>{saveStage || 'Creating Account...'}</ThemedText>
+                </View>
+              ) : (
+                <ThemedText style={styles.createButtonText}>Create Account</ThemedText>
+              )}
             </TouchableOpacity>
           </Animated.View>
 
@@ -1443,89 +1481,40 @@ export default function RegisterScreen() {
       </KeyboardAvoidingView>
 
       {/* Profession Modal */}
-      <Modal statusBarTranslucent navigationBarTranslucent visible={showProfessionModal} transparent animationType="slide">
+      <SkillPicker
+        visible={showSkillPicker}
+        onClose={() => setShowSkillPicker(false)}
+        isPicked={(skill) => formData.skills.some(s => s.id === skill.id)}
+        onPick={toggleSkill}
+        canPickMore={formData.skills.length < MAX_SIGNUP_SKILLS}
+        limitNote={`${formData.skills.length} of ${MAX_SIGNUP_SKILLS} skills`}
+        excludeProfessions={['Personal Errands']}
+      />
+
+      <Modal statusBarTranslucent navigationBarTranslucent visible={showShownAsModal} transparent animationType="slide" onRequestClose={() => setShowShownAsModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={padBottom([styles.modalContent, { backgroundColor: themeColors.background }], bottomInset)}>
             <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Select Profession</ThemedText>
-              <TouchableOpacity onPress={() => setShowProfessionModal(false)}>
+              <ThemedText style={styles.modalTitle}>Show me as</ThemedText>
+              <TouchableOpacity onPress={() => setShowShownAsModal(false)}>
                 <X size={24} color={themeColors.icon} />
               </TouchableOpacity>
             </View>
             <ScrollView keyboardShouldPersistTaps="handled" style={styles.modalScroll}>
-              {professionsList.map((name) => (
+              {byProfession(formData.skills).map(({ profession, skills }) => (
                 <TouchableOpacity
-                  key={name}
-                  style={[styles.modalItem, formData.primaryProfession === name && { backgroundColor: themeColors.brand + '15' }]}
-                  onPress={() => {
-                    setFormData(prev => ({ ...prev, primaryProfession: name, skills: [] }));
-                    // Every proof-of-skill upload was tagged to a skill under
-                    // the OLD profession — none of them apply anymore. Left
-                    // alone, these were silently uploaded at submit time
-                    // (skill_name is free-text server-side, never validated
-                    // against the provider's actual registered skills) as
-                    // permanent SKILL_PROOF documents tagged to a skill this
-                    // provider never ended up registering.
-                    setProofOfSkillsMedia([]);
-                    setShowProfessionModal(false);
-                  }}
+                  key={profession}
+                  style={[styles.modalItem, headline === profession && { backgroundColor: themeColors.brand + '15' }]}
+                  onPress={() => { setShownAs(profession); setShowShownAsModal(false); }}
                 >
-                  <ThemedText style={[styles.modalItemText, formData.primaryProfession === name && { fontFamily: Fonts.poppinsBold, color: themeColors.brand }]}>
-                    {name}
+                  <ThemedText style={[styles.modalItemText, headline === profession && { fontFamily: Fonts.poppinsBold }]}>
+                    {profession} · {skills.length} skill{skills.length === 1 ? '' : 's'}
                   </ThemedText>
-                  {formData.primaryProfession === name && <CheckCircle2 size={20} color={themeColors.brand} />}
+                  {headline === profession && <CheckCircle2 size={20} color={themeColors.brand} />}
                 </TouchableOpacity>
               ))}
               <View style={{ height: 40 }} />
             </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Skills Modal */}
-      <Modal statusBarTranslucent navigationBarTranslucent visible={showSkillsModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={padBottom([styles.modalContent, { backgroundColor: themeColors.background }], bottomInset)}>
-            <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Select Skills</ThemedText>
-              <TouchableOpacity onPress={() => setShowSkillsModal(false)}>
-                <X size={24} color={themeColors.icon} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView keyboardShouldPersistTaps="handled" style={styles.modalScroll}>
-              {availableSkills.map((skill) => {
-                const isSelected = formData.skills.includes(skill);
-                return (
-                  <TouchableOpacity
-                    key={skill}
-                    style={[styles.modalItem, isSelected && { backgroundColor: themeColors.brand + '15' }]}
-                    onPress={() => {
-                      if (isSelected) {
-                        setFormData(prev => ({ ...prev, skills: prev.skills.filter(s => s !== skill) }));
-                        // Same reasoning as the profession-change reset
-                        // above, just scoped to this one skill instead of
-                        // all of them.
-                        setProofOfSkillsMedia(prev => prev.filter(m => m.skill !== skill));
-                      } else {
-                        setFormData(prev => ({ ...prev, skills: [...prev.skills, skill] }));
-                      }
-                    }}
-                  >
-                    <ThemedText style={[styles.modalItemText, isSelected && { fontFamily: Fonts.poppinsBold, color: themeColors.text }]}>
-                      {skill}
-                    </ThemedText>
-                    {isSelected ? <CheckCircle2 size={20} color={themeColors.brand} /> : <Circle size={20} color={themeColors.icon} />}
-                  </TouchableOpacity>
-                );
-              })}
-              <View style={{ height: 40 }} />
-            </ScrollView>
-            <TouchableOpacity
-              style={[styles.createButton, { backgroundColor: themeColors.brand, margin: 24, marginTop: 0, height: 50, borderRadius: 25 }]}
-              onPress={() => setShowSkillsModal(false)}
-            >
-              <ThemedText style={[styles.createButtonText, { fontSize: 16 }]}>Done</ThemedText>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -1835,6 +1824,48 @@ function makeStyles(t: typeof Colors.light) {
   },
   photoContainer: {
     alignItems: 'center',
+  },
+  skillsHint: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: t.icon,
+    fontFamily: Fonts.poppins,
+    marginTop: 6,
+  },
+  skillGroup: {
+    marginTop: 12,
+  },
+  skillGroupTitle: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: Fonts.poppinsBold,
+    color: t.icon,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
+  skillChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  skillChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: t.brand + '26',
+    borderWidth: 1,
+    borderColor: t.brand + '80',
+  },
+  skillChipText: {
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: Fonts.poppinsSemiBold,
+    color: t.text,
   },
   photoCircle: {
     width: 80,

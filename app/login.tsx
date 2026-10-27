@@ -9,6 +9,7 @@ import { Colors, Fonts } from '@/constants/theme';
 import { useAppContext } from '@/context/AppContext';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { SkoFyApi, TokenStore } from '@/services/api';
+import { isEmail, tidyEmail } from '@/services/email';
 import { registerFcmToken } from '@/services/callManager';
 import * as Location from 'expo-location';
 import { router, useFocusEffect } from 'expo-router';
@@ -119,9 +120,14 @@ export default function LoginScreen() {
       return;
     }
     if (loginMethod === 'password') {
-      const identifier = passwordIdentifierType === 'email' ? emailInput.trim() : phoneNumber.trim();
+      // Emails are matched whatever their case: sent trimmed and lower-case.
+      const identifier = passwordIdentifierType === 'email' ? tidyEmail(emailInput) : phoneNumber.trim();
       if (!identifier || !password.trim()) {
         showFeedback('error', 'Missing Fields', `Please enter your ${passwordIdentifierType === 'email' ? 'email' : 'phone number'} and password.`);
+        return;
+      }
+      if (passwordIdentifierType === 'email' && !isEmail(identifier)) {
+        showFeedback('error', 'Invalid Email', 'Enter a valid email, like name@example.com.');
         return;
       }
       if (passwordIdentifierType === 'phone' && !isUsPhone(identifier)) {
@@ -356,6 +362,8 @@ export default function LoginScreen() {
                       keyboardType="email-address"
                       autoCapitalize="none"
                       autoCorrect={false}
+                      autoComplete="email"
+                      textContentType="emailAddress"
                       value={emailInput}
                       onChangeText={setEmailInput}
                       onFocus={() => setFocusedInput('email-pwd')}

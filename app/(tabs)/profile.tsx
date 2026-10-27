@@ -6,6 +6,7 @@ import { RateCustomerButton } from '@/components/rate-customer-button';
 import { useUnratedCustomers } from '@/hooks/use-unrated-customers';
 import { AssessableSkill, SkillEligibility, TestButtonState, eligibilityMessage } from '@/services/skillAssessment';
 import { SkoFyApi } from '@/services/api';
+import { isEmail, tidyEmail } from '@/services/email';
 import { AppLock } from '@/services/appLock';
 import { signOutDevice } from '@/services/callManager';
 import { stopBackgroundLocation } from '@/services/background-location';
@@ -68,6 +69,7 @@ import { Calendar } from 'react-native-calendars';
 import Animated, { FadeInUp, FadeInDown, FadeInRight, FadeIn, LinearTransition, ZoomIn } from 'react-native-reanimated';
 import { Camera, Image as ImageIcon, Trash2, Edit2, AlertTriangle, Layers, Zap, Clock, Trophy } from 'lucide-react-native';
 import { usePushPreference } from '@/hooks/use-push-preference';
+import { SkillPicker, type PickedSkill } from '@/components/skill-picker';
 import { fitBottom, padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { FeeCapCard } from '@/components/fee-cap-card';
 import { MIN_VISITING_FEE } from '@/services/fees';
@@ -78,39 +80,6 @@ import { MIN_VISITING_FEE } from '@/services/fees';
 // like it's stalled the test.
 const TIMEOUT_AUTO_ADVANCE_DELAY_MS = 2000;
 
-// Must match the `profession` values seeded in skofy-backend/scripts/seed_skills.py exactly —
-// GET /skills?profession=X does a literal string match against the DB.
-const PROVIDER_PROFESSIONS = [
-  { name: 'AC Technician', skills: ['Gas Refilling', 'Leak Repair', 'Cooling Fix', 'Filter Cleaning', 'AC Installation', 'Outer Unit Service', 'PCB Repair', 'Thermostat Replacement', 'Duct Sealing', 'Noise Reduction', 'Inverter AC Service', 'Cassette AC Service', 'Window AC Repair'] },
-  { name: 'Electrician', skills: ['Wiring', 'Switchboard Repair', 'Short Circuit Fix', 'Lighting Installation', 'Fan Repair', 'Panel Upgrade', 'Inverter Installation', 'Solar Wiring', 'MCB Replacement', 'Earthing Setup', 'Power Backup Setup', 'CCTV Wiring', 'Doorbell Installation', 'Exhaust Fan Fitting', 'Geyser Wiring'] },
-  { name: 'Plumber', skills: ['Pipe Leak Fix', 'Tap Repair', 'Drain Cleaning', 'Toilet Repair', 'Water Heater Install', 'Tank Cleaning', 'Basin Installation', 'Shower Fitting', 'Sewer Line Repair', 'Bathroom Renovation', 'Borewell Motor Repair', 'Overhead Tank Installation', 'Underground Tank Cleaning', 'Water Pump Repair'] },
-  { name: 'Carpenter', skills: ['Furniture Assembly', 'Cabinet Installation', 'Door Installation', 'Wood Repair', 'Trim Work', 'Wardrobe Installation', 'False Ceiling Work', 'Window Frame Repair', 'Modular Kitchen Fitting', 'Staircase Work', 'Wooden Flooring', 'Sofa Repair', 'Bed Frame Assembly', 'TV Unit Installation'] },
-  { name: 'Painter', skills: ['Interior Painting', 'Exterior Painting', 'Wallpaper Removal', 'Drywall Repair', 'Cabinet Refinishing', 'Texture Coat', 'Waterproof Paint', 'Wood Polish', 'Graffiti Removal', 'Stencil Painting', 'Metal Painting', 'Epoxy Floor Coating', 'Enamel Paint', 'Anti-Fungal Coating'] },
-  { name: 'House Cleaning', skills: ['Deep Cleaning', 'Move-in Cleaning', 'Carpet Cleaning', 'Window Cleaning', 'Regular Sweeping', 'Sofa Cleaning', 'Kitchen Deep Clean', 'Bathroom Scrubbing', 'Marble Polishing', 'Curtain Washing', 'Post-Construction Cleaning', 'Terrace Cleaning', 'Chimney Cleaning', 'Water Tank Cleaning', 'Mattress Cleaning'] },
-  { name: 'Vehicle Mechanic', skills: ['Engine Diagnostics', 'Brake Repair', 'Oil Change', 'Tire Replacement', 'Battery Testing', 'Car AC Repair', 'Denting & Painting', 'Transmission Repair', 'Bike Service', 'Car Washing', 'Windshield Repair', 'Headlight Restoration', 'Puncture Repair', 'Spark Plug Replacement', 'Car Interior Cleaning'] },
-  { name: 'Gardener', skills: ['Lawn Mowing', 'Tree Trimming', 'Garden Design', 'Weed Control', 'Irrigation Repair', 'Plant Potting', 'Hedge Trimming', 'Vertical Garden Setup', 'Terrace Garden Setup', 'Composting Setup', 'Fertilization', 'Plant Disease Treatment', 'Garden Lighting'] },
-  { name: 'Appliance Repair', skills: ['Washing Machine Repair', 'Refrigerator Repair', 'Microwave Repair', 'Dishwasher Repair', 'Oven Repair', 'Geyser Repair', 'Water Purifier Repair', 'Mixer Grinder Repair', 'TV Repair', 'Induction Cooktop Repair', 'Air Purifier Service', 'Chimney Repair', 'Dryer Repair', 'Pressure Cooker Repair'] },
-  { name: 'Home Salon', skills: ['Haircut – Men', 'Haircut – Women', 'Hair Color', 'Hair Smoothening', 'Manicure', 'Pedicure', 'Facial', 'Waxing', 'Threading', 'Mehendi / Henna', 'Makeup – Bridal', 'Makeup – Party', 'Head Massage', 'Body Scrub', 'Bleach'] },
-  { name: 'Pest Control', skills: ['Ant Control', 'Rodent Control', 'Bed Bug Treatment', 'Termite Treatment', 'Mosquito Control', 'Cockroach Treatment', 'Spider Control', 'Lizard Repellent', 'Fly Control', 'Fumigation', 'Pre-Construction Termite', 'Garden Pest Control'] },
-  { name: 'Water Purifier Technician', skills: ['RO Service', 'UV Filter Replacement', 'Membrane Replacement', 'Carbon Filter Service', 'TDS Check & Fix', 'Motor Repair – Purifier', 'Annual Maintenance', 'Installation – RO System', 'Water Softener Service'] },
-  { name: 'CCTV & Security', skills: ['CCTV Installation', 'DVR / NVR Setup', 'IP Camera Config', 'Video Doorbell Install', 'Alarm System Setup', 'Access Control Install', 'Intercom Setup', 'Motion Sensor Install', 'Remote Monitoring Setup'] },
-  { name: 'Solar Technician', skills: ['Solar Panel Installation', 'Inverter Setup – Solar', 'Panel Cleaning', 'Battery Bank Setup', 'Grid-Tie Configuration', 'Energy Audit', 'Fault Diagnosis – Solar', 'Wiring – Solar System'] },
-  { name: 'Waterproofing', skills: ['Roof Waterproofing', 'Bathroom Waterproofing', 'Terrace Waterproofing', 'Basement Waterproofing', 'Wall Seepage Fix', 'External Wall Coating', 'Swimming Pool Sealing', 'Overhead Tank Sealing'] },
-  { name: 'Packers & Movers', skills: ['Local Home Shifting', 'Office Relocation', 'Furniture Disassembly', 'Packing & Wrapping', 'Vehicle Transport', 'Storage Services', 'Piano & Heavy Item Move', 'International Relocation'] },
-  { name: 'Interior Designer', skills: ['Space Planning', '3D Visualization', 'Modular Kitchen Design', 'Bedroom Design', 'Living Room Design', 'False Ceiling Design', 'Lighting Design', 'Colour Consultation', 'Furniture Selection', 'Home Décor Styling', 'Bathroom Design', 'Office Interior Design'] },
-  { name: 'Fitness Trainer', skills: ['Weight Loss Training', 'Strength & Conditioning', 'Yoga Sessions', 'Zumba', 'Pilates', 'Crossfit', 'Diet & Nutrition Plan', 'Post-Natal Fitness', 'Kids Fitness', 'Senior Fitness', 'Marathon Coaching'] },
-  { name: 'Physiotherapist', skills: ['Back Pain Treatment', 'Sports Injury Rehab', 'Post-Surgery Rehab', 'Neck Pain Treatment', 'Knee Pain Therapy', 'Electrotherapy', 'Dry Needling', 'Elderly Mobility Care', 'Stroke Rehabilitation', 'Manual Therapy'] },
-  { name: 'Home Tutor', skills: ['Mathematics', 'Physics', 'Chemistry', 'Biology', 'English Language', 'Hindi Language', 'Computer Science', 'IIT-JEE Preparation', 'NEET Preparation', 'CBSE Board Coaching', 'Primary School Tuition', 'Music Lessons', 'Art & Drawing Classes'] },
-  { name: 'Cook / Chef', skills: ['Daily Meal Cooking', 'Party Catering', 'North Indian Cuisine', 'South Indian Cuisine', 'Chinese Cuisine', 'Continental Cuisine', 'Baking & Pastry', 'Healthy Meal Prep', 'Jain / Vegan Cooking', 'Biryani Specialist', 'Tandoor Cooking', 'Dessert Making'] },
-  { name: 'Caretaker', skills: ['Elder Companion Care', 'Medication Reminder', 'Mobility Assistance', 'Baby Care', 'Child Supervision', 'Night Duty Caretaking', 'Post-Hospitalization Care', 'Special Needs Care'] },
-  { name: 'IT Support', skills: ['Computer Repair', 'Laptop Repair', 'Virus Removal', 'Data Recovery', 'Network Setup', 'WiFi Configuration', 'Smart TV Setup', 'Printer Setup', 'Software Installation', 'Data Backup', 'CCTV Network Config', 'Smart Home Automation'] },
-  { name: 'Event Decorator', skills: ['Birthday Decoration', 'Wedding Decoration', 'Baby Shower Decoration', 'Corporate Event Setup', 'Floral Arrangement', 'Balloon Decoration', 'Stage Setup', 'Lighting – Events', 'Mehendi Ceremony Decor', 'Table & Chair Rental'] },
-  { name: 'Photography', skills: ['Wedding Photography', 'Portrait Photography', 'Product Photography', 'Real Estate Photography', 'Event Photography', 'Drone Photography', 'Video Editing', 'Maternity Shoot', 'Baby Photography', 'Pre-Wedding Shoot'] },
-  { name: 'Laundry', skills: ['Wash & Fold', 'Dry Cleaning', 'Ironing', 'Shoe Cleaning', 'Curtain Dry Cleaning', 'Sofa Cover Washing', 'Pickup & Delivery', 'Stain Removal'] },
-  { name: 'Mason', skills: ['Tile Fixing', 'Plastering', 'Brick Work', 'Floor Levelling', 'Concrete Work', 'Wall Construction', 'Demolition', 'Kitchen Counter Fitting', 'Marble / Granite Fixing', 'Roof Repair'] },
-  { name: 'Welder', skills: ['Gate Fabrication', 'Grille / Railing Work', 'Sheet Metal Work', 'Stainless Steel Work', 'Aluminium Fabrication', 'Structural Welding', 'TIG Welding', 'MIG Welding', 'Portable Welding'] },
-  { name: 'Glass & Glazing', skills: ['Window Glass Replacement', 'Shower Enclosure Install', 'Glass Partition Install', 'Mirror Fitting', 'Toughened Glass Work', 'Windshield Replacement', 'Glass Door Installation'] },
-];
 
 const { width, height: windowHeight } = Dimensions.get('window');
 
@@ -426,12 +395,6 @@ export default function ProfileScreen() {
     const earningsCall = refreshEarnings();
     const skillsCall = refreshSkills();
 
-    const professionsCall = SkoFyApi.skills.professions()
-      .then((list) => {
-        if (Array.isArray(list) && list.length > 0) setProfessionsList(list);
-      })
-      .catch((err) => console.error('Failed to fetch professions list:', err));
-
     const historyCall = SkoFyApi.jobs.getHistory()
       .then((jobs: any[]) => setJobHistory(jobs || []))
       .catch((err) => console.error('Failed to fetch job history:', err));
@@ -464,7 +427,7 @@ export default function ProfileScreen() {
       })
       .catch((err) => console.error('Failed to fetch availability slots:', err));
 
-    await Promise.allSettled([profileCall, earningsCall, skillsCall, professionsCall, historyCall, documentsCall, slotsCall, reloadUnrated()]);
+    await Promise.allSettled([profileCall, earningsCall, skillsCall, historyCall, documentsCall, slotsCall, reloadUnrated()]);
   }, []);
 
   const loadProfile = React.useCallback(async () => {
@@ -557,10 +520,7 @@ export default function ProfileScreen() {
   const [isViewAllOpen, setIsViewAllOpen] = useState(false);
   const [showTagModal, setShowTagModal] = useState(false);
   const [isAddSkillOpen, setIsAddSkillOpen] = useState(false);
-  const [addSkillProfession, setAddSkillProfession] = useState('');
-  const [addSkillList, setAddSkillList] = useState<{ id: string; name: string }[]>([]);
   const [isAddingSkill, setIsAddingSkill] = useState(false);
-  const [professionsList, setProfessionsList] = useState<string[]>(PROVIDER_PROFESSIONS.map(p => p.name));
   const [pendingMediaBatch, setPendingMediaBatch] = useState<{ uri: string, type: 'image' | 'video', mime?: string }[]>([]);
   const [isUploadingProof, setIsUploadingProof] = useState(false);
   const [tagDescription, setTagDescription] = useState('');
@@ -1192,11 +1152,15 @@ export default function ProfileScreen() {
       showAlert('error', 'Both Rates Required', 'Visiting Fee and Hourly Rate must be set together — fill in both, or leave both blank to skip for now.');
       return;
     }
+    if (editEmail.trim() && !isEmail(editEmail)) {
+      showAlert('error', 'Invalid Email', 'Enter a valid email, like name@example.com, or leave it blank.');
+      return;
+    }
     setIsSavingProfile(true);
     try {
       await SkoFyApi.provider.updateProfile({
         name: editName.trim(),
-        email: editEmail.trim() || undefined,
+        email: editEmail.trim() ? tidyEmail(editEmail) : undefined,
         bio: editBio.trim() || undefined,
         city: editCity.trim() || undefined,
         years_experience: editYearsExp ? parseInt(editYearsExp, 10) : undefined,
@@ -1229,30 +1193,12 @@ export default function ProfileScreen() {
     }
   };
 
-  const fetchSkillsForProfession = async (profession: string) => {
-    setAddSkillProfession(profession);
-    try {
-      const list = await SkoFyApi.skills.list(profession);
-      if (Array.isArray(list) && list.length > 0) {
-        setAddSkillList(list.map((s: any) => ({ id: s.id, name: s.name })));
-      } else {
-        const fallback = PROVIDER_PROFESSIONS.find(p => p.name === profession)?.skills ?? [];
-        setAddSkillList(fallback.map(n => ({ id: '', name: n })));
-      }
-    } catch {
-      const fallback = PROVIDER_PROFESSIONS.find(p => p.name === profession)?.skills ?? [];
-      setAddSkillList(fallback.map(n => ({ id: '', name: n })));
-    }
-  };
 
-  const handleAddSkill = async (skillName: string, skillId?: string) => {
+  // A skill from the shared picker — any profession, added at once.
+  const handleAddSkill = async (skill: PickedSkill) => {
     setIsAddingSkill(true);
     try {
-      if (skillId) {
-        await SkoFyApi.skills.addSkill(skillId);
-      } else {
-        await SkoFyApi.skills.addSkillsByName([{ name: skillName, profession: addSkillProfession }]);
-      }
+      await SkoFyApi.skills.addSkill(skill.id);
       // No success alert here on purpose — this modal is meant for picking
       // several skills in a row, and a blocking confirmation modal after
       // every single tap (stacked on top of this already-open one) forced
@@ -2012,7 +1958,7 @@ export default function ProfileScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <ThemedText style={styles.skillCountText}>{assessableSkills.length} Skill{assessableSkills.length !== 1 ? 's' : ''}</ThemedText>
               <TouchableOpacity
-                onPress={() => { setAddSkillProfession(''); setAddSkillList([]); setIsAddSkillOpen(true); }}
+                onPress={() => setIsAddSkillOpen(true)}
                 style={{ backgroundColor: '#FFCE48', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 4 }}
               >
                 <Plus size={13} color="#000" />
@@ -3448,74 +3394,19 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
-      {/* Add Skill Modal */}
-      <Modal visible={isAddSkillOpen} animationType="slide" transparent onRequestClose={() => setIsAddSkillOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-          <View style={{ backgroundColor: themeColors.card, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, maxHeight: '80%' }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <ThemedText style={{ fontSize: 20, lineHeight: 26, fontFamily: Fonts.poppinsBold, color: themeColors.textPrimary }}>
-                {addSkillProfession ? addSkillProfession : 'Select Profession'}
-              </ThemedText>
-              <TouchableOpacity onPress={() => setIsAddSkillOpen(false)}>
-                <XCircle size={24} color={themeColors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            {!addSkillProfession ? (
-              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
-                {/* "Personal Errands" is excluded here — it's gated on identity
-                    verification via the dedicated Pickup & Delivery toggle
-                    above, not addable/testable through this generic flow. */}
-                {professionsList.filter(name => name !== 'Personal Errands').map(name => (
-                  <TouchableOpacity
-                    key={name}
-                    onPress={() => fetchSkillsForProfession(name)}
-                    style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: themeColors.border }}
-                  >
-                    <ThemedText style={{ fontSize: 15, lineHeight: 21, fontFamily: Fonts.poppinsSemiBold, color: themeColors.textPrimary }}>{name}</ThemedText>
-                    <ChevronRight size={18} color={themeColors.border} />
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            ) : (
-              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
-                <TouchableOpacity
-                  onPress={() => { setAddSkillProfession(''); setAddSkillList([]); }}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16 }}
-                >
-                  <ChevronLeft size={16} color="#FFCE48" />
-                  <ThemedText style={{ fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: '#FFCE48' }}>Change Profession</ThemedText>
-                </TouchableOpacity>
-                <ThemedText style={{ fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppins, color: themeColors.textSecondary, marginBottom: 16 }}>
-                  Tap a skill to add it to your profile
-                </ThemedText>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingBottom: 20 }}>
-                  {addSkillList.map(skill => {
-                    const alreadyAdded = apiSkills.some(s => s.name === skill.name);
-                    return (
-                      <TouchableOpacity
-                        key={skill.name}
-                        disabled={alreadyAdded || isAddingSkill}
-                        onPress={() => handleAddSkill(skill.name, skill.id)}
-                        style={{
-                          paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1,
-                          borderColor: alreadyAdded ? themeColors.border : '#FFCE48',
-                          backgroundColor: alreadyAdded ? themeColors.inputFilled : 'transparent',
-                          opacity: alreadyAdded ? 0.5 : 1,
-                        }}
-                      >
-                        <ThemedText style={{ fontSize: 13, fontFamily: alreadyAdded ? Fonts.poppins : Fonts.poppinsSemiBold, color: alreadyAdded ? themeColors.textMuted : themeColors.textPrimary }}>
-                          {skill.name}{alreadyAdded ? ' ✓' : ' +'}
-                        </ThemedText>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </ScrollView>
-            )}
-          </View>
-        </View>
-      </Modal>
+      {/* Add skills: the same picker as sign-up, any profession. "Personal
+          Errands" stays out — it's switched on by identity verification
+          through the Pickup & Delivery toggle above, not added here. */}
+      <SkillPicker
+        visible={isAddSkillOpen}
+        onClose={() => setIsAddSkillOpen(false)}
+        title="Add skills"
+        isPicked={(skill) => apiSkills.some(a => a.skill_id === skill.id || a.name === skill.name)}
+        lockPicked
+        onPick={handleAddSkill}
+        busy={isAddingSkill}
+        excludeProfessions={['Personal Errands']}
+      />
 
       <Modal visible={customAlert.visible} transparent animationType="fade" onRequestClose={hideAlert}>
         <View style={[styles.modalOverlay, { justifyContent: 'center', padding: 20 }]}>

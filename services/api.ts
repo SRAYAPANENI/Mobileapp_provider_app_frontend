@@ -151,6 +151,30 @@ export function setSessionExpiredHandler(fn: () => void): void {
   _onSessionExpired = fn;
 }
 
+// fetch has no timeout of its own: on a dead connection a call can hang for
+// minutes with the button spinning. Every call gets a limit; uploads (photos,
+// videos) get a longer one.
+const REQUEST_TIMEOUT_MS = 30_000;
+const UPLOAD_TIMEOUT_MS = 120_000;
+
+async function timedFetch(url: string, init: RequestInit, ms = REQUEST_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch {
+    throw {
+      success: false,
+      error_code: controller.signal.aborted ? 'TIMEOUT' : 'NETWORK_ERROR',
+      message: controller.signal.aborted
+        ? 'This is taking too long. Please check your connection and try again.'
+        : "Couldn't reach the server. Please check your connection and try again.",
+    } as ApiError;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function request<T = any>(
   endpoint: string,
   options: RequestInit & { skipAuth?: boolean } = {}
@@ -170,17 +194,20 @@ async function request<T = any>(
     }
   }
 
-  const response = await fetch(`${BASE_URL}${endpoint}`, {
+  // A photo sent inside the JSON (ID proof, profile picture) is an upload too.
+  const limit = typeof fetchOptions.body === 'string' && fetchOptions.body.length > 200_000
+    ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
+  const response = await timedFetch(`${BASE_URL}${endpoint}`, {
     ...fetchOptions,
     headers,
-  });
+  }, limit);
 
   // Auto-refresh on 401
   if (response.status === 401 && !skipAuth) {
     const newToken = await _refreshAccessToken();
     if (newToken) {
       headers['Authorization'] = `Bearer ${newToken}`;
-      const retried = await fetch(`${BASE_URL}${endpoint}`, { ...fetchOptions, headers });
+      const retried = await timedFetch(`${BASE_URL}${endpoint}`, { ...fetchOptions, headers }, limit);
       return _parseResponse<T>(retried);
     }
     // Refresh failed → clear tokens and force back to login
@@ -234,17 +261,17 @@ async function requestMultipart<T = any>(endpoint: string, formData: FormData): 
   const token = await TokenStore.getAccessToken();
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const response = await fetch(`${BASE_URL}${endpoint}`, {
+  const response = await timedFetch(`${BASE_URL}${endpoint}`, {
     method: 'POST',
     headers,
     body: formData,
-  });
+  }, UPLOAD_TIMEOUT_MS);
 
   if (response.status === 401) {
     const newToken = await _refreshAccessToken();
     if (newToken) {
       headers['Authorization'] = `Bearer ${newToken}`;
-      const retried = await fetch(`${BASE_URL}${endpoint}`, { method: 'POST', headers, body: formData });
+      const retried = await timedFetch(`${BASE_URL}${endpoint}`, { method: 'POST', headers, body: formData }, UPLOAD_TIMEOUT_MS);
       return _parseResponse<T>(retried);
     }
     await TokenStore.clear();
@@ -261,11 +288,21 @@ async function _refreshAccessToken(): Promise<string | null> {
     try {
       const refreshToken = await TokenStore.getRefreshToken();
       if (!refreshToken) return null;
-      const response = await fetch(`${BASE_URL}/auth/refresh`, {
+      const response = await timedFetch(`${BASE_URL}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
+      // Only a refusal ends the session. A server error (a 502 mid-deploy)
+      // says nothing about the token, so it's thrown as "couldn't reach the
+      // server" and the user stays signed in.
+      if (response.status >= 500) {
+        throw {
+          success: false,
+          error_code: 'NETWORK_ERROR',
+          message: "Couldn't reach the server. Please check your connection and try again.",
+        } as ApiError;
+      }
       if (!response.ok) return null;
       const json = await response.json();
       const newToken: string = json.data?.access_token;
@@ -282,7 +319,9 @@ async function _refreshAccessToken(): Promise<string | null> {
         await SecureStore.setItemAsync(REFRESH_KEY, newRefreshToken);
       }
       return newToken ?? null;
-    } catch {
+    } catch (err: any) {
+      // No answer (offline, timed out) isn't a refusal either: keep the tokens.
+      if (err?.error_code === 'TIMEOUT' || err?.error_code === 'NETWORK_ERROR') throw err;
       return null;
     } finally {
       isRefreshing = false;
@@ -301,7 +340,8 @@ async function _refreshAccessToken(): Promise<string | null> {
 export async function getFreshAccessToken(): Promise<string | null> {
   const token = await TokenStore.getAccessToken();
   if (token && !_expiresWithin(token, 60)) return token;
-  return (await _refreshAccessToken()) ?? token;
+  // Offline: hand back the stored token; the socket just retries later.
+  return (await _refreshAccessToken().catch(() => null)) ?? token;
 }
 
 function _expiresWithin(token: string, seconds: number): boolean {
@@ -504,11 +544,12 @@ export const SkoFyApi = {
     // purpose: the server sends a code only if this number is (login) or
     // isn't yet (register) registered in this app — NO_ACCOUNT,
     // OTHER_ROLE_ONLY or ALREADY_REGISTERED otherwise.
-    sendOTP: async (phone: string, purpose?: 'login' | 'register'): Promise<{ message: string; expires_in_seconds: number; mock_otp?: string }> => {
+    // email (register only): checked with the phone before any code is sent.
+    sendOTP: async (phone: string, purpose?: 'login' | 'register', email?: string): Promise<{ message: string; expires_in_seconds: number; mock_otp?: string }> => {
       const normalised = phone.startsWith('+') ? phone : `+${phone.replace(/[\s\-\(\)\.]/g, '')}`;
       return request('/auth/send-otp', {
         method: 'POST',
-        body: JSON.stringify({ phone: normalised, role: 'provider', purpose }),
+        body: JSON.stringify({ phone: normalised, role: 'provider', purpose, email: email || undefined }),
         skipAuth: true,
       });
     },
