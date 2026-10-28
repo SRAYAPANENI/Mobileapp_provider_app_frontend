@@ -145,8 +145,11 @@ export function SkillPicker({
           </View>
 
           {/* flexGrow 0: a horizontal ScrollView in a column otherwise takes
-              the sheet's spare height and stretches every chip into a tall pill. */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipBar} contentContainerStyle={s.chips} keyboardShouldPersistTaps="handled">
+              the sheet's spare height and stretches every chip into a tall pill.
+              key: a new set of chips (the search narrowed them) starts a fresh
+              row at the left — Android keeps the old scroll position, which on
+              a now-shorter row is past its end, so the chips looked gone. */}
+          <ScrollView key={professions.join('|')} horizontal showsHorizontalScrollIndicator={false} style={s.chipBar} contentContainerStyle={s.chips} keyboardShouldPersistTaps="handled">
             {[null, ...professions].map((p) => {
               const on = activeProfession === p;
               return (
