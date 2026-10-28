@@ -261,7 +261,9 @@ export default function RegisterScreen() {
     // optional, with no field-level error explaining why the button was
     // stuck. Still tracked below (idNumberFilled/idDocFilled) so filling
     // them in nudges the progress bar, just not required to reach 100%.
-    const total = isAddingRole ? 8 : 9; // Professional details (Profession/Skills, Experience, Work Proof), [Password]
+    const total = isAddingRole ? 9 : 10; // Professional details (Profession/Skills, Experience, Work Proof), [Password]
+    // The photo is required: customers need to recognise who's at the door.
+    if (profileImage) completed++;
     if (formData.fullName) completed++;
     if (isOtpVerified) completed++;
     if (formData.address) completed++;
@@ -283,6 +285,7 @@ export default function RegisterScreen() {
   // of several sections they'd missed.
   const getMissingSteps = (): string[] => {
     const missing: string[] = [];
+    if (!profileImage) missing.push('Profile Photo');
     if (!formData.fullName) missing.push('Full Name');
     if (!isOtpVerified) missing.push('Mobile Number Verification (tap "Verify with OTP")');
     if (!formData.address) missing.push('Address');
@@ -298,7 +301,7 @@ export default function RegisterScreen() {
 
   useEffect(() => {
     progressValue.value = withTiming(calculateProgress(), { duration: 350 });
-  }, [formData, isOtpVerified, addressType, idDocumentImage, workProofImage, agreedToTerms, agreedToPrivacy, isAddingRole]);
+  }, [formData, isOtpVerified, addressType, idDocumentImage, workProofImage, agreedToTerms, agreedToPrivacy, isAddingRole, profileImage]);
 
   useEffect(() => {
     buttonScale.value = withRepeat(
@@ -693,6 +696,7 @@ export default function RegisterScreen() {
                 </View>
                 <ThemedText style={styles.photoLabel}>
                   {checkingFace ? 'Checking photo…' : profileImage ? 'Retake Photo' : 'Take Profile Photo'}
+                  {!profileImage && !checkingFace && <ThemedText style={styles.requiredMark}> *</ThemedText>}
                 </ThemedText>
               </TouchableOpacity>
             </View>

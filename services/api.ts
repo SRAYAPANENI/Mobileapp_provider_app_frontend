@@ -798,8 +798,6 @@ export const SkoFyApi = {
         method: 'POST',
         body: JSON.stringify({ image_base64: base64, mime_type: mimeType }),
       }),
-    removeProfileImage: async () =>
-      request('/providers/me/profile-image', { method: 'DELETE' }),
 
     /** This month's fees against the cap, the rules, and any fixed plan (Fair Cap). */
     getFees: async (): Promise<{

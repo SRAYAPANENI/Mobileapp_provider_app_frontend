@@ -157,7 +157,6 @@ export default function ProfileScreen() {
   }, [isSettingsOpen]);
   const [isPasswordOpen, setIsPasswordOpen] = useState(false);
   const [isTermsOpen, setIsTermsOpen] = useState(false);
-  const [isPhotoSheetOpen, setIsPhotoSheetOpen] = useState(false);
   const [checkingFace, setCheckingFace] = useState(false);
   const [isJobHistoryOpen, setIsJobHistoryOpen] = useState(false);
   const [pushEnabled, setPushEnabled] = usePushPreference(message => showAlert('error', 'Not Saved', message));
@@ -581,12 +580,11 @@ export default function ProfileScreen() {
         if (isSettingsOpen) { setIsSettingsOpen(false); return true; }
         if (isPasswordOpen) { setIsPasswordOpen(false); return true; }
         if (isTermsOpen) { setIsTermsOpen(false); return true; }
-        if (isPhotoSheetOpen) { setIsPhotoSheetOpen(false); return true; }
         return false; // let system handle (exit)
       };
       const subscription = BackHandler.addEventListener('hardwareBackPress', onBack);
       return () => subscription.remove();
-    }, [showTagModal, isViewAllOpen, isViewerOpen, isJobHistoryOpen, isAssessmentOpen, isSettingsOpen, isPasswordOpen, isTermsOpen, isPhotoSheetOpen])
+    }, [showTagModal, isViewAllOpen, isViewerOpen, isJobHistoryOpen, isAssessmentOpen, isSettingsOpen, isPasswordOpen, isTermsOpen])
   );
 
   const getEligibilityMessage = eligibilityMessage;
@@ -1297,8 +1295,6 @@ export default function ProfileScreen() {
   // would still pass), which would need a dedicated KYC vendor this project
   // hasn't integrated.
   const handleImagePicker = async () => {
-    setIsPhotoSheetOpen(false);
-
     const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
     if (permissionResult.granted === false) {
       // There's no gallery fallback for this photo anymore — a permanently
@@ -1365,23 +1361,6 @@ export default function ProfileScreen() {
     }
   };
 
-  const removeImage = async () => {
-    // This used to only clear local state — the server never learned the
-    // photo was removed, so it would reappear on the next profile refetch.
-    const prevImage = profileImage;
-    setProfileImage(null);
-    setIsPhotoSheetOpen(false);
-    try {
-      await SkoFyApi.provider.removeProfileImage();
-      setTimeout(() => {
-        showAlert('delete', 'Photo Removed', 'Your profile photo has been removed.');
-      }, 500);
-    } catch (err) {
-      console.error('Failed to remove profile photo:', err);
-      setProfileImage(prevImage);
-      showAlert('error', 'Error', 'Failed to remove photo. Try again.');
-    }
-  };
 
   const renderJobHistoryItem = (item: ApiJob, index: number) => {
     const isCompleted = item.job_status === 'COMPLETED';
@@ -1659,11 +1638,14 @@ export default function ProfileScreen() {
                   </ThemedText>
                 </View>
               )}
+              {/* Straight to the camera: the photo is required (customers need to
+                  recognise who's at the door), so it can be retaken, not removed. */}
               <TouchableOpacity
                 style={styles.editAvatarBtn}
-                onPress={() => setIsPhotoSheetOpen(true)}
+                onPress={handleImagePicker}
+                disabled={checkingFace}
               >
-                <Edit2 size={14} color="#000" />
+                {checkingFace ? <ActivityIndicator size="small" color="#000" /> : <Edit2 size={14} color="#000" />}
               </TouchableOpacity>
             </View>
             <View style={styles.mainInfo}>
@@ -2834,39 +2816,6 @@ export default function ProfileScreen() {
           )}
         </RNAnimated.View>
       )}
-
-      {/* Photo Options Modal */}
-      <Modal statusBarTranslucent navigationBarTranslucent visible={isPhotoSheetOpen} transparent animationType="fade" onRequestClose={() => setIsPhotoSheetOpen(false)}>
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setIsPhotoSheetOpen(false)}
-        >
-          <View style={padBottom(styles.photoSheet, bottomInset)}>
-            <View style={styles.photoSheetHeader}>
-              <ThemedText style={styles.photoSheetTitle}>Profile Photo</ThemedText>
-            </View>
-
-            <TouchableOpacity style={styles.photoOption} onPress={handleImagePicker} disabled={checkingFace}>
-              <View style={[styles.optionIconBox, { backgroundColor: '#E0F2FE' }]}>
-                {checkingFace ? (
-                  <ActivityIndicator size="small" color="#0EA5E9" />
-                ) : (
-                  <Camera size={20} color="#0EA5E9" />
-                )}
-              </View>
-              <ThemedText style={styles.photoOptionText}>{checkingFace ? 'Checking photo…' : 'Take Photo'}</ThemedText>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.photoOption, { borderBottomWidth: 0 }]} onPress={removeImage}>
-              <View style={[styles.optionIconBox, { backgroundColor: '#FEF2F2' }]}>
-                <Trash2 size={20} color="#EF4444" />
-              </View>
-              <ThemedText style={[styles.photoOptionText, { color: '#EF4444' }]}>Remove Photo</ThemedText>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
 
       {/* Media Viewer Modal */}
       <Modal visible={isViewerOpen} transparent animationType="fade" onRequestClose={() => setIsViewerOpen(false)}>
@@ -4652,49 +4601,6 @@ function makeStyles(t: typeof Colors.light) {
     lineHeight: 22,
     fontFamily: Fonts.poppinsBold,
     color: '#000',
-  },
-  photoSheet: {
-    backgroundColor: t.card,
-    width: '90%',
-    borderRadius: 24,
-    padding: 24,
-    alignSelf: 'center',
-    marginBottom: 40,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  photoSheetHeader: {
-    marginBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: t.borderSubtle,
-    paddingBottom: 12,
-  },
-  photoSheetTitle: {
-    fontSize: 18,
-    lineHeight: 24,
-    fontFamily: Fonts.poppinsBold,
-    color: t.textPrimary,
-  },
-  photoOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    paddingVertical: 12,
-  },
-  optionIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  photoOptionText: {
-    fontSize: 15,
-    lineHeight: 21,
-    fontFamily: Fonts.poppinsSemiBold,
-    color: '#344054',
   },
   customAlertContainer: {
     backgroundColor: t.card,
