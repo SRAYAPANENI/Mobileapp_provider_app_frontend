@@ -8,7 +8,8 @@ import { BusinessBoard, SkoFyApi, Team, TeamActiveJob, TeamOpenJob } from '@/ser
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Briefcase, Check, ChevronLeft, Clock, Inbox, Map as MapIcon } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StatusBar, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, StatusBar, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 import { Badge, Button, C, jobStage, Monogram, Row, Section, u } from '@/components/business/ui';
 
 const when = (iso: string | null) => iso
@@ -33,7 +34,7 @@ export default function BusinessJobsScreen() {
   const [workerId, setWorkerId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<KeyboardAwareScrollViewRef>(null);
 
   const load = useCallback(async () => {
     try {
@@ -93,7 +94,7 @@ export default function BusinessJobsScreen() {
         <Button small kind="secondary" label="Map" icon={<MapIcon size={15} color={C.ink} />} onPress={() => router.push('/business-map' as any)} />
       </View>
       {!board || !team ? <ActivityIndicator style={{ marginTop: 40 }} color={C.ink} /> : (
-        <ScrollView ref={scroll} contentContainerStyle={padBottom([s.body, { paddingBottom: 40 }], bottomInset)} keyboardShouldPersistTaps="handled"
+        <KeyboardAwareScrollView bottomOffset={24} ref={scroll} contentContainerStyle={padBottom([s.body, { paddingBottom: 40 }], bottomInset)} keyboardShouldPersistTaps="handled"
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />}>
 
           {(applying || assigning) && (
@@ -172,7 +173,7 @@ export default function BusinessJobsScreen() {
               );
             })}
           </Section>
-        </ScrollView>
+        </KeyboardAwareScrollView>
       )}
       {appAlert.element}
     </ThemedView>

@@ -4,11 +4,14 @@ import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { Hosting, ProviderRate, SkoFyApi } from '@/services/api';
+import { MIN_VISITING_FEE } from '@/services/fees';
 import * as Location from 'expo-location';
 import { router, useFocusEffect } from 'expo-router';
-import { ChevronLeft, Home, LocateFixed, Minus, Plus } from 'lucide-react-native';
+import { ChevronLeft, Home, LocateFixed, Lock, Minus, Plus, Sparkles } from 'lucide-react-native';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StatusBar, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Unit = 'HOUR' | 'DAY' | 'NIGHT';
 
@@ -20,18 +23,29 @@ const UNITS: { unit: Unit; label: string; hint: string }[] = [
   { unit: 'NIGHT', label: 'Per night', hint: 'Stays at your place — e.g. pet boarding (turn on hosting below)' },
 ];
 
+const USUAL: { field: 'fee' | 'hourly'; label: string; hint: string }[] = [
+  { field: 'fee', label: 'Visiting fee', hint: `Covers your trip — at least $${MIN_VISITING_FEE}` },
+  { field: 'hourly', label: 'Hourly rate', hint: 'For the work itself' },
+];
+
 interface Skill { skill_id: string; name: string; is_verified: boolean }
 
 const key = (skillId: string, unit: Unit) => `${skillId}:${unit}`;
 
-// Your prices for jobs priced up front, and whether customers can bring
-// things (a pet, an item) to your place. Customers see your total for their
-// dates before they choose — no quoting back and forth.
+// Every price a provider sets, in one place: the usual visiting fee and
+// hourly rate, prices per hour / day / night for each skill (jobs priced up
+// front — customers see the total for their dates, no quoting back and
+// forth), and whether customers can bring things (a pet, an item) to them.
 export default function RatesAndHostingScreen() {
   const bottomInset = useBottomInset();
+  const topInset = useSafeAreaInsets().top;
   const appAlert = useAppAlert();
   const [hosting, setHosting] = useState<Hosting | null>(null);
   const [skills, setSkills] = useState<Skill[] | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [usual, setUsual] = useState({ fee: '', hourly: '' });
+  const [savingUsual, setSavingUsual] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [savingSkill, setSavingSkill] = useState<string | null>(null);
   const [host, setHost] = useState({ on: false, capacity: 1, address: '', lat: null as number | null, lng: null as number | null });
@@ -45,13 +59,58 @@ export default function RatesAndHostingScreen() {
   };
 
   const load = useCallback(() => {
-    SkoFyApi.hosting.mine().then(apply).catch(() => appAlert.show('error', 'Could not load', 'Please try again.'));
+    setLoadFailed(false);
+    SkoFyApi.hosting.mine().then(apply).catch(() => setLoadFailed(true));
+    // Every skill: verified ones get prices, the rest a way to their test.
     SkoFyApi.skills.getMySkills()
-      .then((list: any) => setSkills((Array.isArray(list) ? list : []).filter((s: Skill) => s.is_verified)))
+      .then((list: any) => setSkills((Array.isArray(list) ? list : [])
+        .sort((a: Skill, b: Skill) => Number(b.is_verified) - Number(a.is_verified) || a.name.localeCompare(b.name))))
       .catch(() => setSkills([]));
+    SkoFyApi.provider.getProfile()
+      .then((p: any) => setUsual({
+        fee: p?.visiting_fee != null ? String(p.visiting_fee) : '',
+        hourly: p?.hourly_rate != null ? String(p.hourly_rate) : '',
+      }))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useFocusEffect(load);
+
+  // The visiting fee and hourly rate for ordinary visits. The server takes
+  // both together, so both are needed.
+  const saveUsual = async () => {
+    const fee = Number(usual.fee);
+    const hourly = Number(usual.hourly);
+    if (!usual.fee || !usual.hourly || !(fee > 0) || !(hourly > 0)) {
+      appAlert.show('error', 'Both prices needed', 'Fill in your visiting fee and hourly rate.');
+      return;
+    }
+    if (fee < MIN_VISITING_FEE) {
+      appAlert.show('error', 'Visiting fee too low', `The visiting fee is at least $${MIN_VISITING_FEE} — it covers your trip if a customer cancels.`);
+      return;
+    }
+    setSavingUsual(true);
+    try {
+      await SkoFyApi.provider.setRates(fee, hourly);
+      appAlert.show('success', 'Saved', 'Customers now see your visiting fee and hourly rate.');
+    } catch (err: any) {
+      appAlert.show('error', 'Not saved', err?.message ?? 'Please try again.');
+    } finally {
+      setSavingUsual(false);
+    }
+  };
+
+  const suggestUsual = async () => {
+    setSuggesting(true);
+    try {
+      const tip = await SkoFyApi.provider.suggestRates();
+      setUsual({ fee: String(tip.visiting_fee), hourly: String(tip.hourly_rate) });
+    } catch (err: any) {
+      appAlert.show('error', 'Could not suggest', err?.message ?? 'Try again in a moment.');
+    } finally {
+      setSuggesting(false);
+    }
+  };
 
   const savedAmount = (skillId: string, unit: Unit) =>
     hosting?.rates.find((r: ProviderRate) => r.skill_id === skillId && r.unit === unit)?.amount;
@@ -123,25 +182,85 @@ export default function RatesAndHostingScreen() {
   return (
     <ThemedView style={s.container}>
       <StatusBar barStyle="dark-content" />
-      <View style={s.header}>
+      <View style={[s.header, { paddingTop: topInset + 12 }]}>
         <TouchableOpacity style={s.back} onPress={() => router.back()}>
           <ChevronLeft size={24} color="#111827" />
         </TouchableOpacity>
         <ThemedText style={s.headerTitle}>Rates & hosting</ThemedText>
       </View>
-      {!hosting || !skills ? <ActivityIndicator style={{ marginTop: 40 }} color="#111827" /> : (
-        <ScrollView contentContainerStyle={padBottom([s.body, { paddingBottom: 32 }], bottomInset)} keyboardShouldPersistTaps="handled">
+      {loadFailed ? (
+        <View style={s.failed}>
+          <ThemedText style={s.muted}>Couldn't load your prices.</ThemedText>
+          <TouchableOpacity style={[s.primary, { paddingHorizontal: 24 }]} onPress={load}>
+            <ThemedText style={s.primaryText}>Try again</ThemedText>
+          </TouchableOpacity>
+        </View>
+      ) : !hosting || !skills ? <ActivityIndicator style={{ marginTop: 40 }} color="#111827" /> : (
+        // Keyboard-aware: the field being typed in scrolls up above the keyboard.
+        <KeyboardAwareScrollView
+          contentContainerStyle={padBottom([s.body, { paddingBottom: 32 }], bottomInset)}
+          keyboardShouldPersistTaps="handled"
+          bottomOffset={24}
+        >
+          <View style={s.card}>
+            <View style={s.row}>
+              <ThemedText style={[s.cardTitle, { flex: 1 }]}>Your usual rates</ThemedText>
+              <TouchableOpacity style={s.suggest} onPress={suggestUsual} disabled={suggesting}>
+                {suggesting ? <ActivityIndicator size="small" color="#111827" /> : <Sparkles size={13} color="#111827" />}
+                <ThemedText style={s.suggestText}>{suggesting ? 'Suggesting…' : 'Suggest for me'}</ThemedText>
+              </TouchableOpacity>
+            </View>
+            <ThemedText style={s.muted}>For ordinary visits — you go to the customer to fix, clean or help.</ThemedText>
+            {USUAL.map(({ field, label, hint }) => (
+              <View key={field} style={s.rateRow}>
+                <View style={{ flex: 1 }}>
+                  <ThemedText style={s.item}>{label}</ThemedText>
+                  <ThemedText style={s.hint}>{hint}</ThemedText>
+                </View>
+                <View style={s.money}>
+                  <ThemedText style={s.dollar}>$</ThemedText>
+                  <TextInput
+                    style={s.moneyInput}
+                    keyboardType="decimal-pad"
+                    placeholder="—"
+                    placeholderTextColor="#9CA3AF"
+                    value={usual[field]}
+                    onChangeText={(t) => setUsual((u) => ({ ...u, [field]: t.replace(/[^0-9.]/g, '') }))}
+                  />
+                </View>
+              </View>
+            ))}
+            <TouchableOpacity style={s.primary} onPress={saveUsual} disabled={savingUsual}>
+              {savingUsual ? <ActivityIndicator color="#111827" /> : <ThemedText style={s.primaryText}>Save</ThemedText>}
+            </TouchableOpacity>
+          </View>
+
           <ThemedText style={s.intro}>
-            Set your price per hour, day or night and you can apply to jobs booked for a set time — customers see your
-            total for their dates and pay when they book. Leave a box empty if you don't offer it.
+            Prices per hour, day or night let you apply to jobs booked for a set time — customers see your total for
+            their dates and pay when they book. Leave a box empty if you don't offer it.
           </ThemedText>
 
           {skills.length === 0 && (
             <View style={s.card}>
-              <ThemedText style={s.muted}>Pass a skill test first — you can set prices for skills you're verified in.</ThemedText>
+              <ThemedText style={s.muted}>Add your skills from your profile, then set a price for each here.</ThemedText>
             </View>
           )}
-          {skills.map((sk) => (
+          {skills.map((sk) => !sk.is_verified ? (
+            // Prices open up once they pass the skill's test.
+            <View key={sk.skill_id} style={s.card}>
+              <View style={s.row}>
+                <Lock size={16} color="#6B7280" />
+                <ThemedText style={[s.cardTitle, { flex: 1 }]}>{sk.name}</ThemedText>
+              </View>
+              <ThemedText style={s.muted}>Pass this skill's short test to set your prices for it.</ThemedText>
+              <TouchableOpacity
+                style={s.secondary}
+                onPress={() => router.push({ pathname: '/(tabs)/profile', params: { testSkillId: sk.skill_id, testSkillName: sk.name } } as any)}
+              >
+                <ThemedText style={s.secondaryText}>Take the test</ThemedText>
+              </TouchableOpacity>
+            </View>
+          ) : (
             <View key={sk.skill_id} style={s.card}>
               <ThemedText style={s.cardTitle}>{sk.name}</ThemedText>
               {UNITS.map(({ unit, label, hint }) => (
@@ -173,7 +292,13 @@ export default function RatesAndHostingScreen() {
             <View style={s.row}>
               <Home size={18} color="#111827" />
               <ThemedText style={[s.cardTitle, { flex: 1 }]}>Customers can bring things to my place</ThemedText>
-              <Switch value={host.on} onValueChange={(on) => setHost((h) => ({ ...h, on }))} trackColor={{ true: '#FFCE48' }} />
+              {/* Colours set: Android's default thumb is its own teal-green. */}
+              <Switch
+                value={host.on}
+                onValueChange={(on) => setHost((h) => ({ ...h, on }))}
+                trackColor={{ false: '#D1D5DB', true: '#FFCE48' }}
+                thumbColor="#fff"
+              />
             </View>
             <ThemedText style={s.muted}>
               For boarding a pet or minding an item at your home. Your address is only shown to a customer once they've booked you.
@@ -211,7 +336,7 @@ export default function RatesAndHostingScreen() {
               {savingHost ? <ActivityIndicator color="#111827" /> : <ThemedText style={s.primaryText}>Save</ThemedText>}
             </TouchableOpacity>
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
       )}
       {appAlert.element}
     </ThemedView>
@@ -220,9 +345,10 @@ export default function RatesAndHostingScreen() {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F9FAFB' },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingBottom: 12 },
   back: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   headerTitle: { fontSize: 18, lineHeight: 24, fontFamily: Fonts.poppinsBold, color: '#111827' },
+  failed: { alignItems: 'center', gap: 12, marginTop: 48 },
   body: { paddingHorizontal: 16, gap: 12 },
   intro: { fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppins, color: '#374151' },
   card: { padding: 16, borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', gap: 10 },
@@ -231,6 +357,8 @@ const s = StyleSheet.create({
   item: { fontSize: 13.5, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: '#111827' },
   hint: { fontSize: 11.5, lineHeight: 16, fontFamily: Fonts.poppins, color: '#6B7280' },
   muted: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.poppins, color: '#6B7280' },
+  suggest: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: '#FFF7D6' },
+  suggestText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.poppinsBold, color: '#111827' },
   rateRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   money: { flexDirection: 'row', alignItems: 'center', width: 96, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 10, backgroundColor: '#F9FAFB' },
   dollar: { fontSize: 15, fontFamily: Fonts.poppinsSemiBold, color: '#6B7280' },

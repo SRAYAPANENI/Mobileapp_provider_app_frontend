@@ -13,7 +13,8 @@ import {
   Search
 } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View, RefreshControl } from 'react-native';
+import { ActivityIndicator, Platform, StatusBar, StyleSheet, TouchableOpacity, View, RefreshControl } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { TextInput } from '@/components/scaled-text';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 
@@ -95,7 +96,7 @@ export default function HelpSupportScreen() {
         <Headphones size={24} color="#111827" />
       </View>
 
-      <ScrollView keyboardShouldPersistTaps="handled"
+      <KeyboardAwareScrollView bottomOffset={24} keyboardShouldPersistTaps="handled"
         contentContainerStyle={padBottom(styles.scrollContent, bottomInset)}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -182,7 +183,7 @@ export default function HelpSupportScreen() {
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </ThemedView>
   );
 }

@@ -37,7 +37,8 @@ import Animated, { FadeInUp, FadeInRight } from 'react-native-reanimated';
 import { Alert } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { getJobById, JOBS_LIST } from '@/data/jobsData';
-import { useBottomInset } from '@/hooks/use-bottom-inset';
+import { fitBottom, useBottomInset } from '@/hooks/use-bottom-inset';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMyBusiness } from '@/hooks/use-my-business';
 
 const { width } = Dimensions.get('window');
@@ -144,6 +145,7 @@ function upfrontPricing(j: any): { myPrice: any; unitWord: string; rate: string;
 
 export default function JobDetailsScreen() {
   const bottomInset = useBottomInset();
+  const topInset = useSafeAreaInsets().top;
   const { id, autoApply } = useLocalSearchParams<{ id: string; autoApply?: string }>();
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
@@ -986,7 +988,7 @@ export default function JobDetailsScreen() {
       >
         <View style={styles.viewerOverlay}>
           <View style={styles.viewerContent}>
-            <View style={styles.viewerModalHeader}>
+            <View style={[styles.viewerModalHeader, { paddingTop: topInset + 16 }]}>
               <View>
                 <Text style={styles.viewerModalTitle}>{selectedMedia?.title}</Text>
                 <Text style={styles.viewerModalType}>
@@ -1033,7 +1035,7 @@ export default function JobDetailsScreen() {
         onRequestClose={() => setShowBidModal(false)}
       >
         <KeyboardAvoidingView style={styles.viewerOverlay} behavior="padding" automaticOffset>
-          <View style={[styles.bidSheet, { backgroundColor: themeColors.background }]}>
+          <View style={[fitBottom(styles.bidSheet, bottomInset), { backgroundColor: themeColors.background }]}>
             <View style={styles.bidSheetHandle} />
             <Text style={styles.bidSheetTitle}>Apply to This Job</Text>
             <Text style={styles.bidSheetJob} numberOfLines={2}>{job?.title}</Text>

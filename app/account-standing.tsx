@@ -9,6 +9,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { ChevronLeft, ShieldAlert, ShieldCheck } from 'lucide-react-native';
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 const date = (iso: string) => new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 
@@ -101,7 +102,7 @@ export default function AccountStandingScreen() {
       )}
 
       <Modal visible={!!appealing} transparent animationType="fade" onRequestClose={() => setAppealing(null)}>
-        <View style={s.overlay}>
+        <KeyboardAvoidingView behavior="padding" style={s.overlay}>
           <View style={s.sheet}>
             <ThemedText style={s.cardTitle}>Appeal this strike</ThemedText>
             <ThemedText style={s.muted}>Someone more senior, who wasn't part of the decision, will review it.</ThemedText>
@@ -127,7 +128,7 @@ export default function AccountStandingScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       {appAlert.element}
     </ThemedView>

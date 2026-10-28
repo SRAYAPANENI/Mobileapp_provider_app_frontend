@@ -8,7 +8,8 @@ import { GuaranteeClaim, SkoFyApi } from '@/services/api';
 import { router, useFocusEffect } from 'expo-router';
 import { ChevronLeft, ShieldCheck } from 'lucide-react-native';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 const STATUS: Record<GuaranteeClaim['status'], string> = {
   OPEN: 'Waiting for you', FIX_OFFERED: "You're fixing it", FIXED: 'Fixed', REFUNDED: 'Refunded by Dodorez', DECLINED: 'Not covered',
@@ -54,7 +55,7 @@ export default function GuaranteeClaimsScreen() {
         <ThemedText style={s.headerTitle}>Guarantee requests</ThemedText>
       </View>
       {!claims ? <ActivityIndicator style={{ marginTop: 40 }} color="#111827" /> : (
-        <ScrollView contentContainerStyle={padBottom([s.body, { paddingBottom: 24 }], bottomInset)}>
+        <KeyboardAwareScrollView bottomOffset={24} contentContainerStyle={padBottom([s.body, { paddingBottom: 24 }], bottomInset)}>
           <View style={s.card}>
             <View style={s.row}>
               <ShieldCheck size={18} color="#059669" />
@@ -108,7 +109,7 @@ export default function GuaranteeClaimsScreen() {
               )}
             </View>
           ))}
-        </ScrollView>
+        </KeyboardAwareScrollView>
       )}
       {appAlert.element}
     </ThemedView>

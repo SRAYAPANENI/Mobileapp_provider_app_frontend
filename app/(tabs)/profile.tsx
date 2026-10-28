@@ -51,7 +51,6 @@ import {
   ArrowDownLeft,
   Landmark,
   Fingerprint,
-  Sparkles,
   Eye,
   EyeOff,
   BadgeDollarSign,
@@ -72,7 +71,6 @@ import { usePushPreference } from '@/hooks/use-push-preference';
 import { SkillPicker, type PickedSkill } from '@/components/skill-picker';
 import { fitBottom, padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { FeeCapCard } from '@/components/fee-cap-card';
-import { MIN_VISITING_FEE } from '@/services/fees';
 
 // How long the timed-out question's feedback (Incorrect + explanation, or
 // the final score card) stays visible before the skill test auto-advances —
@@ -251,9 +249,6 @@ export default function ProfileScreen() {
   const [editYearsExp, setEditYearsExp] = useState('');
   // Provider-set (or AI-suggested) pricing — self-typed here, or filled by
   // "Suggest for me" below, either way still freely editable before saving.
-  const [editVisitingFee, setEditVisitingFee] = useState('');
-  const [editHourlyRate, setEditHourlyRate] = useState('');
-  const [isSuggestingRates, setIsSuggestingRates] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // Change Password state
@@ -347,8 +342,6 @@ export default function ProfileScreen() {
       setEditBio(bio);
       setEditCity(city);
       setEditYearsExp(exp > 0 ? String(exp) : '');
-      setEditVisitingFee(profile?.visiting_fee != null ? String(profile.visiting_fee) : '');
-      setEditHourlyRate(profile?.hourly_rate != null ? String(profile.hourly_rate) : '');
     } catch {
       // non-fatal — keep whatever was last loaded
     }
@@ -1124,32 +1117,6 @@ export default function ProfileScreen() {
       showAlert('error', 'Invalid Email', 'Please enter a valid email address or leave it blank.');
       return;
     }
-    const visitingFeeNum = editVisitingFee ? parseFloat(editVisitingFee) : null;
-    const hourlyRateNum = editHourlyRate ? parseFloat(editHourlyRate) : null;
-    // Rates are optional (a provider can leave them unset for now), but if
-    // either is filled in it has to be a real positive number — same
-    // validation the backend enforces, checked here too so the error shows
-    // up next to the field instead of as a round-trip failure.
-    if ((editVisitingFee && (!visitingFeeNum || visitingFeeNum <= 0)) ||
-        (editHourlyRate && (!hourlyRateNum || hourlyRateNum <= 0))) {
-      showAlert('error', 'Invalid Rate', 'Visiting Fee and Hourly Rate must be greater than 0.');
-      return;
-    }
-    if (visitingFeeNum != null && visitingFeeNum < MIN_VISITING_FEE) {
-      showAlert('error', 'Visiting Fee Too Low', `The visiting fee is at least $${MIN_VISITING_FEE} — it covers your trip if a customer cancels.`);
-      return;
-    }
-    // The backend's rates endpoint takes both fields together — there's no
-    // partial-update path. Filling in just one (most likely: a first-time
-    // provider with neither set yet, since an existing rate pre-fills the
-    // other field automatically) used to fail the `visitingFeeNum &&
-    // hourlyRateNum` check below silently: the rate save was just skipped,
-    // with no error, under a "Profile Updated" success alert that implied
-    // it had gone through.
-    if (!!visitingFeeNum !== !!hourlyRateNum) {
-      showAlert('error', 'Both Rates Required', 'Visiting Fee and Hourly Rate must be set together — fill in both, or leave both blank to skip for now.');
-      return;
-    }
     if (editEmail.trim() && !isEmail(editEmail)) {
       showAlert('error', 'Invalid Email', 'Enter a valid email, like name@example.com, or leave it blank.');
       return;
@@ -1163,9 +1130,6 @@ export default function ProfileScreen() {
         city: editCity.trim() || undefined,
         years_experience: editYearsExp ? parseInt(editYearsExp, 10) : undefined,
       });
-      if (visitingFeeNum && hourlyRateNum) {
-        await SkoFyApi.provider.setRates(visitingFeeNum, hourlyRateNum);
-      }
       setProviderName(editName.trim());
       setProviderBio(editBio.trim());
       setYearsExperience(editYearsExp ? parseInt(editYearsExp, 10) : 0);
@@ -1178,18 +1142,6 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleSuggestRates = async () => {
-    setIsSuggestingRates(true);
-    try {
-      const suggestion = await SkoFyApi.provider.suggestRates();
-      setEditVisitingFee(String(suggestion.visiting_fee));
-      setEditHourlyRate(String(suggestion.hourly_rate));
-    } catch (e: any) {
-      showAlert('error', 'Could Not Suggest Rates', e?.message || 'Try again in a moment.');
-    } finally {
-      setIsSuggestingRates(false);
-    }
-  };
 
 
   // Skills picked in the shared picker (any profession), kept here until
@@ -2201,7 +2153,10 @@ export default function ProfileScreen() {
         onRequestClose={() => setIsSettingsOpen(false)}
       >
         <View style={[styles.modalOverlay, { paddingTop: insets.top + 12 }]}>
-          <View style={fitBottom(styles.modalContent, bottomInset)}>
+          {/* maxHeight + a scrolling list: with every row shown the sheet is
+              taller than the screen, and a bottom-anchored sheet then grows up
+              under the status bar. Now it stops below it and the list scrolls. */}
+          <View style={[fitBottom(styles.modalContent, bottomInset), { maxHeight: '100%' }]}>
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Settings</ThemedText>
               <TouchableOpacity onPress={() => setIsSettingsOpen(false)}>
@@ -2209,7 +2164,7 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.settingsList}>
+            <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={styles.settingsList} showsVerticalScrollIndicator={false}>
               <View style={[styles.settingItem, { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }]}>
                 <View style={styles.settingInfo}>
                   <Bell size={20} color="#6B7280" />
@@ -2395,7 +2350,7 @@ export default function ProfileScreen() {
                   <ThemedText style={[styles.settingLabel, { color: '#EF4444' }]}>Logout</ThemedText>
                 </View>
               </TouchableOpacity>
-            </View>
+            </ScrollView>
 
             <TouchableOpacity
               style={styles.closeModalButton}
@@ -2422,7 +2377,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
           <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" automaticOffset>
-          <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }} keyboardShouldPersistTaps="handled">
+          <ScrollView contentContainerStyle={padBottom({ padding: 20, gap: 16 }, bottomInset)} keyboardShouldPersistTaps="handled">
             <View>
               <ThemedText style={styles.inputLabel}>Full Name *</ThemedText>
               <TextInput
@@ -2485,43 +2440,18 @@ export default function ProfileScreen() {
                 style={[styles.editableInput, { marginTop: 6 }]}
               />
             </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <ThemedText style={styles.inputLabel}>Pricing</ThemedText>
-              <TouchableOpacity
-                onPress={handleSuggestRates}
-                disabled={isSuggestingRates}
-                style={styles.suggestRatesBtn}
-              >
-                {isSuggestingRates
-                  ? <ActivityIndicator size="small" color="#111827" />
-                  : <Sparkles size={13} color="#111827" />}
-                <ThemedText style={styles.suggestRatesBtnText}>
-                  {isSuggestingRates ? 'Suggesting…' : 'Suggest for me'}
-                </ThemedText>
-              </TouchableOpacity>
-            </View>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
+            {/* All prices live in one place: Rates & hosting. */}
+            <TouchableOpacity
+              style={styles.pricingLink}
+              onPress={() => { setIsEditProfileOpen(false); router.push('/rates-and-hosting' as any); }}
+            >
+              <BadgeDollarSign size={18} color="#111827" />
               <View style={{ flex: 1 }}>
-                <ThemedText style={styles.inputSubLabel}>Visiting Fee ($)</ThemedText>
-                <TextInput
-                  value={editVisitingFee}
-                  onChangeText={setEditVisitingFee}
-                  placeholder={`at least ${MIN_VISITING_FEE}`}
-                  keyboardType="decimal-pad"
-                  style={[styles.editableInput, { marginTop: 6 }]}
-                />
+                <ThemedText style={styles.inputLabel}>Your prices</ThemedText>
+                <ThemedText style={styles.inputSubLabel}>Visiting fee, hourly rate and prices per skill — in Rates & hosting</ThemedText>
               </View>
-              <View style={{ flex: 1 }}>
-                <ThemedText style={styles.inputSubLabel}>Hourly Rate ($/hr)</ThemedText>
-                <TextInput
-                  value={editHourlyRate}
-                  onChangeText={setEditHourlyRate}
-                  placeholder="e.g. 50"
-                  keyboardType="decimal-pad"
-                  style={[styles.editableInput, { marginTop: 6 }]}
-                />
-              </View>
-            </View>
+              <ChevronRight size={18} color="#9CA3AF" />
+            </TouchableOpacity>
           </ScrollView>
           </KeyboardAvoidingView>
         </ThemedView>
@@ -2537,7 +2467,7 @@ export default function ProfileScreen() {
             <ThemedText style={styles.modalHeaderTitle}>Terms & Conditions</ThemedText>
             <View style={{ width: 40 }} />
           </View>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.termsContent}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={padBottom(styles.termsContent, bottomInset)}>
             <ThemedText style={styles.termsTitle}>1. Provider Agreement</ThemedText>
             <ThemedText style={styles.termsText}>
               As a Dodorez Pro, you agree to represent yourself accurately, maintain
@@ -2851,7 +2781,7 @@ export default function ProfileScreen() {
             </View>
 
             {selectedMedia?.description && (
-              <View style={styles.viewerFooter}>
+              <View style={padBottom(styles.viewerFooter, bottomInset)}>
                 <ThemedText style={styles.viewerDescription}>{selectedMedia.description}</ThemedText>
               </View>
             )}
@@ -2870,7 +2800,7 @@ export default function ProfileScreen() {
             <View style={{ width: 28 }} />
           </View>
 
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.viewAllGrid}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={padBottom(styles.viewAllGrid, bottomInset)}>
             <View style={styles.gridRow}>
               {proofs.map((item) => (
                 <TouchableOpacity
@@ -3030,7 +2960,7 @@ export default function ProfileScreen() {
             <ThemedText style={styles.viewAllTitle}>Complete Job History</ThemedText>
             <View style={{ width: 28 }} />
           </View>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingTop: 16, paddingBottom: 40 }}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingTop: 16, paddingBottom: 40 + bottomInset }}>
             {jobHistory.length === 0 ? (
               <ThemedText style={{ color: '#6B7280', fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppins, textAlign: 'center', paddingVertical: 40, paddingHorizontal: 24 }}>
                 No job history yet. Completed jobs will appear here.
@@ -3075,7 +3005,7 @@ export default function ProfileScreen() {
             <View style={{ width: 28 }} />
           </View>
 
-          <ScrollView keyboardShouldPersistTaps="handled" style={{ padding: 20 }}>
+          <ScrollView keyboardShouldPersistTaps="handled" style={{ padding: 20 }} contentContainerStyle={{ paddingBottom: 40 + bottomInset }}>
             <View style={styles.slotAddContainer}>
               <ThemedText style={styles.slotFormTitle}>Add New Slot</ThemedText>
               <ThemedText style={styles.slotFormSub}>Declare your working hours so customers can book you.</ThemedText>
@@ -3288,7 +3218,7 @@ export default function ProfileScreen() {
             <View style={{ width: 40 }} />
           </View>
 
-          <ScrollView keyboardShouldPersistTaps="handled" style={styles.walletContentArea}>
+          <ScrollView keyboardShouldPersistTaps="handled" style={styles.walletContentArea} contentContainerStyle={{ paddingBottom: 40 + bottomInset }}>
             <View style={styles.walletBalanceCardLarge}>
               <ThemedText style={styles.walletBalanceLabelLarge}>Total Paid Out</ThemedText>
               <ThemedText style={styles.walletBalanceValueLarge}>${earnings.totalEarned.toLocaleString(undefined, { minimumFractionDigits: 2 })}</ThemedText>
@@ -4559,19 +4489,15 @@ function makeStyles(t: typeof Colors.light) {
     color: t.textMuted,
     marginBottom: 6,
   },
-  suggestRatesBtn: {
+  pricingLink: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    backgroundColor: '#FFCE48',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
-  suggestRatesBtnText: {
-    fontSize: 12,
-    fontFamily: Fonts.poppinsBold,
-    color: '#111827',
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: t.borderSubtle,
+    backgroundColor: t.card,
   },
   modalActions: {
     flexDirection: 'row',

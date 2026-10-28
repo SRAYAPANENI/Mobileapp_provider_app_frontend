@@ -21,7 +21,8 @@ import {
   AlertTriangle, BadgeCheck, Briefcase, Building2, ChevronLeft, FileText, Landmark, LogOut, Map as MapIcon, Pencil, Plus, ShieldCheck, Trash2, Users,
 } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Linking, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 
 const STATUS_BADGE: Record<string, { label: string; tone: Tone }> = {
   DRAFT: { label: 'Setting up', tone: 'neutral' },
@@ -48,7 +49,7 @@ const date = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString(und
 export default function BusinessScreen() {
   const bottomInset = useBottomInset();
   const appAlert = useAppAlert();
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<KeyboardAwareScrollViewRef>(null);
   const { data, invites, board, canDispatch, refresh } = useMyBusiness();
   const [team, setTeam] = useState<Team | null>(null);
   const [earnings, setEarnings] = useState<BusinessEarnings | null>(null);
@@ -157,7 +158,7 @@ export default function BusinessScreen() {
           <Section><ThemedText style={u.body}>Business accounts are coming soon.</ThemedText></Section>
         </View>
       ) : (
-        <ScrollView ref={scroll} contentContainerStyle={padBottom([s.body, { paddingBottom: 40 }], bottomInset)} keyboardShouldPersistTaps="handled">
+        <KeyboardAwareScrollView bottomOffset={24} ref={scroll} contentContainerStyle={padBottom([s.body, { paddingBottom: 40 }], bottomInset)} keyboardShouldPersistTaps="handled">
           <BusinessInvites invites={invites} onAnswer={answerInvite} />
 
           {!business ? (
@@ -391,7 +392,7 @@ export default function BusinessScreen() {
               )}
             </>
           )}
-        </ScrollView>
+        </KeyboardAwareScrollView>
       )}
       {appAlert.element}
     </ThemedView>

@@ -2,7 +2,7 @@ import AnimatedBrandMark from '@/components/animated-brand-mark';
 import React, { useState, useEffect, useRef } from 'react';
 import { AppState, BackHandler, StyleSheet, View, ScrollView, TouchableOpacity, Switch, Platform, SafeAreaView, ActivityIndicator, Modal, PanResponder, Animated as RNAnimated, useWindowDimensions, Linking, RefreshControl, Pressable } from 'react-native';
 import { Text, TextInput as RNTextInput } from '@/components/scaled-text';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardAvoidingView, KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppAlert } from '@/components/app-alert';
 import { Image } from 'expo-image';
@@ -469,7 +469,7 @@ export default function DashboardScreen() {
   // screen does, so wrapping the sheet's content in one (as tried before)
   // silently did nothing. Scrolling to the focused input directly, on its
   // own focus event, sidesteps that entirely instead of depending on it.
-  const manageScrollRef = useRef<ScrollView>(null);
+  const manageScrollRef = useRef<KeyboardAwareScrollViewRef>(null);
   const otpInputRef = useRef<RNTextInput>(null);
   const scrollToFocusedInput = () => {
     setTimeout(() => manageScrollRef.current?.scrollToEnd({ animated: true }), 150);
@@ -2028,12 +2028,7 @@ const filteredJobs = jobs.filter((job) => {
             )}
 
             {selectedJob && (
-              <KeyboardAvoidingView
-                style={{ flex: 1 }}
-                behavior="padding"
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
-              >
-              <ScrollView ref={manageScrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 + bottomInset }} keyboardShouldPersistTaps="handled">
+              <KeyboardAwareScrollView bottomOffset={24} style={{ flex: 1 }} ref={manageScrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 + bottomInset }} keyboardShouldPersistTaps="handled">
                 {/* Live badge */}
                 <View style={styles.liveBadge}>
                   <View style={styles.liveDot} />
@@ -2693,8 +2688,7 @@ const filteredJobs = jobs.filter((job) => {
                 <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShowManageModal(false)}>
                   <ThemedText style={styles.closeModalText}>Close</ThemedText>
                 </TouchableOpacity>
-              </ScrollView>
-              </KeyboardAvoidingView>
+              </KeyboardAwareScrollView>
             )}
           </RNAnimated.View>
         </View>

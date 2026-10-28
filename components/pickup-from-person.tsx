@@ -7,6 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ban, Camera, CheckSquare, Home, Phone, Square } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Linking, Modal, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 interface Props {
   jobId: string;
@@ -154,7 +155,7 @@ export function PickupFromPerson({ jobId, item, value, details, onCheckedChange,
       </TouchableOpacity>
 
       <Modal visible={refusing} transparent animationType="fade" onRequestClose={() => setRefusing(false)}>
-        <View style={s.overlay}>
+        <KeyboardAvoidingView behavior="padding" style={s.overlay}>
           <View style={s.sheet}>
             <Text style={s.sheetTitle}>Not taking the item</Text>
             <Text style={s.sheetSub}>The job is cancelled and your trip fee is kept. The customer is told why.</Text>
@@ -191,7 +192,7 @@ export function PickupFromPerson({ jobId, item, value, details, onCheckedChange,
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
