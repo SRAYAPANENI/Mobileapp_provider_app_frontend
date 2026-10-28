@@ -1194,21 +1194,36 @@ export default function ProfileScreen() {
   };
 
 
-  // A skill from the shared picker — any profession, added at once.
-  const handleAddSkill = async (skill: PickedSkill) => {
+  // Skills picked in the shared picker (any profession), kept here until
+  // Done — then added together, not one server call per tap.
+  const [newSkills, setNewSkills] = useState<PickedSkill[]>([]);
+  const hasSkill = (skill: PickedSkill) => apiSkills.some(a => a.skill_id === skill.id || a.name === skill.name);
+  const toggleNewSkill = (skill: PickedSkill) =>
+    setNewSkills(prev => prev.some(s => s.id === skill.id) ? prev.filter(s => s.id !== skill.id) : [...prev, skill]);
+  const closeSkillPicker = () => {
+    setNewSkills([]);
+    setIsAddSkillOpen(false);
+  };
+
+  const handleAddSkills = async () => {
+    if (newSkills.length === 0) {
+      closeSkillPicker();
+      return;
+    }
     setIsAddingSkill(true);
     try {
-      await SkoFyApi.skills.addSkill(skill.id);
-      // No success alert here on purpose — this modal is meant for picking
-      // several skills in a row, and a blocking confirmation modal after
-      // every single tap (stacked on top of this already-open one) forced
-      // the user to dismiss it before picking the next skill, which is what
-      // read as the picker "getting stuck" on multi-select. The chip itself
-      // flipping to its disabled "✓ already added" state below (once
-      // apiSkills updates) is the confirmation now.
+      const results = await Promise.allSettled(newSkills.map(skill => SkoFyApi.skills.addSkill(skill.id)));
       await refreshSkillsAndEligibility();
-    } catch {
-      showAlert('error', 'Error', 'Failed to add skill. Please try again.');
+      const failed = newSkills.filter((_, i) => results[i].status === 'rejected');
+      if (failed.length > 0) {
+        // Keep only the ones that didn't go through, so Done tries just those again.
+        setNewSkills(failed);
+        showAlert('error', 'Some Skills Not Added', `Couldn't add ${failed.map(s => s.name).join(', ')}. Tap Done to try again.`);
+        return;
+      }
+      closeSkillPicker();
+    } catch (err: any) {
+      showAlert('error', 'Error', err?.message ?? 'Failed to add skills. Please try again.');
     } finally {
       setIsAddingSkill(false);
     }
@@ -3399,11 +3414,13 @@ export default function ProfileScreen() {
           through the Pickup & Delivery toggle above, not added here. */}
       <SkillPicker
         visible={isAddSkillOpen}
-        onClose={() => setIsAddSkillOpen(false)}
+        onClose={closeSkillPicker}
+        onDone={handleAddSkills}
         title="Add skills"
-        isPicked={(skill) => apiSkills.some(a => a.skill_id === skill.id || a.name === skill.name)}
-        lockPicked
-        onPick={handleAddSkill}
+        isPicked={(skill) => hasSkill(skill) || newSkills.some(s => s.id === skill.id)}
+        isLocked={hasSkill}
+        onPick={toggleNewSkill}
+        note={newSkills.length > 0 ? `${newSkills.length} new selected` : undefined}
         busy={isAddingSkill}
         excludeProfessions={['Personal Errands']}
       />

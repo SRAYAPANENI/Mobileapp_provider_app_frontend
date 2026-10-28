@@ -47,22 +47,28 @@ export function byProfession(skills: PickedSkill[]): { profession: string; skill
 }
 
 // "What can you do?" — one search over every skill, from any profession, so a
-// provider can offer a mix (handyman + lawn care + tutoring). The screen
-// decides what a tap means: Register selects, Profile adds at once.
+// provider can offer a mix (handyman + lawn care + tutoring), as many as
+// they like. A tap only selects; the screen saves the choice (Register on
+// Create Account, Profile on Done) — never one server call per tap.
+//
+// Searching is by skill, not by profession: results are one list, best
+// matches first, each with its profession as a small note, and the filter
+// chips narrow to the professions that have a match.
 export function SkillPicker({
-  visible, onClose, isPicked, onPick, lockPicked = false, canPickMore = true, limitNote, busy = false,
+  visible, onClose, onDone, isPicked, onPick, isLocked, note, busy = false,
   excludeProfessions = [], title = 'What can you do?',
 }: {
   visible: boolean;
+  /** ✕ or Back. */
   onClose: () => void;
+  /** Done; defaults to onClose. */
+  onDone?: () => void;
   isPicked: (skill: PickedSkill) => boolean;
   onPick: (skill: PickedSkill) => void;
-  /** Picked skills can't be tapped again (Profile: already added). */
-  lockPicked?: boolean;
-  /** False once a limit is reached: unpicked skills can't be chosen. */
-  canPickMore?: boolean;
-  /** Shown at the bottom, e.g. "4 of 10 skills". */
-  limitNote?: string;
+  /** Skills that can't be tapped (Profile: ones they already have). */
+  isLocked?: (skill: PickedSkill) => boolean;
+  /** Shown at the bottom, e.g. "4 selected". */
+  note?: string;
   busy?: boolean;
   excludeProfessions?: string[];
   title?: string;
@@ -81,15 +87,39 @@ export function SkillPicker({
   }, [visible, all]);
 
   const usable = useMemo(() => (all ?? []).filter((s) => !excludeProfessions.includes(s.profession)), [all, excludeProfessions]);
-  const professions = useMemo(() => [...new Set(usable.map((s) => s.profession))].sort(), [usable]);
+  const q = query.trim().toLowerCase();
+  const searching = q.length > 0;
+
+  // Skills matching the search, best first: name starts with it, then name
+  // contains it, then only the profession does.
+  const matches = useMemo(() => {
+    if (!searching) return usable;
+    const rank = (s: PickedSkill) => {
+      const name = s.name.toLowerCase();
+      if (name.startsWith(q) || name.includes(` ${q}`)) return 0;
+      if (name.includes(q)) return 1;
+      return s.profession.toLowerCase().includes(q) ? 2 : 3;
+    };
+    return usable.map((s) => ({ s, r: rank(s) })).filter((x) => x.r < 3)
+      .sort((a, b) => a.r - b.r || a.s.name.localeCompare(b.s.name)).map((x) => x.s);
+  }, [usable, q, searching]);
+
+  // The chips follow the search: only professions with a match, most matches first.
+  const professions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const s of matches) counts.set(s.profession, (counts.get(s.profession) ?? 0) + 1);
+    return [...counts].sort((a, b) => (searching ? b[1] - a[1] : 0) || a[0].localeCompare(b[0])).map(([p]) => p);
+  }, [matches, searching]);
+  // A chip picked before the search changed may have no match now: show all.
+  const activeProfession = profession && professions.includes(profession) ? profession : null;
 
   const sections = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const shown = usable.filter((s) => (!profession || s.profession === profession)
-      && (!q || s.name.toLowerCase().includes(q) || s.profession.toLowerCase().includes(q)));
+    const shown = activeProfession ? matches.filter((s) => s.profession === activeProfession) : matches;
+    // Searching (or one profession chosen): one plain list. Browsing: grouped.
+    if (searching || activeProfession) return shown.length ? [{ title: '', data: shown }] : [];
     return byProfession(shown).sort((a, b) => a.profession.localeCompare(b.profession))
       .map((g) => ({ title: g.profession, data: g.skills }));
-  }, [usable, query, profession]);
+  }, [matches, activeProfession, searching]);
 
   const s = styles(theme);
   return (
@@ -114,9 +144,11 @@ export function SkillPicker({
             {!!query && <TouchableOpacity onPress={() => setQuery('')} hitSlop={10}><X size={16} color={theme.icon} /></TouchableOpacity>}
           </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips} keyboardShouldPersistTaps="handled">
+          {/* flexGrow 0: a horizontal ScrollView in a column otherwise takes
+              the sheet's spare height and stretches every chip into a tall pill. */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipBar} contentContainerStyle={s.chips} keyboardShouldPersistTaps="handled">
             {[null, ...professions].map((p) => {
-              const on = profession === p;
+              const on = activeProfession === p;
               return (
                 <TouchableOpacity key={p ?? 'all'} onPress={() => setProfession(p)} style={[s.chip, on && s.chipOn]}>
                   <ThemedText style={[s.chipText, on && s.chipTextOn]}>{p ?? 'All'}</ThemedText>
@@ -140,14 +172,18 @@ export function SkillPicker({
               stickySectionHeadersEnabled={false}
               style={s.list}
               ListEmptyComponent={<ThemedText style={[s.muted, { padding: 24, textAlign: 'center' }]}>No skill matches “{query}”.</ThemedText>}
-              renderSectionHeader={({ section }) => <ThemedText style={s.sectionHead}>{section.title}</ThemedText>}
+              renderSectionHeader={({ section }) => (section.title ? <ThemedText style={s.sectionHead}>{section.title}</ThemedText> : null)}
               renderItem={({ item }) => {
                 const picked = isPicked(item);
-                const disabled = busy || (picked && lockPicked) || (!picked && !canPickMore);
+                const disabled = busy || !!isLocked?.(item);
                 return (
                   <TouchableOpacity onPress={() => onPick(item)} disabled={disabled}
                     style={[s.row, picked && s.rowOn, disabled && !picked && { opacity: 0.45 }]}>
-                    <ThemedText style={[s.rowText, picked && { fontFamily: Fonts.poppinsSemiBold }]}>{item.name}</ThemedText>
+                    <View style={s.rowBody}>
+                      <ThemedText style={[s.rowText, picked && { fontFamily: Fonts.poppinsSemiBold }]}>{item.name}</ThemedText>
+                      {/* In a plain list the section header is gone: say where it's from. */}
+                      {!sections[0]?.title && !activeProfession && <ThemedText style={s.rowNote}>{item.profession}</ThemedText>}
+                    </View>
                     {picked ? <CheckCircle2 size={20} color={theme.brand} /> : <Circle size={20} color={theme.icon} />}
                   </TouchableOpacity>
                 );
@@ -156,8 +192,10 @@ export function SkillPicker({
           )}
 
           <View style={s.footer}>
-            {!!limitNote && <ThemedText style={s.muted}>{limitNote}</ThemedText>}
-            <TouchableOpacity onPress={onClose} style={s.done}><ThemedText style={s.doneText}>Done</ThemedText></TouchableOpacity>
+            {!!note && <ThemedText style={s.muted}>{note}</ThemedText>}
+            <TouchableOpacity onPress={onDone ?? onClose} disabled={busy} style={[s.done, busy && { opacity: 0.7 }]}>
+              {busy ? <ActivityIndicator color="#111" /> : <ThemedText style={s.doneText}>Done</ThemedText>}
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -173,7 +211,8 @@ const styles = (t: typeof Colors.light) => StyleSheet.create({
   search: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 20, paddingHorizontal: 14, height: 48,
     borderRadius: 14, backgroundColor: t.inputBackground, borderWidth: 1, borderColor: (t as any).inputBorder ?? '#E5E7EB' },
   searchInput: { flex: 1, color: t.text, fontFamily: Fonts.poppins, fontSize: 15 },
-  chips: { gap: 8, paddingHorizontal: 20, paddingVertical: 12 },
+  chipBar: { flexGrow: 0, flexShrink: 0 },
+  chips: { gap: 8, paddingHorizontal: 20, paddingVertical: 12, alignItems: 'center' },
   chip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: (t as any).inputBorder ?? '#E5E7EB' },
   chipOn: { backgroundColor: t.text, borderColor: t.text },
   chipText: { fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: t.text },
@@ -182,7 +221,9 @@ const styles = (t: typeof Colors.light) => StyleSheet.create({
   sectionHead: { fontSize: 12, lineHeight: 18, fontFamily: Fonts.poppinsBold, color: t.icon, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 14, marginBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12 },
   rowOn: { backgroundColor: t.brand + '1F' },
-  rowText: { fontSize: 15, lineHeight: 21, fontFamily: Fonts.poppins, flex: 1, marginRight: 12 },
+  rowBody: { flex: 1, marginRight: 12 },
+  rowText: { fontSize: 15, lineHeight: 21, fontFamily: Fonts.poppins },
+  rowNote: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.poppins, color: t.icon },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   muted: { fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppins, color: t.icon },
   retry: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999, backgroundColor: t.brand },

@@ -103,8 +103,8 @@ export default function RegisterScreen() {
   });
 
 
-  // Skills from any profession (a handyman who also mows lawns and tutors).
-  const MAX_SIGNUP_SKILLS = 10;
+  // Skills from any profession (a handyman who also mows lawns and tutors),
+  // as many as they offer.
   const [showSkillPicker, setShowSkillPicker] = useState(false);
   // "Show me as": the one title on job cards — the provider's choice, else the
   // profession most of their skills are in.
@@ -171,7 +171,7 @@ export default function RegisterScreen() {
       setFormData(prev => ({ ...prev, skills: prev.skills.filter(s => s.id !== skill.id) }));
       // Proof media tagged to a skill they dropped no longer applies.
       setProofOfSkillsMedia(prev => prev.filter(m => m.skill !== skill.name));
-    } else if (formData.skills.length < MAX_SIGNUP_SKILLS) {
+    } else {
       setFormData(prev => ({ ...prev, skills: [...prev.skills, skill] }));
     }
   };
@@ -1119,27 +1119,28 @@ export default function RegisterScreen() {
 
             <View style={styles.inputGroup}>
               <ThemedText style={styles.fieldLabel}>Skills you offer<ThemedText style={styles.requiredMark}> *</ThemedText></ThemedText>
-              <ThemedText style={styles.skillsHint}>Pick from any profession: a handyman who also mows lawns and tutors can add all three.</ThemedText>
-              {byProfession(formData.skills).map(group => (
-                <View key={group.profession} style={styles.skillGroup}>
-                  <ThemedText style={styles.skillGroupTitle}>{group.profession}</ThemedText>
-                  <View style={styles.skillChips}>
-                    {group.skills.map(skill => (
-                      <TouchableOpacity key={skill.id} onPress={() => toggleSkill(skill)} style={styles.skillChip} hitSlop={4}>
-                        <ThemedText style={styles.skillChipText}>{skill.name}</ThemedText>
-                        <X size={14} color={themeColors.text} />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
+              <ThemedText style={styles.skillsHint}>Everything you can do, from any field: fixing fans, walking dogs, tutoring math — add them all.</ThemedText>
+              {/* One set of chips, not grouped by profession: they're the
+                  provider's skills, not a profession they've signed up to. */}
+              {formData.skills.length > 0 && (
+                <View style={[styles.skillChips, { marginTop: 12 }]}>
+                  {formData.skills.map(skill => (
+                    <TouchableOpacity key={skill.id} onPress={() => toggleSkill(skill)} style={styles.skillChip} hitSlop={4}>
+                      <ThemedText style={styles.skillChipText}>{skill.name}</ThemedText>
+                      <X size={14} color={themeColors.text} />
+                    </TouchableOpacity>
+                  ))}
                 </View>
-              ))}
+              )}
               <TouchableOpacity style={[getInputStyle('skills'), { justifyContent: 'center' }]} onPress={openSkillPicker}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Plus size={18} color={themeColors.text} />
                   <Text style={{ flex: 1, color: themeColors.text, fontFamily: Fonts.poppinsSemiBold, fontSize: 15, lineHeight: 21 }}>
                     {formData.skills.length > 0 ? 'Add or change skills' : 'Choose your skills'}
                   </Text>
-                  <Text style={{ color: themeColors.icon, fontFamily: Fonts.poppins, fontSize: 13 }}>{formData.skills.length}/{MAX_SIGNUP_SKILLS}</Text>
+                  {formData.skills.length > 0 && (
+                    <Text style={{ color: themeColors.icon, fontFamily: Fonts.poppins, fontSize: 13 }}>{formData.skills.length} added</Text>
+                  )}
                 </View>
               </TouchableOpacity>
               <ThemedText style={styles.skillsHint}>Each skill gets jobs once you pass its short test. Add more anytime from your profile.</ThemedText>
@@ -1494,14 +1495,12 @@ export default function RegisterScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Profession Modal */}
       <SkillPicker
         visible={showSkillPicker}
         onClose={() => setShowSkillPicker(false)}
         isPicked={(skill) => formData.skills.some(s => s.id === skill.id)}
         onPick={toggleSkill}
-        canPickMore={formData.skills.length < MAX_SIGNUP_SKILLS}
-        limitNote={`${formData.skills.length} of ${MAX_SIGNUP_SKILLS} skills`}
+        note={formData.skills.length > 0 ? `${formData.skills.length} selected` : undefined}
         excludeProfessions={['Personal Errands']}
       />
 
@@ -1845,18 +1844,6 @@ function makeStyles(t: typeof Colors.light) {
     color: t.icon,
     fontFamily: Fonts.poppins,
     marginTop: 6,
-  },
-  skillGroup: {
-    marginTop: 12,
-  },
-  skillGroupTitle: {
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: Fonts.poppinsBold,
-    color: t.icon,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 6,
   },
   skillChips: {
     flexDirection: 'row',
