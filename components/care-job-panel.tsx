@@ -1,4 +1,5 @@
 import { ArrivalPanel } from '@/components/arrival-panel';
+import { CareSheetCard } from '@/components/care-sheet-card';
 import { CodeHandoverForm } from '@/components/code-handover-form';
 import { DeliveryHandover } from '@/components/delivery-handover';
 import { Text, TextInput } from '@/components/scaled-text';
@@ -33,7 +34,17 @@ const when = (iso: string) => new Date(iso).toLocaleString([], { weekday: 'short
 // the provider: wait for the booking → check in with the customer's code →
 // photos at hand-over → an update at least once a day → hand back with the
 // customer's code → complete. Each step is one card; only the next one shows.
-export function CareJobPanel({ job, getCoords, onChanged, onComplete, onCustomerAbsent, onMessage }: Props) {
+// Above them, what the customer said about what's in your care.
+export function CareJobPanel(props: Props) {
+  return (
+    <View style={{ gap: 12 }}>
+      {!!props.job && <CareSheetCard custody={props.job.shape?.custody} sheet={props.job.care_sheet} details={props.job.shape?.details} />}
+      <CareJobSteps {...props} />
+    </View>
+  );
+}
+
+function CareJobSteps({ job, getCoords, onChanged, onComplete, onCustomerAbsent, onMessage }: Props) {
   const steps: string[] = job?.steps ?? [];
   const venue: string = job?.shape?.venue ?? 'CUSTOMER_PLACE';
   const paid = job?.payment_status === 'HELD' || job?.payment_status === 'PAID';

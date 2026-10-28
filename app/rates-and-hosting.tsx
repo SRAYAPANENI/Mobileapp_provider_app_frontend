@@ -3,11 +3,11 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
-import { Hosting, ProviderRate, SkoFyApi } from '@/services/api';
+import { DogSize, Hosting, HostingPrefs, ItemSize, PetKind, ProviderRate, SkoFyApi } from '@/services/api';
 import { MIN_VISITING_FEE } from '@/services/fees';
 import * as Location from 'expo-location';
 import { router, useFocusEffect } from 'expo-router';
-import { ChevronLeft, Home, LocateFixed, Lock, Minus, Plus, Sparkles } from 'lucide-react-native';
+import { Box, ChevronLeft, Home, LocateFixed, Lock, Minus, Moon, PawPrint, Plus, Sparkles } from 'lucide-react-native';
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, StatusBar, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
@@ -30,6 +30,41 @@ const USUAL: { field: 'fee' | 'hourly'; label: string; hint: string }[] = [
 
 interface Skill { skill_id: string; name: string; is_verified: boolean }
 
+// What a host takes in (skofy-backend/app/domain/care_sheet.py).
+const PET_KINDS: { value: PetKind; label: string }[] = [
+  { value: 'DOG', label: 'Dogs' }, { value: 'CAT', label: 'Cats' }, { value: 'BIRD', label: 'Birds' },
+  { value: 'SMALL_PET', label: 'Small pets' }, { value: 'REPTILE', label: 'Reptiles' },
+  { value: 'FISH', label: 'Fish' }, { value: 'OTHER', label: 'Other' },
+];
+const DOG_SIZES: { value: DogSize; label: string }[] = [
+  { value: 'SMALL', label: 'Small' }, { value: 'MEDIUM', label: 'Medium' },
+  { value: 'LARGE', label: 'Large' }, { value: 'GIANT', label: 'Any size' },
+];
+const ITEM_SIZES: { value: ItemSize; label: string }[] = [
+  { value: 'SMALL', label: 'Bag' }, { value: 'MEDIUM', label: 'Box' },
+  { value: 'LARGE', label: 'Car trunk' }, { value: 'BULKY', label: 'Van' },
+];
+const NO_HOSTING: HostingPrefs = { on: false, capacity: 1, pets: { on: false }, items: { on: false } };
+
+function Stepper({ value, min, max, onChange }: { value: number; min: number; max: number; onChange: (n: number) => void }) {
+  return (
+    <View style={s.stepper}>
+      <TouchableOpacity style={s.stepBtn} onPress={() => onChange(Math.max(min, value - 1))}>
+        <Minus size={16} color="#111827" />
+      </TouchableOpacity>
+      <ThemedText style={s.stepValue}>{value}</ThemedText>
+      <TouchableOpacity style={s.stepBtn} onPress={() => onChange(Math.min(max, value + 1))}>
+        <Plus size={16} color="#111827" />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  // Colours set: Android's default thumb is its own teal-green.
+  return <Switch value={value} onValueChange={onChange} trackColor={{ false: '#D1D5DB', true: '#FFCE48' }} thumbColor="#fff" />;
+}
+
 const key = (skillId: string, unit: Unit) => `${skillId}:${unit}`;
 
 // Every price a provider sets, in one place: the usual visiting fee and
@@ -48,23 +83,26 @@ export default function RatesAndHostingScreen() {
   const [suggesting, setSuggesting] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [savingSkill, setSavingSkill] = useState<string | null>(null);
-  const [host, setHost] = useState({ on: false, capacity: 1, address: '', lat: null as number | null, lng: null as number | null });
+  const [host, setHost] = useState({ address: '', lat: null as number | null, lng: null as number | null });
+  const [prefs, setPrefs] = useState<HostingPrefs>(NO_HOSTING);
+  const setPets = (patch: Partial<HostingPrefs['pets']>) => setPrefs((p) => ({ ...p, pets: { ...p.pets, ...patch } }));
+  const setItems = (patch: Partial<HostingPrefs['items']>) => setPrefs((p) => ({ ...p, items: { ...p.items, ...patch } }));
   const [savingHost, setSavingHost] = useState(false);
   const [locating, setLocating] = useState(false);
 
   const apply = (h: Hosting) => {
     setHosting(h);
     setDrafts(Object.fromEntries(h.rates.map((r) => [key(r.skill_id, r.unit as Unit), String(r.amount)])));
-    setHost({ on: h.hosts_at_home, capacity: h.host_capacity || 1, address: h.base_address ?? '', lat: h.base_lat, lng: h.base_lng });
+    setHost({ address: h.base_address ?? '', lat: h.base_lat, lng: h.base_lng });
+    setPrefs(h.hosting_prefs ?? NO_HOSTING);
   };
 
   const load = useCallback(() => {
     setLoadFailed(false);
     SkoFyApi.hosting.mine().then(apply).catch(() => setLoadFailed(true));
-    // Every skill: verified ones get prices, the rest a way to their test.
     SkoFyApi.skills.getMySkills()
       .then((list: any) => setSkills((Array.isArray(list) ? list : [])
-        .sort((a: Skill, b: Skill) => Number(b.is_verified) - Number(a.is_verified) || a.name.localeCompare(b.name))))
+        .sort((a: Skill, b: Skill) => a.name.localeCompare(b.name))))
       .catch(() => setSkills([]));
     SkoFyApi.provider.getProfile()
       .then((p: any) => setUsual({
@@ -111,6 +149,12 @@ export default function RatesAndHostingScreen() {
       setSuggesting(false);
     }
   };
+
+  const verified = (skills ?? []).filter((sk) => sk.is_verified);
+  const waiting = (skills ?? []).filter((sk) => !sk.is_verified);
+  // What a stay at their place costs: each skill's per-night price.
+  const nightly = (hosting?.rates ?? []).filter((r: ProviderRate) => r.unit === 'NIGHT');
+  const skillName = (id: string) => skills?.find((sk) => sk.skill_id === id)?.name ?? 'A skill';
 
   const savedAmount = (skillId: string, unit: Unit) =>
     hosting?.rates.find((r: ProviderRate) => r.skill_id === skillId && r.unit === unit)?.amount;
@@ -161,18 +205,22 @@ export default function RatesAndHostingScreen() {
   const saveHosting = async () => {
     setSavingHost(true);
     try {
+      if (prefs.on && prefs.pets.on && !(prefs.pets.kinds ?? []).length) {
+        throw new Error('Choose which animals you take in.');
+      }
       let { lat, lng } = host;
       // Typed, not pinned: find it on the map.
-      if (host.on && lat == null && host.address.trim()) {
+      if (prefs.on && lat == null && host.address.trim()) {
         const [hit] = await Location.geocodeAsync(host.address.trim()).catch(() => []);
         if (hit) ({ latitude: lat, longitude: lng } = hit);
         if (lat == null) throw new Error("We couldn't find that address on the map. Check it, or tap \"I'm at home\" to pin where you are.");
       }
       apply(await SkoFyApi.hosting.update({
-        hosts_at_home: host.on, host_capacity: host.capacity,
+        hosts_at_home: prefs.on, host_capacity: prefs.capacity,
         base_address: host.address.trim() || null, base_lat: lat, base_lng: lng,
+        hosting_prefs: prefs,
       }));
-      appAlert.show('success', 'Saved', host.on ? "You'll now see jobs at your place." : 'Hosting is off.');
+      appAlert.show('success', 'Saved', prefs.on ? "You'll now see jobs at your place." : 'Hosting is off.');
     } catch (err: any) {
       appAlert.show('error', 'Not saved', err?.message ?? 'Please try again.');
     } finally {
@@ -241,27 +289,16 @@ export default function RatesAndHostingScreen() {
             their dates and pay when they book. Leave a box empty if you don't offer it.
           </ThemedText>
 
-          {skills.length === 0 && (
+          {verified.length === 0 && (
             <View style={s.card}>
-              <ThemedText style={s.muted}>Add your skills from your profile, then set a price for each here.</ThemedText>
+              <ThemedText style={s.muted}>
+                {skills.length === 0
+                  ? 'Add your skills from your profile, then set a price for each here.'
+                  : 'Prices per hour, day or night open up for a skill once you pass its test in Verification.'}
+              </ThemedText>
             </View>
           )}
-          {skills.map((sk) => !sk.is_verified ? (
-            // Prices open up once they pass the skill's test.
-            <View key={sk.skill_id} style={s.card}>
-              <View style={s.row}>
-                <Lock size={16} color="#6B7280" />
-                <ThemedText style={[s.cardTitle, { flex: 1 }]}>{sk.name}</ThemedText>
-              </View>
-              <ThemedText style={s.muted}>Pass this skill's short test to set your prices for it.</ThemedText>
-              <TouchableOpacity
-                style={s.secondary}
-                onPress={() => router.push({ pathname: '/(tabs)/profile', params: { testSkillId: sk.skill_id, testSkillName: sk.name } } as any)}
-              >
-                <ThemedText style={s.secondaryText}>Take the test</ThemedText>
-              </TouchableOpacity>
-            </View>
-          ) : (
+          {verified.map((sk) => (
             <View key={sk.skill_id} style={s.card}>
               <ThemedText style={s.cardTitle}>{sk.name}</ThemedText>
               {UNITS.map(({ unit, label, hint }) => (
@@ -288,35 +325,129 @@ export default function RatesAndHostingScreen() {
               </TouchableOpacity>
             </View>
           ))}
+          {verified.length > 0 && waiting.length > 0 && (
+            // Their tests are in the Verification tab; prices open up after.
+            <View style={[s.row, s.waiting]}>
+              <Lock size={14} color="#6B7280" />
+              <ThemedText style={[s.hint, { flex: 1 }]}>
+                {waiting.map((sk) => sk.name).join(', ')} — pass {waiting.length === 1 ? 'its test' : 'their tests'} in Verification to set prices.
+              </ThemedText>
+            </View>
+          )}
 
           <View style={s.card}>
             <View style={s.row}>
               <Home size={18} color="#111827" />
-              <ThemedText style={[s.cardTitle, { flex: 1 }]}>Customers can bring things to my place</ThemedText>
-              {/* Colours set: Android's default thumb is its own teal-green. */}
-              <Switch
-                value={host.on}
-                onValueChange={(on) => setHost((h) => ({ ...h, on }))}
-                trackColor={{ false: '#D1D5DB', true: '#FFCE48' }}
-                thumbColor="#fff"
-              />
+              <ThemedText style={[s.cardTitle, { flex: 1 }]}>Customers can come to my place</ThemedText>
+              <Toggle value={prefs.on} onChange={(on) => setPrefs((p) => ({ ...p, on }))} />
             </View>
             <ThemedText style={s.muted}>
-              For boarding a pet or minding an item at your home. Your address is only shown to a customer once they've booked you.
+              For work at your place — and, below, for pets and things they leave with you. Your address is only shown
+              to a customer once they've booked you.
             </ThemedText>
-            {host.on && (
+            {prefs.on && (
               <>
-                <ThemedText style={s.item}>How many at once?</ThemedText>
-                <View style={s.stepper}>
-                  <TouchableOpacity style={s.stepBtn} onPress={() => setHost((h) => ({ ...h, capacity: Math.max(1, h.capacity - 1) }))}>
-                    <Minus size={16} color="#111827" />
-                  </TouchableOpacity>
-                  <ThemedText style={s.stepValue}>{host.capacity}</ThemedText>
-                  <TouchableOpacity style={s.stepBtn} onPress={() => setHost((h) => ({ ...h, capacity: Math.min(20, h.capacity + 1) }))}>
-                    <Plus size={16} color="#111827" />
-                  </TouchableOpacity>
+                <ThemedText style={s.item}>Customers at once</ThemedText>
+                <ThemedText style={s.hint}>For visits with nothing left behind — a haircut, a lesson.</ThemedText>
+                <Stepper value={prefs.capacity} min={1} max={20} onChange={(capacity) => setPrefs((p) => ({ ...p, capacity }))} />
+
+                {/* Pets: which, how big, how many, and food. */}
+                <View style={s.section}>
+                  <View style={s.row}>
+                    <PawPrint size={16} color="#111827" />
+                    <ThemedText style={[s.item, { flex: 1 }]}>I take in pets</ThemedText>
+                    <Toggle value={prefs.pets.on} onChange={(on) => setPets({
+                      on, kinds: prefs.pets.kinds ?? [], capacity: prefs.pets.capacity ?? 1,
+                      max_dog_size: prefs.pets.max_dog_size ?? 'GIANT', provides_food: prefs.pets.provides_food ?? false,
+                    })} />
+                  </View>
+                  {prefs.pets.on && (
+                    <>
+                      <ThemedText style={s.hint}>Which animals</ThemedText>
+                      <View style={s.chips}>
+                        {PET_KINDS.map(({ value, label }) => {
+                          const on = (prefs.pets.kinds ?? []).includes(value);
+                          return (
+                            <TouchableOpacity key={value} style={[s.chip, on && s.chipOn]}
+                              onPress={() => setPets({ kinds: on ? (prefs.pets.kinds ?? []).filter((k) => k !== value) : [...(prefs.pets.kinds ?? []), value] })}>
+                              <ThemedText style={[s.chipText, on && s.chipTextOn]}>{label}</ThemedText>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                      {(prefs.pets.kinds ?? []).includes('DOG') && (
+                        <>
+                          <ThemedText style={s.hint}>Biggest dog you take</ThemedText>
+                          <View style={s.chips}>
+                            {DOG_SIZES.map(({ value, label }) => {
+                              const on = (prefs.pets.max_dog_size ?? 'GIANT') === value;
+                              return (
+                                <TouchableOpacity key={value} style={[s.chip, on && s.chipOn]} onPress={() => setPets({ max_dog_size: value })}>
+                                  <ThemedText style={[s.chipText, on && s.chipTextOn]}>{label}</ThemedText>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        </>
+                      )}
+                      <ThemedText style={s.hint}>Pets at once</ThemedText>
+                      <Stepper value={prefs.pets.capacity ?? 1} min={1} max={20} onChange={(capacity) => setPets({ capacity })} />
+                      <View style={s.row}>
+                        <ThemedText style={[s.muted, { flex: 1 }]}>I provide food (otherwise the owner brings it)</ThemedText>
+                        <Toggle value={!!prefs.pets.provides_food} onChange={(provides_food) => setPets({ provides_food })} />
+                      </View>
+                    </>
+                  )}
                 </View>
-                <ThemedText style={s.item}>Where customers bring it</ThemedText>
+
+                {/* Items: how many and how big. */}
+                <View style={s.section}>
+                  <View style={s.row}>
+                    <Box size={16} color="#111827" />
+                    <ThemedText style={[s.item, { flex: 1 }]}>I look after things people leave</ThemedText>
+                    <Toggle value={prefs.items.on} onChange={(on) => setItems({
+                      on, capacity: prefs.items.capacity ?? 1, max_size: prefs.items.max_size ?? 'BULKY',
+                    })} />
+                  </View>
+                  {prefs.items.on && (
+                    <>
+                      <ThemedText style={s.hint}>Biggest you take</ThemedText>
+                      <View style={s.chips}>
+                        {ITEM_SIZES.map(({ value, label }) => {
+                          const on = (prefs.items.max_size ?? 'BULKY') === value;
+                          return (
+                            <TouchableOpacity key={value} style={[s.chip, on && s.chipOn]} onPress={() => setItems({ max_size: value })}>
+                              <ThemedText style={[s.chipText, on && s.chipTextOn]}>{label}</ThemedText>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                      <ThemedText style={s.hint}>Items at once</ThemedText>
+                      <Stepper value={prefs.items.capacity ?? 1} min={1} max={100} onChange={(capacity) => setItems({ capacity })} />
+                    </>
+                  )}
+                </View>
+
+                {(prefs.pets.on || prefs.items.on) && (
+                  // The price of a stay is each skill's per-night price, set above.
+                  <View style={s.nightly}>
+                    <View style={s.row}>
+                      <Moon size={14} color="#111827" />
+                      <ThemedText style={s.item}>Your price per night</ThemedText>
+                    </View>
+                    {nightly.length > 0 ? nightly.map((r) => (
+                      <ThemedText key={r.skill_id} style={s.muted}>{skillName(r.skill_id)} — ${r.amount}</ThemedText>
+                    )) : (
+                      <ThemedText style={s.muted}>
+                        {verified.length > 0
+                          ? `Not set yet — fill in "Per night" on a skill above. That's what customers pay for each night at your place.`
+                          : `Pass a skill's test in Verification, then set its "Per night" price here.`}
+                      </ThemedText>
+                    )}
+                  </View>
+                )}
+
+                <ThemedText style={s.item}>Your address</ThemedText>
                 <TextInput
                   style={s.input}
                   placeholder="Street, city, ZIP"
@@ -358,6 +489,14 @@ const s = StyleSheet.create({
   item: { fontSize: 13.5, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: '#111827' },
   hint: { fontSize: 11.5, lineHeight: 16, fontFamily: Fonts.poppins, color: '#6B7280' },
   muted: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.poppins, color: '#6B7280' },
+  waiting: { paddingHorizontal: 4, alignItems: 'flex-start' },
+  nightly: { padding: 12, borderRadius: 12, backgroundColor: '#FFF7D6', gap: 4 },
+  section: { gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#fff' },
+  chipOn: { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' },
+  chipText: { fontSize: 12.5, lineHeight: 17, fontFamily: Fonts.poppins, color: '#374151' },
+  chipTextOn: { color: '#111827', fontFamily: Fonts.poppinsBold },
   suggest: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: '#FFF7D6' },
   suggestText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.poppinsBold, color: '#111827' },
   rateRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },

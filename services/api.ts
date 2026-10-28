@@ -373,9 +373,21 @@ export interface GuaranteeClaim {
 /** Your prices per hour / day / night, and hosting at your place
  * (docs/JOB_SHAPE_DESIGN.md phase 4). */
 export interface ProviderRate { skill_id: string; skill_name: string; unit: 'HOUR' | 'DAY' | 'NIGHT' | 'VISIT' | 'FIXED'; amount: number }
+export type PetKind = 'DOG' | 'CAT' | 'BIRD' | 'SMALL_PET' | 'REPTILE' | 'FISH' | 'OTHER';
+export type DogSize = 'SMALL' | 'MEDIUM' | 'LARGE' | 'GIANT';
+export type ItemSize = 'SMALL' | 'MEDIUM' | 'LARGE' | 'BULKY';
+/** What you take in at your place (skofy-backend/app/domain/care_sheet.py):
+ * customers coming to you at all, pets and items — each with its own limit. */
+export interface HostingPrefs {
+  on: boolean;
+  capacity: number;
+  pets: { on: boolean; kinds?: PetKind[]; max_dog_size?: DogSize; capacity?: number; provides_food?: boolean };
+  items: { on: boolean; capacity?: number; max_size?: ItemSize };
+}
 export interface Hosting {
   hosts_at_home: boolean; host_capacity: number; base_address: string | null;
   base_lat: number | null; base_lng: number | null; rates: ProviderRate[];
+  hosting_prefs: HostingPrefs;
 }
 
 /** The hand-over photos and every update, for a pet or home in your care. */
@@ -1447,7 +1459,10 @@ export const SkoFyApi = {
   // ── Rates & hosting (docs/JOB_SHAPE_DESIGN.md phase 4) ───────────────────
   hosting: {
     mine: async (): Promise<Hosting> => request('/hosting/me') as any,
-    update: async (body: { hosts_at_home: boolean; host_capacity: number; base_address: string | null; base_lat: number | null; base_lng: number | null }): Promise<Hosting> =>
+    update: async (body: {
+      hosts_at_home: boolean; host_capacity: number; base_address: string | null; base_lat: number | null; base_lng: number | null;
+      hosting_prefs: HostingPrefs;
+    }): Promise<Hosting> =>
       request('/hosting/me', { method: 'PUT', body: JSON.stringify(body) }) as any,
     setRate: async (skillId: string, unit: ProviderRate['unit'], amount: number): Promise<Hosting> =>
       request('/hosting/me/rates', { method: 'PUT', body: JSON.stringify({ skill_id: skillId, unit, amount }) }) as any,

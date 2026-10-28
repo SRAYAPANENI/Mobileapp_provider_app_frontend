@@ -1,3 +1,4 @@
+import { CareSheetCard } from '@/components/care-sheet-card';
 import { purchaseSummary } from '@/services/pickupDelivery';
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, ScrollView, TouchableOpacity, SafeAreaView, Platform, Dimensions, ActivityIndicator, Share, Modal, Pressable } from 'react-native';
@@ -327,6 +328,10 @@ export default function JobDetailsScreen() {
             // (already paid / buy for me) — known before applying.
             requirements: [purchaseSummary(j), j.notes].filter((r): r is string => !!r),
             skillMatch: skillMatchPct,
+            // What's left with the provider: each pet's needs, or the item.
+            custody: j.shape?.custody ?? null,
+            careSheet: j.care_sheet ?? null,
+            customerNotes: j.shape?.details ?? null,
             hasMedia: Array.isArray(j.images) && j.images.length > 0,
             // `images` is just bare URL strings with no type metadata — this
             // was previously hardcoded to 'image' for every entry, so a
@@ -753,6 +758,10 @@ export default function JobDetailsScreen() {
             </Text>
           </View>
         </Animated.View>
+
+        <View style={{ marginBottom: 16 }}>
+          <CareSheetCard custody={job.custody} sheet={job.careSheet} details={job.customerNotes} />
+        </View>
 
         {/* Specific Details from Customer (Attachments, etc) */}
         {job.hasMedia && (
