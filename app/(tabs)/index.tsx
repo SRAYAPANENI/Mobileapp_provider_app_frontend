@@ -1,3 +1,4 @@
+import { LabourHelper } from '@/components/labour-helper';
 import AnimatedBrandMark from '@/components/animated-brand-mark';
 import React, { useState, useEffect, useRef } from 'react';
 import { AppState, BackHandler, StyleSheet, View, ScrollView, TouchableOpacity, Switch, Platform, SafeAreaView, ActivityIndicator, Modal, PanResponder, Animated as RNAnimated, useWindowDimensions, Linking, RefreshControl, Pressable } from 'react-native';
@@ -2214,6 +2215,7 @@ const filteredJobs = jobs.filter((job) => {
                     >
                       <ThemedText style={styles.cancelJobBtnText}>+ Add Material</ThemedText>
                     </TouchableOpacity>
+                    <LabourHelper partsTotal={partsTotal} onUse={setInvoiceAmount} />
                     <RNTextInput
                       style={[styles.otpEntryInput, { fontSize: 17, fontWeight: '700' }]}
                       placeholder="Invoice amount ($)"
@@ -2554,6 +2556,7 @@ const filteredJobs = jobs.filter((job) => {
                     >
                       <ThemedText style={styles.cancelJobBtnText}>+ Add Material</ThemedText>
                     </TouchableOpacity>
+                    <LabourHelper partsTotal={partsTotal} onUse={setInvoiceAmount} />
                     <RNTextInput
                       style={[styles.otpEntryInput, { fontSize: 17, fontWeight: '700' }]}
                       placeholder="Invoice amount ($)"

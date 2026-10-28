@@ -7,11 +7,13 @@ import { CheckCircle2, Circle, Search, X } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, SectionList, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 
-/** A skill from the catalogue, with the profession it belongs to. */
+/** A skill from the catalogue, with the profession and category it belongs to. */
 export interface PickedSkill {
   id: string;
   name: string;
   profession: string;
+  /** One of the catalogue's groups — "Pets", "Cleaning"… */
+  category?: string | null;
 }
 
 // Loaded once per app session: the catalogue is the same for every screen.
@@ -19,7 +21,7 @@ let catalogue: Promise<PickedSkill[]> | null = null;
 function loadCatalogue(): Promise<PickedSkill[]> {
   if (!catalogue) {
     catalogue = SkoFyApi.skills.list()
-      .then((list: any) => (Array.isArray(list) ? list : []).map((s: any) => ({ id: s.id, name: s.name, profession: s.profession })))
+      .then((list: any) => (Array.isArray(list) ? list : []).map((s: any) => ({ id: s.id, name: s.name, profession: s.profession, category: s.category ?? null })))
       .catch((err: unknown) => { catalogue = null; throw err; });
   }
   return catalogue;
@@ -52,8 +54,9 @@ export function byProfession(skills: PickedSkill[]): { profession: string; skill
 // Create Account, Profile on Done) — never one server call per tap.
 //
 // Searching is by skill, not by profession: results are one list, best
-// matches first, each with its profession as a small note, and the filter
-// chips narrow to the professions that have a match.
+// matches first, each with its profession as a small note. The chips are the
+// catalogue's categories (Pets, Cleaning… — not its 300+ professions), and
+// narrow to those with a match.
 export function SkillPicker({
   visible, onClose, onDone, isPicked, onPick, isLocked, note, busy = false,
   excludeProfessions = [], title = 'What can you do?',
@@ -78,7 +81,7 @@ export function SkillPicker({
   const [all, setAll] = useState<PickedSkill[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [query, setQuery] = useState('');
-  const [profession, setProfession] = useState<string | null>(null);
+  const [category, setCategory] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible || all) return;
@@ -104,22 +107,23 @@ export function SkillPicker({
       .sort((a, b) => a.r - b.r || a.s.name.localeCompare(b.s.name)).map((x) => x.s);
   }, [usable, q, searching]);
 
-  // The chips follow the search: only professions with a match, most matches first.
-  const professions = useMemo(() => {
+  const categoryOf = (s: PickedSkill) => s.category || 'Other';
+  // The chips follow the search: only categories with a match, most matches first.
+  const categories = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const s of matches) counts.set(s.profession, (counts.get(s.profession) ?? 0) + 1);
-    return [...counts].sort((a, b) => (searching ? b[1] - a[1] : 0) || a[0].localeCompare(b[0])).map(([p]) => p);
+    for (const s of matches) counts.set(categoryOf(s), (counts.get(categoryOf(s)) ?? 0) + 1);
+    return [...counts].sort((a, b) => (searching ? b[1] - a[1] : 0) || a[0].localeCompare(b[0])).map(([c]) => c);
   }, [matches, searching]);
   // A chip picked before the search changed may have no match now: show all.
-  const activeProfession = profession && professions.includes(profession) ? profession : null;
+  const activeCategory = category && categories.includes(category) ? category : null;
 
   const sections = useMemo(() => {
-    const shown = activeProfession ? matches.filter((s) => s.profession === activeProfession) : matches;
-    // Searching (or one profession chosen): one plain list. Browsing: grouped.
-    if (searching || activeProfession) return shown.length ? [{ title: '', data: shown }] : [];
+    const shown = activeCategory ? matches.filter((s) => categoryOf(s) === activeCategory) : matches;
+    // Searching: one plain list, best first. Browsing: grouped by profession.
+    if (searching) return shown.length ? [{ title: '', data: shown }] : [];
     return byProfession(shown).sort((a, b) => a.profession.localeCompare(b.profession))
       .map((g) => ({ title: g.profession, data: g.skills }));
-  }, [matches, activeProfession, searching]);
+  }, [matches, activeCategory, searching]);
 
   const s = styles(theme);
   return (
@@ -149,12 +153,12 @@ export function SkillPicker({
               key: a new set of chips (the search narrowed them) starts a fresh
               row at the left — Android keeps the old scroll position, which on
               a now-shorter row is past its end, so the chips looked gone. */}
-          <ScrollView key={professions.join('|')} horizontal showsHorizontalScrollIndicator={false} style={s.chipBar} contentContainerStyle={s.chips} keyboardShouldPersistTaps="handled">
-            {[null, ...professions].map((p) => {
-              const on = activeProfession === p;
+          <ScrollView key={categories.join('|')} horizontal showsHorizontalScrollIndicator={false} style={s.chipBar} contentContainerStyle={s.chips} keyboardShouldPersistTaps="handled">
+            {[null, ...categories].map((c) => {
+              const on = activeCategory === c;
               return (
-                <TouchableOpacity key={p ?? 'all'} onPress={() => setProfession(p)} style={[s.chip, on && s.chipOn]}>
-                  <ThemedText style={[s.chipText, on && s.chipTextOn]}>{p ?? 'All'}</ThemedText>
+                <TouchableOpacity key={c ?? 'all'} onPress={() => setCategory(c)} style={[s.chip, on && s.chipOn]}>
+                  <ThemedText style={[s.chipText, on && s.chipTextOn]}>{c ?? 'All'}</ThemedText>
                 </TouchableOpacity>
               );
             })}
@@ -185,7 +189,7 @@ export function SkillPicker({
                     <View style={s.rowBody}>
                       <ThemedText style={[s.rowText, picked && { fontFamily: Fonts.poppinsSemiBold }]}>{item.name}</ThemedText>
                       {/* In a plain list the section header is gone: say where it's from. */}
-                      {!sections[0]?.title && !activeProfession && <ThemedText style={s.rowNote}>{item.profession}</ThemedText>}
+                      {searching && <ThemedText style={s.rowNote}>{item.profession}</ThemedText>}
                     </View>
                     {picked ? <CheckCircle2 size={20} color={theme.brand} /> : <Circle size={20} color={theme.icon} />}
                   </TouchableOpacity>

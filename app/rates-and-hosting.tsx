@@ -5,6 +5,7 @@ import { Fonts } from '@/constants/theme';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { DogSize, Hosting, HostingPrefs, ItemSize, PetKind, ProviderRate, SkoFyApi } from '@/services/api';
 import { MIN_VISITING_FEE } from '@/services/fees';
+import { refreshUsualRate } from '@/components/labour-helper';
 import * as Location from 'expo-location';
 import { router, useFocusEffect } from 'expo-router';
 import { Box, ChevronLeft, Home, LocateFixed, Lock, Minus, Moon, PawPrint, Plus, Sparkles } from 'lucide-react-native';
@@ -18,7 +19,7 @@ type Unit = 'HOUR' | 'DAY' | 'NIGHT' | 'WEEK' | 'MONTH';
 // The three ways a job is priced up front (docs/JOB_SHAPE_DESIGN.md) — in the
 // words a provider thinks in, with an example of each.
 const UNITS: { unit: Unit; label: string; hint: string }[] = [
-  { unit: 'HOUR', label: 'Per hour', hint: 'A few hours — e.g. pet sitting, tutoring, help at home' },
+  { unit: 'HOUR', label: 'Per hour', hint: 'A few hours — e.g. pet sitting, tutoring. Empty uses your usual hourly rate' },
   { unit: 'DAY', label: 'Per day', hint: "Over days at the customer's place, or a full day at yours (like daycare)" },
   { unit: 'NIGHT', label: 'Per night', hint: 'Stays at your place — e.g. pet boarding (turn on hosting below)' },
   // Long stays: used by themselves when they come out cheaper than the nights
@@ -134,6 +135,7 @@ export default function RatesAndHostingScreen() {
     setSavingUsual(true);
     try {
       await SkoFyApi.provider.setRates(fee, hourly);
+      refreshUsualRate();
       appAlert.show('success', 'Saved', 'Customers now see your visiting fee and hourly rate.');
     } catch (err: any) {
       appAlert.show('error', 'Not saved', err?.message ?? 'Please try again.');
@@ -325,7 +327,8 @@ export default function RatesAndHostingScreen() {
                     <TextInput
                       style={s.moneyInput}
                       keyboardType="decimal-pad"
-                      placeholder="—"
+                      // Empty per hour uses the usual hourly rate (set above).
+                      placeholder={unit === 'HOUR' && usual.hourly ? usual.hourly : '—'}
                       placeholderTextColor="#9CA3AF"
                       value={drafts[key(sk.skill_id, unit)] ?? ''}
                       onChangeText={(t) => setDrafts((d) => ({ ...d, [key(sk.skill_id, unit)]: t.replace(/[^0-9.]/g, '') }))}
