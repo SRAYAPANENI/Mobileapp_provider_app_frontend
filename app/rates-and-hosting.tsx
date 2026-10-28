@@ -166,6 +166,7 @@ export default function RatesAndHostingScreen() {
       if (host.on && lat == null && host.address.trim()) {
         const [hit] = await Location.geocodeAsync(host.address.trim()).catch(() => []);
         if (hit) ({ latitude: lat, longitude: lng } = hit);
+        if (lat == null) throw new Error("We couldn't find that address on the map. Check it, or tap \"I'm at home\" to pin where you are.");
       }
       apply(await SkoFyApi.hosting.update({
         hosts_at_home: host.on, host_capacity: host.capacity,

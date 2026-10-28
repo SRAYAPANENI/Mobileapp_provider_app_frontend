@@ -2,7 +2,7 @@ import AnimatedBrandMark from '@/components/animated-brand-mark';
 import React, { useState, useEffect, useRef } from 'react';
 import { AppState, BackHandler, StyleSheet, View, ScrollView, TouchableOpacity, Switch, Platform, SafeAreaView, ActivityIndicator, Modal, PanResponder, Animated as RNAnimated, useWindowDimensions, Linking, RefreshControl, Pressable } from 'react-native';
 import { Text, TextInput as RNTextInput } from '@/components/scaled-text';
-import { KeyboardAvoidingView, KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
+import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppAlert } from '@/components/app-alert';
 import { Image } from 'expo-image';
@@ -463,17 +463,7 @@ export default function DashboardScreen() {
   const [materials, setMaterials] = useState<Array<{ name: string; quantity: string; unit_cost: string }>>([]);
   // What the listed parts cost — a small quote can have them paid when work starts.
   const partsTotal = materials.reduce((sum, m) => sum + (parseFloat(m.quantity) || 0) * (parseFloat(m.unit_cost) || 0), 0);
-  // KeyboardAvoidingView is well known to not cooperate with RN's <Modal> on
-  // Android — Modal renders in its own native window, which doesn't
-  // participate in the Activity's keyboard-driven resize the way a normal
-  // screen does, so wrapping the sheet's content in one (as tried before)
-  // silently did nothing. Scrolling to the focused input directly, on its
-  // own focus event, sidesteps that entirely instead of depending on it.
-  const manageScrollRef = useRef<KeyboardAwareScrollViewRef>(null);
   const otpInputRef = useRef<RNTextInput>(null);
-  const scrollToFocusedInput = () => {
-    setTimeout(() => manageScrollRef.current?.scrollToEnd({ animated: true }), 150);
-  };
   const [raisingInvoice, setRaisingInvoice] = useState(false);
   const [respondingToCounter, setRespondingToCounter] = useState(false);
 
@@ -2028,7 +2018,7 @@ const filteredJobs = jobs.filter((job) => {
             )}
 
             {selectedJob && (
-              <KeyboardAwareScrollView bottomOffset={24} style={{ flex: 1 }} ref={manageScrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 + bottomInset }} keyboardShouldPersistTaps="handled">
+              <KeyboardAwareScrollView bottomOffset={24} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 + bottomInset }} keyboardShouldPersistTaps="handled">
                 {/* Live badge */}
                 <View style={styles.liveBadge}>
                   <View style={styles.liveDot} />
@@ -2199,7 +2189,6 @@ const filteredJobs = jobs.filter((job) => {
                           placeholderTextColor="#9CA3AF"
                           value={m.name}
                           onChangeText={(v) => setMaterials(prev => prev.map((mm, i) => i === idx ? { ...mm, name: v } : mm))}
-                          onFocus={scrollToFocusedInput}
                         />
                         <RNTextInput
                           style={[styles.otpEntryInput, { flex: 1 }]}
@@ -2208,7 +2197,6 @@ const filteredJobs = jobs.filter((job) => {
                           keyboardType="numeric"
                           value={m.quantity}
                           onChangeText={(v) => setMaterials(prev => prev.map((mm, i) => i === idx ? { ...mm, quantity: v } : mm))}
-                          onFocus={scrollToFocusedInput}
                         />
                         <RNTextInput
                           style={[styles.otpEntryInput, { flex: 1 }]}
@@ -2217,7 +2205,6 @@ const filteredJobs = jobs.filter((job) => {
                           keyboardType="numeric"
                           value={m.unit_cost}
                           onChangeText={(v) => setMaterials(prev => prev.map((mm, i) => i === idx ? { ...mm, unit_cost: v } : mm))}
-                          onFocus={scrollToFocusedInput}
                         />
                       </View>
                     ))}
@@ -2234,7 +2221,6 @@ const filteredJobs = jobs.filter((job) => {
                       keyboardType="numeric"
                       value={invoiceAmount}
                       onChangeText={setInvoiceAmount}
-                      onFocus={scrollToFocusedInput}
                     />
                     <KeepPreview
                       jobId={selectedJob.id}
@@ -2249,7 +2235,6 @@ const filteredJobs = jobs.filter((job) => {
                       placeholderTextColor="#9CA3AF"
                       value={invoiceNotes}
                       onChangeText={setInvoiceNotes}
-                      onFocus={scrollToFocusedInput}
                     />
                     <TouchableOpacity
                       style={[styles.completeJobBtn, raisingInvoice && { opacity: 0.7 }]}
@@ -2288,7 +2273,6 @@ const filteredJobs = jobs.filter((job) => {
                           placeholderTextColor="#9CA3AF"
                           value={m.name}
                           onChangeText={(v) => setMaterials(prev => prev.map((mm, i) => i === idx ? { ...mm, name: v } : mm))}
-                          onFocus={scrollToFocusedInput}
                         />
                         <RNTextInput
                           style={[styles.otpEntryInput, { flex: 1 }]}
@@ -2297,7 +2281,6 @@ const filteredJobs = jobs.filter((job) => {
                           keyboardType="numeric"
                           value={m.quantity}
                           onChangeText={(v) => setMaterials(prev => prev.map((mm, i) => i === idx ? { ...mm, quantity: v } : mm))}
-                          onFocus={scrollToFocusedInput}
                         />
                         <RNTextInput
                           style={[styles.otpEntryInput, { flex: 1 }]}
@@ -2306,7 +2289,6 @@ const filteredJobs = jobs.filter((job) => {
                           keyboardType="numeric"
                           value={m.unit_cost}
                           onChangeText={(v) => setMaterials(prev => prev.map((mm, i) => i === idx ? { ...mm, unit_cost: v } : mm))}
-                          onFocus={scrollToFocusedInput}
                         />
                       </View>
                     ))}
@@ -2325,7 +2307,6 @@ const filteredJobs = jobs.filter((job) => {
                       keyboardType="numeric"
                       value={invoiceAmount}
                       onChangeText={setInvoiceAmount}
-                      onFocus={scrollToFocusedInput}
                     />
                     <KeepPreview
                       jobId={selectedJob.id}
@@ -2340,7 +2321,6 @@ const filteredJobs = jobs.filter((job) => {
                       placeholderTextColor="#9CA3AF"
                       value={invoiceNotes}
                       onChangeText={setInvoiceNotes}
-                      onFocus={scrollToFocusedInput}
                     />
                     <TouchableOpacity
                       style={[styles.completeJobBtn, raisingInvoice && { opacity: 0.7 }]}
@@ -2403,7 +2383,6 @@ const filteredJobs = jobs.filter((job) => {
                           keyboardType="decimal-pad"
                           value={goodsAmountText}
                           onChangeText={setGoodsAmountText}
-                          onFocus={scrollToFocusedInput}
                           editable={goodsHeld}
                         />
                         {!!goodsAmountText && !!goodsError && (
@@ -2491,7 +2470,6 @@ const filteredJobs = jobs.filter((job) => {
                         maxLength={4}
                         value={otpInput}
                         onChangeText={(text) => setOtpInput(text.replace(/[^0-9]/g, ''))}
-                        onFocus={scrollToFocusedInput}
                         caretHidden
                       />
                     </View>
@@ -2551,7 +2529,6 @@ const filteredJobs = jobs.filter((job) => {
                           placeholderTextColor="#9CA3AF"
                           value={m.name}
                           onChangeText={(v) => setMaterials(prev => prev.map((mm, i) => i === idx ? { ...mm, name: v } : mm))}
-                          onFocus={scrollToFocusedInput}
                         />
                         <RNTextInput
                           style={[styles.otpEntryInput, { flex: 1 }]}
@@ -2560,7 +2537,6 @@ const filteredJobs = jobs.filter((job) => {
                           keyboardType="numeric"
                           value={m.quantity}
                           onChangeText={(v) => setMaterials(prev => prev.map((mm, i) => i === idx ? { ...mm, quantity: v } : mm))}
-                          onFocus={scrollToFocusedInput}
                         />
                         <RNTextInput
                           style={[styles.otpEntryInput, { flex: 1 }]}
@@ -2569,7 +2545,6 @@ const filteredJobs = jobs.filter((job) => {
                           keyboardType="numeric"
                           value={m.unit_cost}
                           onChangeText={(v) => setMaterials(prev => prev.map((mm, i) => i === idx ? { ...mm, unit_cost: v } : mm))}
-                          onFocus={scrollToFocusedInput}
                         />
                       </View>
                     ))}
@@ -2586,7 +2561,6 @@ const filteredJobs = jobs.filter((job) => {
                       keyboardType="numeric"
                       value={invoiceAmount}
                       onChangeText={setInvoiceAmount}
-                      onFocus={scrollToFocusedInput}
                     />
                     <KeepPreview
                       jobId={selectedJob.id}
@@ -2601,7 +2575,6 @@ const filteredJobs = jobs.filter((job) => {
                       placeholderTextColor="#9CA3AF"
                       value={invoiceNotes}
                       onChangeText={setInvoiceNotes}
-                      onFocus={scrollToFocusedInput}
                     />
                     <TouchableOpacity
                       style={[styles.completeJobBtn, raisingInvoice && { opacity: 0.7 }]}
