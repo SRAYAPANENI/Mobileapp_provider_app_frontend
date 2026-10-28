@@ -372,7 +372,7 @@ export interface GuaranteeClaim {
 
 /** Your prices per hour / day / night, and hosting at your place
  * (docs/JOB_SHAPE_DESIGN.md phase 4). */
-export interface ProviderRate { skill_id: string; skill_name: string; unit: 'HOUR' | 'DAY' | 'NIGHT' | 'VISIT' | 'FIXED'; amount: number }
+export interface ProviderRate { skill_id: string; skill_name: string; unit: 'HOUR' | 'DAY' | 'NIGHT' | 'WEEK' | 'MONTH' | 'VISIT' | 'FIXED'; amount: number }
 export type PetKind = 'DOG' | 'CAT' | 'BIRD' | 'SMALL_PET' | 'REPTILE' | 'FISH' | 'OTHER';
 export type DogSize = 'SMALL' | 'MEDIUM' | 'LARGE' | 'GIANT';
 export type ItemSize = 'SMALL' | 'MEDIUM' | 'LARGE' | 'BULKY';

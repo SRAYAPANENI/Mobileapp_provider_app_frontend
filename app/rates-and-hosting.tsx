@@ -13,14 +13,18 @@ import { ActivityIndicator, StatusBar, StyleSheet, Switch, TextInput, TouchableO
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type Unit = 'HOUR' | 'DAY' | 'NIGHT';
+type Unit = 'HOUR' | 'DAY' | 'NIGHT' | 'WEEK' | 'MONTH';
 
 // The three ways a job is priced up front (docs/JOB_SHAPE_DESIGN.md) — in the
 // words a provider thinks in, with an example of each.
 const UNITS: { unit: Unit; label: string; hint: string }[] = [
   { unit: 'HOUR', label: 'Per hour', hint: 'A few hours — e.g. pet sitting, tutoring, help at home' },
-  { unit: 'DAY', label: 'Per day', hint: "Looking after things at the customer's place over days" },
+  { unit: 'DAY', label: 'Per day', hint: "Over days at the customer's place, or a full day at yours (like daycare)" },
   { unit: 'NIGHT', label: 'Per night', hint: 'Stays at your place — e.g. pet boarding (turn on hosting below)' },
+  // Long stays: used by themselves when they come out cheaper than the nights
+  // or days (skofy-backend/app/domain/rate_card.py best_price).
+  { unit: 'WEEK', label: 'Per week', hint: 'Optional — for stays of 7 nights or days and more' },
+  { unit: 'MONTH', label: 'Per month', hint: 'Optional — for stays of 30 and more, like storage' },
 ];
 
 const USUAL: { field: 'fee' | 'hourly'; label: string; hint: string }[] = [
@@ -152,8 +156,16 @@ export default function RatesAndHostingScreen() {
 
   const verified = (skills ?? []).filter((sk) => sk.is_verified);
   const waiting = (skills ?? []).filter((sk) => !sk.is_verified);
-  // What a stay at their place costs: each skill's per-night price.
-  const nightly = (hosting?.rates ?? []).filter((r: ProviderRate) => r.unit === 'NIGHT');
+  // What a stay at their place costs: each skill's per-night price, and its
+  // week and month prices for long stays.
+  const STAY_WORD: Record<string, string> = { NIGHT: 'night', WEEK: 'week', MONTH: 'month' };
+  const nightly = Object.entries(
+    (hosting?.rates ?? []).filter((r: ProviderRate) => r.unit in STAY_WORD)
+      .reduce((bySkill: Record<string, string[]>, r: ProviderRate) => {
+        (bySkill[r.skill_id] ??= []).push(`$${r.amount}/${STAY_WORD[r.unit]}`);
+        return bySkill;
+      }, {}),
+  ).map(([skill_id, prices]) => ({ skill_id, prices: prices.join(' · ') }));
   const skillName = (id: string) => skills?.find((sk) => sk.skill_id === id)?.name ?? 'A skill';
 
   const savedAmount = (skillId: string, unit: Unit) =>
@@ -286,7 +298,8 @@ export default function RatesAndHostingScreen() {
 
           <ThemedText style={s.intro}>
             Prices per hour, day or night let you apply to jobs booked for a set time — customers see your total for
-            their dates and pay when they book. Leave a box empty if you don't offer it.
+            their dates and pay when they book. A week or month price is used for longer stays when it's cheaper, and
+            a day price for a long few hours (like daycare). Leave a box empty if you don't offer it.
           </ThemedText>
 
           {verified.length === 0 && (
@@ -433,10 +446,10 @@ export default function RatesAndHostingScreen() {
                   <View style={s.nightly}>
                     <View style={s.row}>
                       <Moon size={14} color="#111827" />
-                      <ThemedText style={s.item}>Your price per night</ThemedText>
+                      <ThemedText style={s.item}>Your prices for stays</ThemedText>
                     </View>
                     {nightly.length > 0 ? nightly.map((r) => (
-                      <ThemedText key={r.skill_id} style={s.muted}>{skillName(r.skill_id)} — ${r.amount}</ThemedText>
+                      <ThemedText key={r.skill_id} style={s.muted}>{skillName(r.skill_id)} — {r.prices}</ThemedText>
                     )) : (
                       <ThemedText style={s.muted}>
                         {verified.length > 0
