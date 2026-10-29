@@ -14,12 +14,13 @@ import { ActivityIndicator, StatusBar, StyleSheet, Switch, TextInput, TouchableO
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type Unit = 'HOUR' | 'DAY' | 'NIGHT' | 'WEEK' | 'MONTH';
+type Unit = 'HOUR' | 'VISIT' | 'DAY' | 'NIGHT' | 'WEEK' | 'MONTH';
 
-// The three ways a job is priced up front (docs/JOB_SHAPE_DESIGN.md) — in the
-// words a provider thinks in, with an example of each.
+// The prices a job can be booked at up front (docs/JOB_SHAPE_DESIGN.md) — in
+// the words a provider thinks in, with an example of each.
 const UNITS: { unit: Unit; label: string; hint: string }[] = [
-  { unit: 'HOUR', label: 'Per hour', hint: 'A few hours — e.g. pet sitting, tutoring. Empty uses your usual hourly rate' },
+  { unit: 'HOUR', label: 'Per hour', hint: 'Booked by the hour. Empty uses your usual hourly rate' },
+  { unit: 'VISIT', label: 'Per visit', hint: 'One set price for a visit or session' },
   { unit: 'DAY', label: 'Per day', hint: "Over days at the customer's place, or a full day at yours (like daycare)" },
   { unit: 'NIGHT', label: 'Per night', hint: 'Stays at your place — e.g. pet boarding (turn on hosting below)' },
   // Long stays: used by themselves when they come out cheaper than the nights
@@ -33,7 +34,22 @@ const USUAL: { field: 'fee' | 'hourly'; label: string; hint: string }[] = [
   { field: 'hourly', label: 'Hourly rate', hint: 'For the work itself' },
 ];
 
-interface Skill { skill_id: string; name: string; is_verified: boolean }
+interface Skill { skill_id: string; name: string; is_verified: boolean; pricing?: string | null }
+
+// Each skill is priced one standard way (skofy-backend/app/domain/skill_pricing.py):
+// only its own price boxes show. A skill priced by quote has none — the
+// visiting fee above, then an invoice. An older skill without one shows all.
+const UNITS_BY_PRICING: Record<string, Unit[]> = {
+  QUOTE: [],
+  HOUR: ['HOUR'],
+  VISIT: ['VISIT'],
+  NIGHT: ['NIGHT', 'WEEK', 'MONTH'],
+  DAY: ['DAY', 'WEEK', 'MONTH'],
+};
+const unitsFor = (sk: Skill) => {
+  const allowed = sk.pricing ? UNITS_BY_PRICING[sk.pricing] : null;
+  return allowed ? UNITS.filter((u) => allowed.includes(u.unit)) : UNITS.filter((u) => u.unit !== 'VISIT');
+};
 
 // What a host takes in (skofy-backend/app/domain/care_sheet.py).
 const PET_KINDS: { value: PetKind; label: string }[] = [
@@ -173,11 +189,12 @@ export default function RatesAndHostingScreen() {
   const savedAmount = (skillId: string, unit: Unit) =>
     hosting?.rates.find((r: ProviderRate) => r.skill_id === skillId && r.unit === unit)?.amount;
 
-  const saveSkill = async (skillId: string) => {
+  const saveSkill = async (sk: Skill) => {
+    const skillId = sk.skill_id;
     setSavingSkill(skillId);
     try {
       let latest: Hosting | null = null;
-      for (const { unit } of UNITS) {
+      for (const { unit } of unitsFor(sk)) {
         const text = (drafts[key(skillId, unit)] ?? '').trim();
         const saved = savedAmount(skillId, unit);
         if (!text) {
@@ -313,10 +330,17 @@ export default function RatesAndHostingScreen() {
               </ThemedText>
             </View>
           )}
-          {verified.map((sk) => (
+          {verified.map((sk) => unitsFor(sk).length === 0 ? (
             <View key={sk.skill_id} style={s.card}>
               <ThemedText style={s.cardTitle}>{sk.name}</ThemedText>
-              {UNITS.map(({ unit, label, hint }) => (
+              <ThemedText style={s.muted}>
+                Priced by quote: your visiting fee (above) when you go to the customer, then your invoice after seeing the job.
+              </ThemedText>
+            </View>
+          ) : (
+            <View key={sk.skill_id} style={s.card}>
+              <ThemedText style={s.cardTitle}>{sk.name}</ThemedText>
+              {unitsFor(sk).map(({ unit, label, hint }) => (
                 <View key={unit} style={s.rateRow}>
                   <View style={{ flex: 1 }}>
                     <ThemedText style={s.item}>{label}</ThemedText>
@@ -336,7 +360,7 @@ export default function RatesAndHostingScreen() {
                   </View>
                 </View>
               ))}
-              <TouchableOpacity style={s.primary} onPress={() => saveSkill(sk.skill_id)} disabled={savingSkill === sk.skill_id}>
+              <TouchableOpacity style={s.primary} onPress={() => saveSkill(sk)} disabled={savingSkill === sk.skill_id}>
                 {savingSkill === sk.skill_id ? <ActivityIndicator color="#111827" /> : <ThemedText style={s.primaryText}>Save prices</ThemedText>}
               </TouchableOpacity>
             </View>

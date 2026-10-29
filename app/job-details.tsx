@@ -127,7 +127,7 @@ const SkillMatchCircle = ({ percentage, styles }: { percentage: number; styles: 
   );
 };
 
-const UNIT_WORD: Record<string, string> = { HOUR: 'hour', DAY: 'day', NIGHT: 'night' };
+const UNIT_WORD: Record<string, string> = { HOUR: 'hour', DAY: 'day', NIGHT: 'night', VISIT: 'visit' };
 
 /** A job priced up front, as this provider sees it: their total, or what's
  * missing to apply. null for a job priced by a quote. */

@@ -168,7 +168,7 @@ export default function DashboardScreen() {
         // Priced up front: your total once you've applied, else your rate's unit.
         fee: (j.steps ?? []).includes('PAY_UPFRONT')
           ? (j.proposed_fee ? `$${Number(j.proposed_fee).toFixed(2)} total`
-            : `Your price per ${({ HOUR: 'hour', DAY: 'day', NIGHT: 'night' } as Record<string, string>)[j.shape?.pricing_unit] ?? 'unit'}`)
+            : `Your price per ${({ HOUR: 'hour', DAY: 'day', NIGHT: 'night', VISIT: 'visit' } as Record<string, string>)[j.shape?.pricing_unit] ?? 'unit'}`)
           : j.budget_min && j.budget_max ? `$${j.budget_min}–$${j.budget_max}` : j.budget_min ? `From $${j.budget_min}` : 'Negotiable',
         skills: j.skills ?? [],
         skillRefs: j.skill_refs ?? [],
