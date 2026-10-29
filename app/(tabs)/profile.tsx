@@ -1,3 +1,4 @@
+import { isValidPassword } from '@/services/password';
 import AnimatedBrandMark from '@/components/animated-brand-mark';
 import React, { useState, useEffect, useMemo } from 'react';
 import { SkillAssessmentList } from '@/components/skill-assessment-list';
@@ -1113,6 +1114,10 @@ export default function ProfileScreen() {
       showAlert('error', 'Name Required', 'Please enter your name.');
       return;
     }
+    if (editYearsExp && Number(editYearsExp) > 60) {
+      showAlert('error', 'Years of Experience', 'Enter a number from 0 to 60.');
+      return;
+    }
     if (editEmail.trim() && !editEmail.includes('@')) {
       showAlert('error', 'Invalid Email', 'Please enter a valid email address or leave it blank.');
       return;
@@ -1126,7 +1131,7 @@ export default function ProfileScreen() {
       await SkoFyApi.provider.updateProfile({
         name: editName.trim(),
         email: editEmail.trim() ? tidyEmail(editEmail) : undefined,
-        bio: editBio.trim() || undefined,
+        bio: editBio.trim(),
         city: editCity.trim() || undefined,
         years_experience: editYearsExp ? parseInt(editYearsExp, 10) : undefined,
       });
@@ -1184,7 +1189,7 @@ export default function ProfileScreen() {
       showAlert('error', 'Current Password Required', 'Enter your current password to change it.');
       return;
     }
-    if (!newPassword || newPassword.length < 8 || !/[a-zA-Z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+    if (!isValidPassword(newPassword)) {
       showAlert('error', 'Weak Password', 'Password must be at least 8 characters and contain a letter and a number.');
       return;
     }
@@ -2383,6 +2388,7 @@ export default function ProfileScreen() {
               <TextInput
                 value={editName}
                 onChangeText={setEditName}
+                maxLength={100}
                 placeholder="Your full name"
                 style={[styles.editableInput, { marginTop: 6 }]}
               />
@@ -2426,7 +2432,7 @@ export default function ProfileScreen() {
               <TextInput
                 value={editCity}
                 onChangeText={setEditCity}
-                placeholder="e.g. Hyderabad"
+                placeholder="e.g. Austin"
                 style={[styles.editableInput, { marginTop: 6 }]}
               />
             </View>
@@ -2434,9 +2440,10 @@ export default function ProfileScreen() {
               <ThemedText style={styles.inputLabel}>Years of Experience</ThemedText>
               <TextInput
                 value={editYearsExp}
-                onChangeText={setEditYearsExp}
+                onChangeText={(text) => setEditYearsExp(text.replace(/\D/g, ''))}
                 placeholder="e.g. 5"
-                keyboardType="numeric"
+                keyboardType="number-pad"
+                maxLength={2}
                 style={[styles.editableInput, { marginTop: 6 }]}
               />
             </View>
@@ -2508,6 +2515,8 @@ export default function ProfileScreen() {
                   placeholder="Enter current password"
                   placeholderTextColor={themeColors.icon}
                   secureTextEntry={!showCurrentPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
                   style={[styles.editableInput, { flex: 1, paddingRight: 44 }]}
                   value={currentPassword}
                   onChangeText={setCurrentPassword}
@@ -2522,6 +2531,8 @@ export default function ProfileScreen() {
                   placeholder="Min 8 characters, 1 letter + 1 number"
                   placeholderTextColor={themeColors.icon}
                   secureTextEntry={!showNewPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
                   style={[styles.editableInput, { flex: 1, paddingRight: 44 }]}
                   value={newPassword}
                   onChangeText={setNewPassword}
@@ -2536,6 +2547,8 @@ export default function ProfileScreen() {
                   placeholder="Repeat password"
                   placeholderTextColor={themeColors.icon}
                   secureTextEntry={!showConfirmPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
                   style={[styles.editableInput, { flex: 1, paddingRight: 44 }]}
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
