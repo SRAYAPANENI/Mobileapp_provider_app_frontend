@@ -10,7 +10,7 @@ import { refreshUsualRate } from '@/components/labour-helper';
 import * as Location from 'expo-location';
 import { router, useFocusEffect } from 'expo-router';
 import { Box, ChevronLeft, Home, LocateFixed, Lock, Minus, Moon, PawPrint, Plus, Sparkles } from 'lucide-react-native';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, StatusBar, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -112,9 +112,16 @@ export default function RatesAndHostingScreen() {
   const [savingHost, setSavingHost] = useState(false);
   const [locating, setLocating] = useState(false);
 
+  // Price boxes typed in and not saved yet: a reload (coming back to this
+  // screen) mustn't overwrite them.
+  const edited = useRef(new Set<string>());
   const apply = (h: Hosting) => {
     setHosting(h);
-    setDrafts(Object.fromEntries(h.rates.map((r) => [key(r.skill_id, r.unit as Unit), String(r.amount)])));
+    const saved = Object.fromEntries(h.rates.map((r) => [key(r.skill_id, r.unit as Unit), String(r.amount)]));
+    setDrafts((prev) => {
+      const kept = Object.fromEntries([...edited.current].filter((k) => k in prev).map((k) => [k, prev[k]]));
+      return { ...saved, ...kept };
+    });
     setHost({ address: h.base_address ?? '', lat: h.base_lat, lng: h.base_lng });
     setPrefs(h.hosting_prefs ?? NO_HOSTING);
   };
@@ -122,22 +129,30 @@ export default function RatesAndHostingScreen() {
   // The price box being typed in: it shows what the provider keeps.
   const [typing, setTyping] = useState<string | null>(null);
 
-  const load = useCallback(() => {
+  // All three at once, shown together — they used to arrive one by one, and
+  // the usual rates filled their boxes while the provider was typing in them.
+  const load = useCallback(async () => {
     setLoadFailed(false);
-    SkoFyApi.hosting.mine().then(apply).catch(() => setLoadFailed(true));
-    SkoFyApi.skills.getMySkills()
-      .then((list: any) => setSkills((Array.isArray(list) ? list : [])
-        .sort((a: Skill, b: Skill) => a.name.localeCompare(b.name))))
-      .catch(() => setSkills([]));
-    SkoFyApi.provider.getProfile()
-      .then((p: any) => setUsual({
+    const [h, list, profile] = await Promise.allSettled([
+      SkoFyApi.hosting.mine(), SkoFyApi.skills.getMySkills(), SkoFyApi.provider.getProfile(),
+    ]);
+    if (h.status === 'rejected') {
+      setLoadFailed(true);
+      return;
+    }
+    apply(h.value);
+    const all = list.status === 'fulfilled' && Array.isArray(list.value) ? (list.value as Skill[]) : [];
+    setSkills([...all].sort((a, b) => a.name.localeCompare(b.name)));
+    if (profile.status === 'fulfilled' && !edited.current.has('usual')) {
+      const p: any = profile.value;
+      setUsual({
         fee: p?.visiting_fee != null ? String(p.visiting_fee) : '',
         hourly: p?.hourly_rate != null ? String(p.hourly_rate) : '',
-      }))
-      .catch(() => {});
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  useFocusEffect(load);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   // The visiting fee and hourly rate for ordinary visits. The server takes
   // both together, so both are needed.
@@ -155,6 +170,7 @@ export default function RatesAndHostingScreen() {
     setSavingUsual(true);
     try {
       await SkoFyApi.provider.setRates(fee, hourly);
+      edited.current.delete('usual');
       refreshUsualRate();
       appAlert.show('success', 'Saved', 'Customers now see your visiting fee and hourly rate.');
     } catch (err: any) {
@@ -197,20 +213,28 @@ export default function RatesAndHostingScreen() {
     const skillId = sk.skill_id;
     setSavingSkill(skillId);
     try {
-      let latest: Hosting | null = null;
+      // Checked first, so a bad box stops the save before anything is sent.
+      const changes: (() => Promise<unknown>)[] = [];
       for (const { unit } of unitsFor(sk)) {
         const text = (drafts[key(skillId, unit)] ?? '').trim();
         const saved = savedAmount(skillId, unit);
         if (!text) {
-          if (saved != null) latest = await SkoFyApi.hosting.removeRate(skillId, unit);
+          if (saved != null) changes.push(() => SkoFyApi.hosting.removeRate(skillId, unit));
           continue;
         }
         const amount = Number(text);
         if (!Number.isFinite(amount) || amount <= 0) throw new Error('Enter a price in dollars, like 25.');
-        if (amount !== saved) latest = await SkoFyApi.hosting.setRate(skillId, unit, amount);
+        if (amount !== saved) changes.push(() => SkoFyApi.hosting.setRate(skillId, unit, amount));
       }
-      if (latest) apply(latest);
-      appAlert.show('success', 'Saved', 'Customers now see your prices for this skill.');
+      // All at once (each price is its own row), then the card is read back
+      // once — one after another made a save take several seconds.
+      const results = await Promise.allSettled(changes.map((run) => run()));
+      unitsFor(sk).forEach(({ unit }) => edited.current.delete(key(skillId, unit)));
+      // Reading it back can't undo the save: if it fails, the boxes stay as typed.
+      await SkoFyApi.hosting.mine().then(apply).catch(() => {});
+      const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+      if (failed) throw failed.reason;
+      appAlert.show('success', 'Saved', changes.length ? 'Customers now see your prices for this skill.' : 'Nothing changed.');
     } catch (err: any) {
       appAlert.show('error', 'Not saved', err?.message ?? 'Please try again.');
     } finally {
@@ -310,7 +334,7 @@ export default function RatesAndHostingScreen() {
                     placeholder="—"
                     placeholderTextColor="#9CA3AF"
                     value={usual[field]}
-                    onChangeText={(t) => setUsual((u) => ({ ...u, [field]: t.replace(/[^0-9.]/g, '') }))}
+                    onChangeText={(t) => { edited.current.add('usual'); setUsual((u) => ({ ...u, [field]: t.replace(/[^0-9.]/g, '') })); }}
                     onFocus={() => setTyping(field)}
                     onBlur={() => setTyping((f) => (f === field ? null : f))}
                   />
@@ -365,7 +389,10 @@ export default function RatesAndHostingScreen() {
                       placeholder={unit === 'HOUR' && usual.hourly ? usual.hourly : '—'}
                       placeholderTextColor="#9CA3AF"
                       value={drafts[key(sk.skill_id, unit)] ?? ''}
-                      onChangeText={(t) => setDrafts((d) => ({ ...d, [key(sk.skill_id, unit)]: t.replace(/[^0-9.]/g, '') }))}
+                      onChangeText={(t) => {
+                        edited.current.add(key(sk.skill_id, unit));
+                        setDrafts((d) => ({ ...d, [key(sk.skill_id, unit)]: t.replace(/[^0-9.]/g, '') }));
+                      }}
                     />
                   </View>
                 </View>

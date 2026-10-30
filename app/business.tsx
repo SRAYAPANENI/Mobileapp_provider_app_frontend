@@ -17,11 +17,12 @@ import {
 } from '@/services/api';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import {
-  AlertTriangle, BadgeCheck, Briefcase, Building2, ChevronLeft, FileText, Landmark, LogOut, Map as MapIcon, Pencil, Plus, ShieldCheck, Trash2, Users,
-} from 'lucide-react-native';
+import { AlertTriangle, BadgeCheck, Briefcase, Building2, ChevronLeft, FileText, Landmark, LogOut, Map as MapIcon, Pencil, Plus, ShieldCheck, Trash2, Users, Camera } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Linking, Share, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
+import { PRO_APP_DOWNLOAD_URL } from '@/services/api-config';
 import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 import { usePullRefresh } from '@/hooks/use-pull-refresh';
 
@@ -73,6 +74,31 @@ export default function BusinessScreen() {
   }, [data]);
   const reload = refresh;
   const refreshControl = usePullRefresh(refresh);
+
+  // The logo: picked from the phone, square, sent as an image.
+  const changeLogo = () => {
+    const pick = async () => {
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.7, base64: true });
+      const asset = !result.canceled ? result.assets[0] : null;
+      if (!asset?.base64) return;
+      await run('logo', () => SkoFyApi.business.setLogo(`data:${asset.mimeType ?? 'image/jpeg'};base64,${asset.base64}`), 'Logo updated.');
+    };
+    if (!business?.logo_url) { pick(); return; }
+    appAlert.show('info', 'Business logo', 'Customers see it on your business’s applications and jobs.', [
+      { text: 'Remove', variant: 'secondary', onPress: () => { run('logo', () => SkoFyApi.business.setLogo(null), 'Logo removed.'); } },
+      { text: 'Change', variant: 'primary', onPress: () => { pick(); } },
+    ]);
+  };
+
+  // An invite to someone not on Dodorez, sent from the owner's phone.
+  const shareInvite = (phone: string, r: MemberRole) => {
+    const as = r === 'DISPATCHER' ? 'a dispatcher' : 'a worker';
+    Share.share({
+      message: `${business?.name ?? 'We'} invited you to join the team on Dodorez as ${as}. `
+        + `Get the Dodorez Pro app: ${PRO_APP_DOWNLOAD_URL} — then sign up with this number (${phone}), `
+        + 'and the invite will be waiting for you under Business.',
+    }).catch(() => {});
+  };
 
   const run = async (key: string, action: () => Promise<unknown>, success?: string) => {
     setBusy(key);
@@ -186,7 +212,17 @@ export default function BusinessScreen() {
             <>
               {/* Who the business is */}
               <View style={[u.card, s.hero]}>
-                <Monogram name={business.name} size={56} />
+                {/* The logo customers see on its applications; the owner taps to change it. */}
+                <TouchableOpacity disabled={!owner || busy === 'logo'} onPress={changeLogo} accessibilityLabel="Business logo">
+                  {business.logo_url
+                    ? <Image source={{ uri: business.logo_url }} style={s.logo} contentFit="cover" />
+                    : <Monogram name={business.name} size={56} />}
+                  {owner && (
+                    <View style={s.logoEdit}>
+                      {busy === 'logo' ? <ActivityIndicator size="small" color={C.ink} /> : <Camera size={12} color={C.ink} />}
+                    </View>
+                  )}
+                </TouchableOpacity>
                 <View style={{ flex: 1, gap: 4 }}>
                   <ThemedText style={s.heroName} numberOfLines={2}>{business.name}</ThemedText>
                   <ThemedText style={u.muted} numberOfLines={1}>
@@ -287,8 +323,19 @@ export default function BusinessScreen() {
                 <TeamSection team={team} canManage={owner}
                   onInvite={async (phone, r: MemberRole) => {
                     try {
-                      setTeam(await SkoFyApi.business.invite(phone, r));
-                      appAlert.show('success', 'Invite sent', 'Ask them to sign in to the Dodorez Pro app with this number — the invite waits under Business.');
+                      const result = await SkoFyApi.business.invite(phone, r);
+                      setTeam(result);
+                      if (result.invited_on_dodorez === false) {
+                        // Not on Dodorez: nothing reaches them from us. Sent from the
+                        // owner's own phone (WhatsApp, a text…) — it comes from someone
+                        // they know, and the invite is waiting for this number.
+                        appAlert.show('success', 'Invite ready', "They're not on Dodorez yet. Send them the invite yourself — by WhatsApp, a text or anything else.", [
+                          { text: 'Later', variant: 'secondary' },
+                          { text: 'Send invite', variant: 'primary', onPress: () => { shareInvite(phone, r); } },
+                        ]);
+                      } else {
+                        appAlert.show('success', 'Invite sent', 'They can answer it in the Dodorez Pro app, under Business.');
+                      }
                     } catch (err: any) {
                       appAlert.show('error', 'Not sent', err?.message ?? 'Please try again.');
                       throw err;
@@ -421,6 +468,11 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 const s = StyleSheet.create({
+  logo: { width: 56, height: 56, borderRadius: 16, backgroundColor: '#F1F5F9' },
+  logoEdit: {
+    position: 'absolute', right: -4, bottom: -4, width: 22, height: 22, borderRadius: 11,
+    backgroundColor: '#FFCE48', borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center',
+  },
   container: { flex: 1, backgroundColor: C.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12 },
   back: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: C.card, borderWidth: 1, borderColor: C.line },

@@ -18,3 +18,7 @@ const NGROK_URL = 'https://dill-unstirred-amply.ngrok-free.dev/v1';
 // against a local backend. Must match the customer app's BASE_URL.
 const AWS_URL = 'https://16-4-28-180.sslip.io/v1';
 export const API_BASE_URL = AWS_URL;
+
+// Where someone gets the Dodorez Pro app — in invites sent from a phone.
+// Update when the app is published (and its package id is final).
+export const PRO_APP_DOWNLOAD_URL = 'https://play.google.com/store/apps/details?id=com.anonymous.skofyserviceproviderapp';

@@ -434,6 +434,8 @@ export interface Business {
   state: string; email: string | null; phone: string | null; status: BusinessStatus;
   /** Whether its members may also work for themselves. */
   allow_independent_work: boolean;
+  /** Its logo, shown to customers on its applications and jobs. */
+  logo_url?: string | null;
   review_note: string | null; connect_onboarding_status: string;
   documents: BusinessDocument[]; ready_for_on_site_work: boolean; missing: string[];
 }
@@ -1452,7 +1454,10 @@ export const SkoFyApi = {
     payoutsDashboard: async (): Promise<{ url: string }> =>
       request('/businesses/me/payouts/dashboard', { method: 'POST' }) as any,
     team: async (): Promise<Team> => request('/businesses/me/team') as any,
-    invite: async (phone: string, role: MemberRole): Promise<Team> =>
+    /** The logo, as an image data: URL — or null to remove it. */
+    setLogo: async (image: string | null): Promise<MyBusiness> =>
+      request('/businesses/me/logo', { method: 'PUT', body: JSON.stringify({ image }) }) as any,
+    invite: async (phone: string, role: MemberRole): Promise<Team & { invited_on_dodorez?: boolean }> =>
       request('/businesses/me/team/invites', { method: 'POST', body: JSON.stringify({ phone, role }) }) as any,
     changeRole: async (memberId: string, role: MemberRole): Promise<Team> =>
       request(`/businesses/me/team/${memberId}`, { method: 'PUT', body: JSON.stringify({ role }) }) as any,

@@ -260,15 +260,10 @@ export default function RegisterScreen() {
   // total instead of permanently blocking the submit button below 100%.
   const calculateProgress = () => {
     let completed = 0;
-    // National ID Number / ID Document are intentionally NOT counted toward
-    // the required total — the ID section's own subtitle tells the user
-    // they're "Recommended for account recovery," not mandatory. They used
-    // to count here anyway, so Create Account silently stayed disabled
-    // below 100% until a user filled in fields the UI told them were
-    // optional, with no field-level error explaining why the button was
-    // stuck. Still tracked below (idNumberFilled/idDocFilled) so filling
-    // them in nudges the progress bar, just not required to reach 100%.
-    const total = isAddingRole ? 8 : 9; // Professional details (Profession/Skills, Experience), [Password]
+    // The ID document is required (decided 2026-10-30): a provider goes into
+    // people's homes, and identity is checked before they can apply for jobs.
+    // The ID number stays optional, and only nudges the bar.
+    const total = isAddingRole ? 9 : 10; // Professional details (Profession/Skills, Experience), ID document, [Password]
     // The photo is required: customers need to recognise who's at the door.
     if (profileImage) completed++;
     if (hasFullName(nameOf(formData))) completed++;
@@ -277,14 +272,14 @@ export default function RegisterScreen() {
     if (addressType) completed++; // Always has a value
     if (formData.skills.length > 0) completed++;
     if (formData.experience) completed++;
+    if (idDocumentImage) completed++;
     // Work proof is optional (it nudges the bar, like the ID fields below).
     if (!isAddingRole && formData.password && formData.password === formData.confirmPassword && isValidPassword(formData.password)) completed++;
     if (agreedToTerms && agreedToPrivacy) completed++;
 
     const idNumberFilled = formData.idNumber ? 1 : 0;
-    const idDocFilled = idDocumentImage ? 1 : 0;
     const workProofFilled = workProofImage ? 1 : 0;
-    return Math.min(1, (completed + idNumberFilled + idDocFilled + workProofFilled) / total);
+    return Math.min(1, (completed + idNumberFilled + workProofFilled) / total);
   };
 
   // Mirrors calculateProgress()'s own required checks exactly — surfaced to
@@ -300,6 +295,7 @@ export default function RegisterScreen() {
     if (formData.skills.length === 0) missing.push('Skills');
     if (!formData.experience) missing.push('Years of Experience');
     else if (Number(formData.experience) > 60) missing.push('Years of Experience (0 to 60)');
+    if (!idDocumentImage) missing.push('ID document (a photo of the front of your ID)');
     if (!isAddingRole && !(formData.password && formData.password === formData.confirmPassword && isValidPassword(formData.password))) {
       missing.push(`Password (${PASSWORD_RULE.toLowerCase()}, matching in both fields)`);
     }
@@ -1321,7 +1317,7 @@ export default function RegisterScreen() {
             </View>
 
             <View style={{ marginTop: 8 }}>
-              <ThemedText style={styles.fieldLabel}>Upload ID Document</ThemedText>
+              <ThemedText style={styles.fieldLabel}>Upload ID Document<ThemedText style={styles.requiredMark}> *</ThemedText></ThemedText>
               {idDocumentImage ? (
                 <View style={styles.documentPreviewContainer}>
                   <Image source={{ uri: idDocumentImage }} style={styles.documentPreview} contentFit="cover" />
