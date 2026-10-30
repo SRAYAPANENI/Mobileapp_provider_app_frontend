@@ -11,6 +11,7 @@ import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { SkoFyApi, TokenStore } from '@/services/api';
 import { isEmail, tidyEmail } from '@/services/email';
+import { NAME_PART_MAX, hasFullName, namePayload } from '@/services/name';
 import { PASSWORD_RULE, isValidPassword } from '@/services/password';
 import { registerFcmToken } from '@/services/callManager';
 import { GooglePlacesService, GooglePlaceSuggestion } from '@/services/google-places';
@@ -69,6 +70,9 @@ async function runLimited(tasks: (() => Promise<void>)[], limit: number): Promis
   await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
 }
 
+const nameOf = (f: { firstName: string; middleName: string; lastName: string }) =>
+  ({ first: f.firstName, middle: f.middleName, last: f.lastName });
+
 export default function RegisterScreen() {
   const bottomInset = useBottomInset();
   const colorScheme = useColorScheme() ?? 'light';
@@ -91,7 +95,9 @@ export default function RegisterScreen() {
   const { prefillPhone, resumedIsNewUser } = useLocalSearchParams<{ prefillPhone?: string; resumedIsNewUser?: string }>();
 
   const [formData, setFormData] = useState({
-    fullName: '',
+    firstName: '',
+    middleName: '',
+    lastName: '',
     email: '',
     mobileNumber: prefillPhone ?? '',
     otp: '',
@@ -262,22 +268,23 @@ export default function RegisterScreen() {
     // optional, with no field-level error explaining why the button was
     // stuck. Still tracked below (idNumberFilled/idDocFilled) so filling
     // them in nudges the progress bar, just not required to reach 100%.
-    const total = isAddingRole ? 9 : 10; // Professional details (Profession/Skills, Experience, Work Proof), [Password]
+    const total = isAddingRole ? 8 : 9; // Professional details (Profession/Skills, Experience), [Password]
     // The photo is required: customers need to recognise who's at the door.
     if (profileImage) completed++;
-    if (formData.fullName) completed++;
+    if (hasFullName(nameOf(formData))) completed++;
     if (isOtpVerified) completed++;
     if (formData.address) completed++;
     if (addressType) completed++; // Always has a value
     if (formData.skills.length > 0) completed++;
     if (formData.experience) completed++;
-    if (workProofImage) completed++;
+    // Work proof is optional (it nudges the bar, like the ID fields below).
     if (!isAddingRole && formData.password && formData.password === formData.confirmPassword && isValidPassword(formData.password)) completed++;
     if (agreedToTerms && agreedToPrivacy) completed++;
 
     const idNumberFilled = formData.idNumber ? 1 : 0;
     const idDocFilled = idDocumentImage ? 1 : 0;
-    return Math.min(1, (completed + idNumberFilled + idDocFilled) / total);
+    const workProofFilled = workProofImage ? 1 : 0;
+    return Math.min(1, (completed + idNumberFilled + idDocFilled + workProofFilled) / total);
   };
 
   // Mirrors calculateProgress()'s own required checks exactly — surfaced to
@@ -287,13 +294,12 @@ export default function RegisterScreen() {
   const getMissingSteps = (): string[] => {
     const missing: string[] = [];
     if (!profileImage) missing.push('Profile Photo');
-    if (!formData.fullName) missing.push('Full Name');
+    if (!hasFullName(nameOf(formData))) missing.push('First and last name');
     if (!isOtpVerified) missing.push('Mobile Number Verification (tap "Verify with OTP")');
     if (!formData.address) missing.push('Address');
     if (formData.skills.length === 0) missing.push('Skills');
     if (!formData.experience) missing.push('Years of Experience');
     else if (Number(formData.experience) > 60) missing.push('Years of Experience (0 to 60)');
-    if (!workProofImage) missing.push('Work Proof document');
     if (!isAddingRole && !(formData.password && formData.password === formData.confirmPassword && isValidPassword(formData.password))) {
       missing.push(`Password (${PASSWORD_RULE.toLowerCase()}, matching in both fields)`);
     }
@@ -707,15 +713,50 @@ export default function RegisterScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <ThemedText style={styles.fieldLabel}>Full Name<ThemedText style={styles.requiredMark}> *</ThemedText></ThemedText>
+              <ThemedText style={styles.fieldLabel}>First name<ThemedText style={styles.requiredMark}> *</ThemedText></ThemedText>
               <TextInput
-                style={getInputStyle('fullName')}
-                placeholder="Full Name"
+                style={getInputStyle('firstName')}
+                placeholder="First name"
                 placeholderTextColor={themeColors.icon}
-                value={formData.fullName}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, fullName: text }))}
-                maxLength={100}
-                onFocus={() => setFocusedInput('fullName')}
+                value={formData.firstName}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, firstName: text }))}
+                maxLength={NAME_PART_MAX}
+                autoCapitalize="words"
+                autoComplete="name-given"
+                textContentType="givenName"
+                onFocus={() => setFocusedInput('firstName')}
+                onBlur={() => setFocusedInput(null)}
+              />
+            </View>
+            <View style={styles.inputGroup}>
+              <ThemedText style={styles.fieldLabel}>Middle name</ThemedText>
+              <TextInput
+                style={getInputStyle('middleName')}
+                placeholder="Optional"
+                placeholderTextColor={themeColors.icon}
+                value={formData.middleName}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, middleName: text }))}
+                maxLength={NAME_PART_MAX}
+                autoCapitalize="words"
+                autoComplete="name-middle"
+                textContentType="middleName"
+                onFocus={() => setFocusedInput('middleName')}
+                onBlur={() => setFocusedInput(null)}
+              />
+            </View>
+            <View style={styles.inputGroup}>
+              <ThemedText style={styles.fieldLabel}>Last name<ThemedText style={styles.requiredMark}> *</ThemedText></ThemedText>
+              <TextInput
+                style={getInputStyle('lastName')}
+                placeholder="Last name"
+                placeholderTextColor={themeColors.icon}
+                value={formData.lastName}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, lastName: text }))}
+                maxLength={NAME_PART_MAX}
+                autoCapitalize="words"
+                autoComplete="name-family"
+                textContentType="familyName"
+                onFocus={() => setFocusedInput('lastName')}
                 onBlur={() => setFocusedInput(null)}
               />
             </View>
@@ -1189,7 +1230,7 @@ export default function RegisterScreen() {
             </View>
 
             <View style={{ marginTop: 8, marginBottom: 16 }}>
-              <ThemedText style={styles.fieldLabel}>Upload Work Proof Certificate<ThemedText style={styles.requiredMark}> *</ThemedText></ThemedText>
+              <ThemedText style={styles.fieldLabel}>Upload Work Proof Certificate (optional)</ThemedText>
               {workProofImage ? (
                 <View style={styles.documentPreviewContainer}>
                   <Image source={{ uri: workProofImage }} style={styles.documentPreview} contentFit="cover" />
@@ -1375,7 +1416,7 @@ export default function RegisterScreen() {
                   // First and always: it creates the provider profile the rest hangs on,
                   // and is safe to send again.
                   await SkoFyApi.auth.updateProfile({
-                    name: formData.fullName,
+                    ...namePayload(nameOf(formData)),
                     email: formData.email.trim() ? tidyEmail(formData.email) : undefined,
                     bio: formData.experience
                       ? `${formData.experience} years of experience as a ${headline}`

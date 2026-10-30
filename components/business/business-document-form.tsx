@@ -13,6 +13,13 @@ const KINDS: { value: BusinessDocumentKind; label: string }[] = [
   { value: 'LICENCE', label: 'Trade licence' },
 ];
 
+/** Typed digits shown as MM/DD/YYYY — the slashes go in by themselves,
+ * and deleting works through them as if they weren't there. */
+function asDate(text: string): string {
+  const d = text.replace(/\D/g, '').slice(0, 8);
+  return [d.slice(0, 2), d.slice(2, 4), d.slice(4)].filter(Boolean).join('/');
+}
+
 /** "MM/DD/YYYY" → "YYYY-MM-DD", or null if it isn't a real date. */
 function isoDate(text: string): string | null {
   const m = text.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
@@ -118,8 +125,8 @@ export function BusinessDocumentForm({ minLiability, initialKind, onSubmit, onCa
         </View>
       )}
       <Field label={insurance ? 'Policy ends' : 'Expires'} hint={insurance ? 'MM/DD/YYYY' : 'MM/DD/YYYY, if it does'}>
-        <TextInput style={u.input} value={expires} onChangeText={setExpires} keyboardType="numbers-and-punctuation"
-          placeholderTextColor={C.faint} placeholder="12/31/2027" />
+        <TextInput style={u.input} value={expires} onChangeText={(t) => setExpires(asDate(t))} keyboardType="number-pad"
+          maxLength={10} placeholderTextColor={C.faint} placeholder="12/31/2027" />
       </Field>
 
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>

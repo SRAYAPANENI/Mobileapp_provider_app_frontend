@@ -16,14 +16,17 @@ const STATE_BADGE: Record<Exclude<StepState, 'todo'>, { label: string; tone: Ton
 const MISSING_PREFIX: Record<string, string> = { GENERAL_LIABILITY: 'General liability', LICENCE: 'A trade licence', PAYOUTS: 'Payouts' };
 const listed = (business: Business, key: string) => business.missing.some((m) => m.startsWith(MISSING_PREFIX[key]));
 
-/** Where a document requirement stands: the best of its kind's uploads. */
-function docState(business: Business, kind: BusinessDocumentKind): StepState {
+/** Where a document requirement stands — the best of its kind's uploads —
+ * and, when it needs fixing, why: our team's own words when they turned it down. */
+function docState(business: Business, kind: BusinessDocumentKind): { state: StepState; why?: string } {
   const docs = business.documents.filter((d) => d.kind === kind);
-  if (!listed(business, kind)) return 'done';
-  if (docs.some((d) => d.status === 'APPROVED')) return 'fix';   // approved but not enough, or out of date
-  if (docs.some((d) => d.status === 'PENDING_REVIEW')) return 'review';
-  if (docs.some((d) => d.status === 'REJECTED' || d.status === 'EXPIRED')) return 'fix';
-  return 'todo';
+  if (!listed(business, kind)) return { state: 'done' };
+  if (docs.some((d) => d.status === 'PENDING_REVIEW')) return { state: 'review' };
+  const turnedDown = docs.find((d) => d.status === 'REJECTED');
+  if (turnedDown) return { state: 'fix', why: `Not accepted: ${turnedDown.review_note || 'see the document below'}` };
+  if (docs.some((d) => d.status === 'EXPIRED')) return { state: 'fix', why: 'It has ended — upload the new one' };
+  if (docs.some((d) => d.status === 'APPROVED')) return { state: 'fix', why: 'Out of date or not enough cover — upload a new one' };
+  return { state: 'todo' };
 }
 
 interface Props {
@@ -43,15 +46,17 @@ export function SetupChecklist({ business, minLiability, canAct, busy, onUpload,
   const payoutsDone = !listed(business, 'PAYOUTS');
   const review: StepState = business.status === 'APPROVED' ? 'done' : business.status === 'PENDING_REVIEW' ? 'review'
     : business.status === 'REJECTED' ? 'fix' : 'todo';
+  const liability = docState(business, 'GENERAL_LIABILITY');
+  const licence = docState(business, 'LICENCE');
   const steps: { title: string; detail: string; state: StepState; action?: React.ReactNode }[] = [
     { title: 'Business details', detail: `${business.legal_name} · ${business.state}`, state: 'done' },
     {
-      title: 'General liability insurance', detail: `$${minLiability.toLocaleString()} or more per occurrence`,
-      state: docState(business, 'GENERAL_LIABILITY'),
+      title: 'General liability insurance', detail: liability.why ?? `$${minLiability.toLocaleString()} or more per occurrence`,
+      state: liability.state,
       action: <Button small kind="secondary" label="Upload" onPress={() => onUpload('GENERAL_LIABILITY')} />,
     },
     {
-      title: 'Trade licence', detail: 'For the trades your team does', state: docState(business, 'LICENCE'),
+      title: 'Trade licence', detail: licence.why ?? 'For the trades your team does', state: licence.state,
       action: <Button small kind="secondary" label="Upload" onPress={() => onUpload('LICENCE')} />,
     },
     {
@@ -63,7 +68,8 @@ export function SetupChecklist({ business, minLiability, canAct, busy, onUpload,
   const ready = steps.every((s) => s.state === 'done' || s.state === 'review');
   steps.push({
     title: 'Review by Dodorez',
-    detail: review === 'review' ? 'Usually within 2 business days' : review === 'fix' ? business.review_note ?? 'See what to change'
+    detail: review === 'review' ? 'Usually within 2 business days'
+      : review === 'fix' ? (business.review_note ? `Needs changes: ${business.review_note}` : 'See what to change')
       : ready ? 'Everything is in — send it' : 'Once the steps above are in',
     state: review,
   });
@@ -92,8 +98,9 @@ export function SetupChecklist({ business, minLiability, canAct, busy, onUpload,
             <View style={st.stepBody}>
               <View style={{ flex: 1, gap: 2 }}>
                 <ThemedText style={[st.stepTitle, step.state === 'done' && st.stepTitleDone]}>{step.title}</ThemedText>
-                <ThemedText style={[u.muted, step.state === 'fix' && { color: C.bad }]} numberOfLines={2}>
-                  {step.state === 'fix' && step.action ? 'Not accepted or out of date — upload a new one' : step.detail}
+                {/* A reason from our team is shown in full. */}
+                <ThemedText style={[u.muted, step.state === 'fix' && { color: C.bad }]} numberOfLines={step.state === 'fix' ? undefined : 2}>
+                  {step.detail}
                 </ThemedText>
               </View>
               {step.state === 'todo' || step.state === 'fix' ? (canAct && step.action) : <Badge {...STATE_BADGE[step.state]} />}

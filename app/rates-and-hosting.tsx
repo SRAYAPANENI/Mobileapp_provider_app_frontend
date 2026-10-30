@@ -1,3 +1,4 @@
+import { YouKeep } from '@/components/you-keep';
 import { useAppAlert } from '@/components/app-alert';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -117,6 +118,9 @@ export default function RatesAndHostingScreen() {
     setHost({ address: h.base_address ?? '', lat: h.base_lat, lng: h.base_lng });
     setPrefs(h.hosting_prefs ?? NO_HOSTING);
   };
+
+  // The price box being typed in: it shows what the provider keeps.
+  const [typing, setTyping] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoadFailed(false);
@@ -296,6 +300,7 @@ export default function RatesAndHostingScreen() {
                 <View style={{ flex: 1 }}>
                   <ThemedText style={s.item}>{label}</ThemedText>
                   <ThemedText style={s.hint}>{hint}</ThemedText>
+                  {typing === field && <YouKeep amount={usual[field]} />}
                 </View>
                 <View style={s.money}>
                   <ThemedText style={s.dollar}>$</ThemedText>
@@ -306,6 +311,8 @@ export default function RatesAndHostingScreen() {
                     placeholderTextColor="#9CA3AF"
                     value={usual[field]}
                     onChangeText={(t) => setUsual((u) => ({ ...u, [field]: t.replace(/[^0-9.]/g, '') }))}
+                    onFocus={() => setTyping(field)}
+                    onBlur={() => setTyping((f) => (f === field ? null : f))}
                   />
                 </View>
               </View>
@@ -345,11 +352,14 @@ export default function RatesAndHostingScreen() {
                   <View style={{ flex: 1 }}>
                     <ThemedText style={s.item}>{label}</ThemedText>
                     <ThemedText style={s.hint}>{hint}</ThemedText>
+                    {typing === key(sk.skill_id, unit) && <YouKeep amount={drafts[key(sk.skill_id, unit)] ?? ''} />}
                   </View>
                   <View style={s.money}>
                     <ThemedText style={s.dollar}>$</ThemedText>
                     <TextInput
                       style={s.moneyInput}
+                      onFocus={() => setTyping(key(sk.skill_id, unit))}
+                      onBlur={() => setTyping((f) => (f === key(sk.skill_id, unit) ? null : f))}
                       keyboardType="decimal-pad"
                       // Empty per hour uses the usual hourly rate (set above).
                       placeholder={unit === 'HOUR' && usual.hourly ? usual.hourly : '—'}

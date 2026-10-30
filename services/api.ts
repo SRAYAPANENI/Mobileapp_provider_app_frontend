@@ -31,6 +31,15 @@ const USER_KEY = 'skofy_user';
 // Register verified the number but Create Account hasn't finished yet.
 const REGISTERING_KEY = 'skofy_registering';
 
+/** "You'll keep $X": this month's figure, and the usual one (a month with no fees yet). */
+export interface FeePreview {
+  amount: number;
+  fee: number;
+  you_keep: number;
+  standard_fee?: number;
+  standard_keep?: number;
+}
+
 export const TokenStore = {
   async setTokens(access: string, refresh: string) {
     await SecureStore.setItemAsync(TOKEN_KEY, access);
@@ -713,6 +722,9 @@ export const SkoFyApi = {
     /** Complete provider profile after first login. */
     updateProfile: async (data: {
       name: string;
+      first_name?: string;
+      middle_name?: string;
+      last_name?: string;
       email?: string;
       bio?: string;
       years_experience?: number;
@@ -754,6 +766,9 @@ export const SkoFyApi = {
 
     updateProfile: async (data: {
       name?: string;
+      first_name?: string;
+      middle_name?: string;
+      last_name?: string;
       email?: string;
       bio?: string;
       years_experience?: number;
@@ -838,7 +853,7 @@ export const SkoFyApi = {
       request(`/fees/me/quote-preview?job_id=${jobId}&amount=${amount}&parts_total=${partsTotal}`),
 
     /** "You'll keep $X" for an amount, with what's already been paid on the job and this month. */
-    previewFee: async (amount: number, jobId?: string): Promise<{ amount: number; fee: number; you_keep: number }> =>
+    previewFee: async (amount: number, jobId?: string): Promise<FeePreview> =>
       request(`/fees/me/preview?amount=${amount}${jobId ? `&job_id=${jobId}` : ''}`),
 
     /** Your side of an open dispute, with photos. */

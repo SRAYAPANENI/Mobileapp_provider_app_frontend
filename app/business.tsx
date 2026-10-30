@@ -352,7 +352,7 @@ export default function BusinessScreen() {
                           {[doc.issuer, doc.coverage_limit ? usd(doc.coverage_limit) : null, doc.expires_on ? `ends ${date(doc.expires_on)}` : null]
                             .filter(Boolean).join(' · ') || 'Tap to view'}
                         </ThemedText>
-                        {doc.review_note && doc.status === 'REJECTED' && <ThemedText style={[u.muted, { color: C.bad }]}>{doc.review_note}</ThemedText>}
+                        {doc.review_note && doc.status === 'REJECTED' && <ThemedText style={[u.muted, { color: C.bad }]}>Not accepted: {doc.review_note}</ThemedText>}
                         <Badge {...DOC_STATUS[doc.status]} />
                       </View>
                     }

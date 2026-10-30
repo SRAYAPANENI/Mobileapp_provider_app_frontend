@@ -1,3 +1,4 @@
+import { NAME_PART_MAX, NameParts, fullName, hasFullName, namePayload } from '@/services/name';
 import { isValidPassword } from '@/services/password';
 import AnimatedBrandMark from '@/components/animated-brand-mark';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -243,7 +244,7 @@ export default function ProfileScreen() {
 
   // Edit Profile state
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
-  const [editName, setEditName] = useState('');
+  const [editName, setEditName] = useState<NameParts>({ first: '', middle: '', last: '' });
   const [editEmail, setEditEmail] = useState('');
   const [editBio, setEditBio] = useState('');
   const [editCity, setEditCity] = useState('');
@@ -338,7 +339,7 @@ export default function ProfileScreen() {
       if (profile?.connect_onboarding_status) setConnectStatus(profile.connect_onboarding_status);
       if (profile?.background_check_status) setBackgroundCheckStatus(profile.background_check_status);
       if (profile?.license_verification_status) setLicenseStatus(profile.license_verification_status);
-      setEditName(name);
+      setEditName({ first: profile?.first_name ?? '', middle: profile?.middle_name ?? '', last: profile?.last_name ?? '' });
       setEditEmail(email);
       setEditBio(bio);
       setEditCity(city);
@@ -1110,8 +1111,8 @@ export default function ProfileScreen() {
   };
 
   const handleSaveProfile = async () => {
-    if (!editName.trim()) {
-      showAlert('error', 'Name Required', 'Please enter your name.');
+    if (!hasFullName(editName)) {
+      showAlert('error', 'Name Required', 'Enter your first and last name.');
       return;
     }
     if (editYearsExp && Number(editYearsExp) > 60) {
@@ -1129,13 +1130,13 @@ export default function ProfileScreen() {
     setIsSavingProfile(true);
     try {
       await SkoFyApi.provider.updateProfile({
-        name: editName.trim(),
+        ...namePayload(editName),
         email: editEmail.trim() ? tidyEmail(editEmail) : undefined,
         bio: editBio.trim(),
         city: editCity.trim() || undefined,
         years_experience: editYearsExp ? parseInt(editYearsExp, 10) : undefined,
       });
-      setProviderName(editName.trim());
+      setProviderName(fullName(editName));
       setProviderBio(editBio.trim());
       setYearsExperience(editYearsExp ? parseInt(editYearsExp, 10) : 0);
       setIsEditProfileOpen(false);
@@ -2384,14 +2385,18 @@ export default function ProfileScreen() {
           <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" automaticOffset>
           <ScrollView contentContainerStyle={padBottom({ padding: 20, gap: 16 }, bottomInset)} keyboardShouldPersistTaps="handled">
             <View>
-              <ThemedText style={styles.inputLabel}>Full Name *</ThemedText>
-              <TextInput
-                value={editName}
-                onChangeText={setEditName}
-                maxLength={100}
-                placeholder="Your full name"
-                style={[styles.editableInput, { marginTop: 6 }]}
-              />
+              <ThemedText style={styles.inputLabel}>Name *</ThemedText>
+              {([['first', 'First name *'], ['middle', 'Middle name (optional)'], ['last', 'Last name *']] as const).map(([part, hint]) => (
+                <TextInput
+                  key={part}
+                  value={editName[part]}
+                  onChangeText={(text) => setEditName((prev) => ({ ...prev, [part]: text }))}
+                  maxLength={NAME_PART_MAX}
+                  autoCapitalize="words"
+                  placeholder={hint}
+                  style={[styles.editableInput, { marginTop: 6 }]}
+                />
+              ))}
             </View>
             <View>
               <ThemedText style={styles.inputLabel}>Mobile Number</ThemedText>
