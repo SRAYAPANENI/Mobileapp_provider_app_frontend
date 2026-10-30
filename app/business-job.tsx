@@ -12,6 +12,7 @@ import { Calendar, Check, ChevronLeft, Eye, Map as MapIcon, MapPin, Send, User }
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { usePullRefresh } from '@/hooks/use-pull-refresh';
 
 const POLL_MS = 8000;
 
@@ -54,6 +55,7 @@ export default function BusinessJobScreen() {
     const id = setInterval(load, POLL_MS);
     return () => clearInterval(id);
   }, [load]);
+  const refreshControl = usePullRefresh(load);
 
   // New messages here arrive by refresh — no push for the job on screen.
   useEffect(() => {
@@ -96,7 +98,7 @@ export default function BusinessJobScreen() {
         </View>
 
         {!job ? <ActivityIndicator style={{ marginTop: 40 }} color={C.ink} /> : (
-          <ScrollView contentContainerStyle={s.body} keyboardShouldPersistTaps="handled">
+          <ScrollView refreshControl={refreshControl} contentContainerStyle={s.body} keyboardShouldPersistTaps="handled">
             <View style={[u.card, { gap: 0, paddingVertical: 4 }]}>
               <Row icon={<Monogram name={job.worker_name ?? '?'} size={38} tone={job.worker_name ? 'brand' : 'neutral'} />}
                 title={job.worker_name ?? 'Not assigned yet'} detail="Doing this job"

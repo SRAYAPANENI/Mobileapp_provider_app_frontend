@@ -1,6 +1,6 @@
 import { CareSheetCard } from '@/components/care-sheet-card';
 import { purchaseSummary } from '@/services/pickupDelivery';
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { StyleSheet, View, ScrollView, TouchableOpacity, SafeAreaView, Platform, Dimensions, ActivityIndicator, Share, Modal, Pressable } from 'react-native';
 import { Text, TextInput } from '@/components/scaled-text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -41,6 +41,7 @@ import { getJobById, JOBS_LIST } from '@/data/jobsData';
 import { fitBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMyBusiness } from '@/hooks/use-my-business';
+import { usePullRefresh } from '@/hooks/use-pull-refresh';
 
 const { width } = Dimensions.get('window');
 
@@ -221,9 +222,9 @@ export default function JobDetailsScreen() {
     };
   }, []);
 
-  useEffect(() => {
-    const fetchJobAndLocation = async () => {
-      setIsLoading(true);
+  // Quiet: a pull-down reload keeps the job on screen while it reloads.
+  const fetchJobAndLocation = useCallback(async (quiet = false) => {
+      if (!quiet) setIsLoading(true);
       try {
         // Getting a GPS fix can take many seconds (cold start, indoors, etc.)
         // — it's only needed for the map/distance, not the job details
@@ -366,7 +367,7 @@ export default function JobDetailsScreen() {
           if (!local) {
             if (fetchErr?.error_code === 'NOT_FOUND' || fetchErr?.error_code === 'FORBIDDEN') {
               setLoadError("This job is no longer available — it may have expired, been reassigned, or already closed out.");
-            } else {
+            } else if (!quiet) {
               setLoadError('Could not load this job. Check your connection and try again.');
             }
             return;
@@ -415,13 +416,14 @@ export default function JobDetailsScreen() {
         setFeasibility(result as any);
       } catch (error) {
         console.error(error);
-        setLoadError('Something went wrong loading this job. Please go back and try again.');
+        // A failed pull-down keeps the job on screen.
+        if (!quiet) setLoadError('Something went wrong loading this job. Please go back and try again.');
       } finally {
         setIsLoading(false);
       }
-    };
-    fetchJobAndLocation();
   }, [id]);
+  useEffect(() => { fetchJobAndLocation(); }, [fetchJobAndLocation]);
+  const refreshControl = usePullRefresh(() => fetchJobAndLocation(true));
 
   const handleShare = async () => {
     try {
@@ -580,7 +582,7 @@ export default function JobDetailsScreen() {
         </View>
       </View>
 
-      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView refreshControl={refreshControl} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Main Job Info Card */}
         <Animated.View entering={FadeInUp.delay(100)} style={styles.mainCard}>
           {/* Badges row — mirrors dashboard card */}

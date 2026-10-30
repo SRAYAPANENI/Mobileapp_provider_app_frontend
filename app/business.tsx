@@ -23,6 +23,7 @@ import {
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
+import { usePullRefresh } from '@/hooks/use-pull-refresh';
 
 const STATUS_BADGE: Record<string, { label: string; tone: Tone }> = {
   DRAFT: { label: 'Setting up', tone: 'neutral' },
@@ -71,6 +72,7 @@ export default function BusinessScreen() {
     else setEarnings(null);
   }, [data]);
   const reload = refresh;
+  const refreshControl = usePullRefresh(refresh);
 
   const run = async (key: string, action: () => Promise<unknown>, success?: string) => {
     setBusy(key);
@@ -158,7 +160,7 @@ export default function BusinessScreen() {
           <Section><ThemedText style={u.body}>Business accounts are coming soon.</ThemedText></Section>
         </View>
       ) : (
-        <KeyboardAwareScrollView bottomOffset={24} ref={scroll} contentContainerStyle={padBottom([s.body, { paddingBottom: 40 }], bottomInset)} keyboardShouldPersistTaps="handled">
+        <KeyboardAwareScrollView refreshControl={refreshControl} bottomOffset={24} ref={scroll} contentContainerStyle={padBottom([s.body, { paddingBottom: 40 }], bottomInset)} keyboardShouldPersistTaps="handled">
           <BusinessInvites invites={invites} onAnswer={answerInvite} />
 
           {!business ? (

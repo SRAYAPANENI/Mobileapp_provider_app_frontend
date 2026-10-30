@@ -23,7 +23,7 @@ export function useMyBusiness(): MyBusinessState {
   const [board, setBoard] = useState<BusinessBoard | null>(null);
 
   const refresh = useCallback(() => {
-    SkoFyApi.business.mine().then((next) => {
+    return SkoFyApi.business.mine().then((next) => {
       setData(next);
       if (!next.enabled) return;
       SkoFyApi.business.invites().then(setInvites).catch(() => setInvites([]));
@@ -31,7 +31,7 @@ export function useMyBusiness(): MyBusinessState {
       else setBoard(null);
     }).catch(() => {});
   }, []);
-  useFocusEffect(refresh);
+  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
   return {
     data, invites, board,

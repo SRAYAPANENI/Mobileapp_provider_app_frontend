@@ -8,9 +8,10 @@ import { BusinessBoard, SkoFyApi, Team, TeamActiveJob, TeamOpenJob } from '@/ser
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Briefcase, Check, ChevronLeft, Clock, Inbox, Map as MapIcon } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, RefreshControl, StatusBar, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StatusBar, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 import { Badge, Button, C, jobStage, Monogram, Row, Section, u } from '@/components/business/ui';
+import { usePullRefresh } from '@/hooks/use-pull-refresh';
 
 const when = (iso: string | null) => iso
   ? new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -28,7 +29,6 @@ export default function BusinessJobsScreen() {
   const appAlert = useAppAlert();
   const [board, setBoard] = useState<BusinessBoard | null>(null);
   const [team, setTeam] = useState<Team | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [applying, setApplying] = useState<TeamOpenJob | null>(null);
   const [assigning, setAssigning] = useState<TeamActiveJob | null>(null);
   const [workerId, setWorkerId] = useState<string | null>(null);
@@ -47,6 +47,7 @@ export default function BusinessJobsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
+  const refreshControl = usePullRefresh(load);
 
   const opened = useRef<string | null>(null);
   useEffect(() => {
@@ -95,7 +96,7 @@ export default function BusinessJobsScreen() {
       </View>
       {!board || !team ? <ActivityIndicator style={{ marginTop: 40 }} color={C.ink} /> : (
         <KeyboardAwareScrollView bottomOffset={24} ref={scroll} contentContainerStyle={padBottom([s.body, { paddingBottom: 40 }], bottomInset)} keyboardShouldPersistTaps="handled"
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />}>
+          refreshControl={refreshControl}>
 
           {(applying || assigning) && (
             <Section title={applying ? 'Apply as your business' : 'Give to someone else'}>

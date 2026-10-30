@@ -10,6 +10,7 @@ import { ChevronLeft, ShieldCheck } from 'lucide-react-native';
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Image, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { usePullRefresh } from '@/hooks/use-pull-refresh';
 
 const STATUS: Record<GuaranteeClaim['status'], string> = {
   OPEN: 'Waiting for you', FIX_OFFERED: "You're fixing it", FIXED: 'Fixed', REFUNDED: 'Refunded by Dodorez', DECLINED: 'Not covered',
@@ -26,10 +27,9 @@ export default function GuaranteeClaimsScreen() {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(() => {
-    SkoFyApi.guarantee.mine().then(setClaims).catch(() => setClaims([]));
-  }, []);
-  useFocusEffect(load);
+  const load = useCallback(() => SkoFyApi.guarantee.mine().then(setClaims).catch(() => setClaims((prev) => prev ?? [])), []);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+  const refreshControl = usePullRefresh(load);
 
   const respond = async (jobId: string, fix: boolean) => {
     setBusy(true);
@@ -55,7 +55,7 @@ export default function GuaranteeClaimsScreen() {
         <ThemedText style={s.headerTitle}>Guarantee requests</ThemedText>
       </View>
       {!claims ? <ActivityIndicator style={{ marginTop: 40 }} color="#111827" /> : (
-        <KeyboardAwareScrollView bottomOffset={24} contentContainerStyle={padBottom([s.body, { paddingBottom: 24 }], bottomInset)}>
+        <KeyboardAwareScrollView refreshControl={refreshControl} bottomOffset={24} contentContainerStyle={padBottom([s.body, { paddingBottom: 24 }], bottomInset)}>
           <View style={s.card}>
             <View style={s.row}>
               <ShieldCheck size={18} color="#059669" />

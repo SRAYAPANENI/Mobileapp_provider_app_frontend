@@ -10,6 +10,7 @@ import { ChevronLeft, ShieldAlert, ShieldCheck } from 'lucide-react-native';
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { usePullRefresh } from '@/hooks/use-pull-refresh';
 
 const date = (iso: string) => new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 
@@ -25,14 +26,16 @@ export default function AccountStandingScreen() {
   const [reason, setReason] = useState('');
   const [sending, setSending] = useState(false);
 
-  const load = useCallback(() => {
-    setLoading(true);
-    SkoFyApi.strikes.mine()
+  // Quiet: a pull-down reload keeps the screen and turns the small spinner.
+  const load = useCallback((quiet = false) => {
+    if (!quiet) setLoading(true);
+    return SkoFyApi.strikes.mine()
       .then((s) => setStrikes(s.strikes))
-      .catch(() => setStrikes([]))
+      .catch(() => setStrikes((prev) => prev ?? []))
       .finally(() => setLoading(false));
   }, []);
-  useFocusEffect(load);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+  const refreshControl = usePullRefresh(() => load(true));
 
   const sendAppeal = async () => {
     if (!appealing) return;
@@ -64,7 +67,7 @@ export default function AccountStandingScreen() {
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color="#111827" />
       ) : (
-        <ScrollView contentContainerStyle={padBottom([s.body, { paddingBottom: 24 }], bottomInset)}>
+        <ScrollView refreshControl={refreshControl} contentContainerStyle={padBottom([s.body, { paddingBottom: 24 }], bottomInset)}>
           <View style={s.card}>
             <View style={s.row}>
               {active.length ? <ShieldAlert size={18} color="#B45309" /> : <ShieldCheck size={18} color="#059669" />}

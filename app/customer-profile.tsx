@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@/components/scaled-text';
 import { Image } from 'expo-image';
@@ -16,6 +16,7 @@ import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { SkoFyApi } from '@/services/api';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
+import { usePullRefresh } from '@/hooks/use-pull-refresh';
 
 interface JobHistoryItem {
   id: string;
@@ -109,13 +110,14 @@ export default function CustomerProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
-  useEffect(() => {
+  // Quiet: a pull-down reload keeps what's shown, even if it fails.
+  const load = useCallback(async (quiet = false) => {
     if (!customerIdParam && !jobId) {
       setLoading(false);
       setLoadError(true);
       return;
     }
-    (async () => {
+    {
       try {
         const customerId = customerIdParam || (await SkoFyApi.jobs.get(jobId as string) as any).customer_id;
 
@@ -149,12 +151,14 @@ export default function CustomerProfileScreen() {
           customerReviewComment: h.customer_review_comment,
         })));
       } catch {
-        setLoadError(true);
+        if (!quiet) setLoadError(true);
       } finally {
         setLoading(false);
       }
-    })();
+    }
   }, [jobId, customerIdParam]);
+  useEffect(() => { load(); }, [load]);
+  const refreshControl = usePullRefresh(() => load(true));
 
   if (loading) {
     return (
@@ -191,7 +195,7 @@ export default function CustomerProfileScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={padBottom(styles2.scrollContent, bottomInset)}>
+      <ScrollView refreshControl={refreshControl} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={padBottom(styles2.scrollContent, bottomInset)}>
         {/* Profile Section */}
         <Animated.View entering={FadeInUp.duration(600)} style={styles2.profileSection}>
           <View style={styles2.avatarContainer}>

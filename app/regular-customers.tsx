@@ -8,6 +8,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { ChevronLeft, Repeat } from 'lucide-react-native';
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { usePullRefresh } from '@/hooks/use-pull-refresh';
 
 const CADENCE: Record<Series['cadence'], string> = { WEEKLY: 'Every week', BIWEEKLY: 'Every 2 weeks', MONTHLY: 'Every month' };
 
@@ -20,8 +21,9 @@ export default function RegularCustomersScreen() {
   const [items, setItems] = useState<Series[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
-  const load = useCallback(() => { SkoFyApi.series.mine().then(setItems).catch(() => setItems([])); }, []);
-  useFocusEffect(load);
+  const load = useCallback(() => SkoFyApi.series.mine().then(setItems).catch(() => setItems((prev) => prev ?? [])), []);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+  const refreshControl = usePullRefresh(load);
 
   const act = async (id: string, run: () => Promise<unknown>) => {
     setBusy(id);
@@ -45,7 +47,7 @@ export default function RegularCustomersScreen() {
         <ThemedText style={s.headerTitle}>Regular customers</ThemedText>
       </View>
       {!items ? <ActivityIndicator style={{ marginTop: 40 }} color="#111827" /> : (
-        <ScrollView contentContainerStyle={padBottom([s.body, { paddingBottom: 24 }], bottomInset)}>
+        <ScrollView refreshControl={refreshControl} contentContainerStyle={padBottom([s.body, { paddingBottom: 24 }], bottomInset)}>
           {items.length === 0 && (
             <ThemedText style={s.muted}>No regular customers yet. When a customer books you on a schedule, it shows up here.</ThemedText>
           )}
