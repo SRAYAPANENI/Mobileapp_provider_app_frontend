@@ -2533,7 +2533,7 @@ export default function ProfileScreen() {
               <ThemedText style={[styles.inputLabel, { marginTop: 16 }]}>New Password</ThemedText>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <TextInput
-                  placeholder="Min 8 characters, 1 letter + 1 number"
+                  placeholder="New password"
                   placeholderTextColor={themeColors.icon}
                   secureTextEntry={!showNewPassword}
                   autoCapitalize="none"

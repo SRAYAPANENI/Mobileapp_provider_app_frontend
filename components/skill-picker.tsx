@@ -139,7 +139,7 @@ export function SkillPicker({
             <Search size={18} color={theme.icon} />
             <TextInput
               style={s.searchInput}
-              placeholder="Type anything: fan, dog walking, logo…"
+              placeholder="e.g. fan, dog walking, logo"
               placeholderTextColor={theme.icon}
               value={query}
               onChangeText={setQuery}
