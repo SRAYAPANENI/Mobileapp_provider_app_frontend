@@ -193,13 +193,32 @@ export default function NavigateToSiteScreen() {
     return () => { sub?.remove(); };
   }, []);
 
-  // Fire-and-forget: mark navigation started the moment this screen opens.
-  // This stops the auto-cancel timer — the provider is on their way even
-  // if travel takes longer than the urgency window.
-  useEffect(() => {
+  // Mark navigation started the moment this screen opens. This stops the
+  // auto-cancel timer — the provider is on their way even if travel takes
+  // longer than the urgency window — so a weak signal mustn't lose it:
+  // tried again a few times, then the provider is told and can retry.
+  const leftRef = useRef(false);
+  useEffect(() => () => { leftRef.current = true; }, []);
+  const tellOnTheWay = React.useCallback(async () => {
     if (!jobId) return;
-    SkoFyApi.jobs.startNavigation(jobId).catch(() => {});
+    for (const wait of [0, 3000, 8000]) {
+      if (wait) await new Promise((r) => setTimeout(r, wait));
+      if (leftRef.current) return;     // they left the screen: nothing to retry for
+      try {
+        await SkoFyApi.jobs.startNavigation(jobId);
+        return;
+      } catch (err: any) {
+        // The job has moved on (cancelled, taken): the status check below says so.
+        if (err?.error_code && !['NETWORK_ERROR', 'TIMEOUT', 'INTERNAL_ERROR', 'SERVICE_UNAVAILABLE'].includes(err.error_code)) return;
+      }
+    }
+    if (leftRef.current) return;
+    appAlert.show('error', "Couldn't mark you on the way",
+      "We couldn't reach Dodorez, so the job may still cancel itself if you're late. Check your connection and try again.",
+      [{ text: 'Try again', variant: 'primary', onPress: () => { tellOnTheWay(); } }]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
+  useEffect(() => { tellOnTheWay(); }, [tellOnTheWay]);
 
   // Poll job status — if customer cancels while provider is navigating,
   // show a branded alert and redirect to dashboard.

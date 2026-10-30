@@ -879,6 +879,14 @@ export default function DashboardScreen() {
 
   // Tab badge pulse — fires once when count increases for a non-active tab
   const tabPulseScales = [useSharedValue(1), useSharedValue(1), useSharedValue(1), useSharedValue(1)];
+  // One pulse style per tab, made here: hooks inside the tabs' .map() break
+  // React's rule that hooks run in the same order every render.
+  const tabPulseStyles = [
+    useAnimatedStyle(() => ({ transform: [{ scale: tabPulseScales[0].value }] })),
+    useAnimatedStyle(() => ({ transform: [{ scale: tabPulseScales[1].value }] })),
+    useAnimatedStyle(() => ({ transform: [{ scale: tabPulseScales[2].value }] })),
+    useAnimatedStyle(() => ({ transform: [{ scale: tabPulseScales[3].value }] })),
+  ];
   const prevTabCounts = useRef([0, 0, 0, 0]);
   const getTabCount = (idx: number) => jobs.filter((j: any) => {
     const alreadyApplied = j.applicationId != null;
@@ -1831,7 +1839,7 @@ const filteredJobs = jobs.filter((job) => {
         <View style={[styles.sliderContainer, teamMode && { display: 'none' }]}>
           {tabs.map((tab, index) => {
             const count = getTabCount(index);
-            const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: tabPulseScales[index].value }] }));
+            const pulseStyle = tabPulseStyles[index];
             return (
               <TouchableOpacity
                 key={tab}
