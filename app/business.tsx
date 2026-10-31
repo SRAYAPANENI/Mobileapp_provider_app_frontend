@@ -23,6 +23,8 @@ import { ActivityIndicator, Linking, Share, StatusBar, StyleSheet, TouchableOpac
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { PRO_APP_DOWNLOAD_URL } from '@/services/api-config';
+import { Asset } from 'expo-asset';
+import RNShare from 'react-native-share';
 import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 import { usePullRefresh } from '@/hooks/use-pull-refresh';
 
@@ -91,13 +93,29 @@ export default function BusinessScreen() {
   };
 
   // An invite to someone not on Dodorez, sent from the owner's phone.
-  const shareInvite = (phone: string, r: MemberRole) => {
-    const as = r === 'DISPATCHER' ? 'a dispatcher' : 'a worker';
-    Share.share({
-      message: `${business?.name ?? 'We'} invited you to join the team on Dodorez as ${as}. `
-        + `Get the Dodorez Pro app: ${PRO_APP_DOWNLOAD_URL} — then sign up with this number (${phone}), `
-        + 'and the invite will be waiting for you under Business.',
-    }).catch(() => {});
+  // Sent from the owner's own phone (WhatsApp, a text…): the invite card
+  // (marketing/flyers/team-invite.html) with the message as its caption.
+  const shareInvite = async (phone: string, r: MemberRole) => {
+    const as = r === 'DISPATCHER' ? 'a dispatcher' : 'a team member';
+    const message = `🎉 Big news! ${business?.name ?? 'Our team'} wants you on the team as ${as} on Dodorez!
+
+`
+      + `✅ Jobs come straight to you
+✅ Your schedule in one app
+✅ Get paid for every job
+
+`
+      + `👉 Get the Dodorez Pro app: ${PRO_APP_DOWNLOAD_URL}
+`
+      + `Sign up with this number (${phone}) and your invite will be waiting for you. See you on the team! 🚀`;
+    try {
+      const [card] = await Asset.loadAsync(require('@/assets/images/team-invite.jpg'));
+      if (!card.localUri) throw new Error('no card');
+      await RNShare.open({ message, url: card.localUri, type: 'image/jpeg', failOnCancel: false });
+    } catch {
+      // The card couldn't be attached: the message alone still goes.
+      Share.share({ message }).catch(() => {});
+    }
   };
 
   const run = async (key: string, action: () => Promise<unknown>, success?: string) => {

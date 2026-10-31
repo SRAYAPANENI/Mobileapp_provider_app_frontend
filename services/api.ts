@@ -1517,6 +1517,8 @@ export const SkoFyApi = {
     assignJob: async (jobId: string, workerId: string): Promise<{ message: string }> =>
       request(`/businesses/me/jobs/${jobId}/assign`, { method: 'POST', body: JSON.stringify({ worker_id: workerId }) }) as any,
     invites: async (): Promise<BusinessInvite[]> => request('/businesses/invites') as any,
+    /** The states a business can be registered in (the list a save is checked against). */
+    usStates: async (): Promise<{ code: string; name: string }[]> => request('/businesses/us-states') as any,
     answerInvite: async (memberId: string, accept: boolean, acknowledgedNotice: boolean, authorizedCheck = false): Promise<{ message: string }> =>
       request(`/businesses/invites/${memberId}`, {
         method: 'POST',

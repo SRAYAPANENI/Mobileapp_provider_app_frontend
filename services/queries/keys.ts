@@ -8,6 +8,9 @@ export const qk = {
     hosting: ['provider', 'hosting'] as const,
     jobAlerts: ['provider', 'job-alerts'] as const,
   },
+  reference: {
+    usStates: ['reference', 'us-states'] as const,
+  },
   jobs: {
     all: ['jobs'] as const,
     active: ['jobs', 'active'] as const,

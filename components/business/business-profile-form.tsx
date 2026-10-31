@@ -2,6 +2,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Business, BusinessProfileInput } from '@/services/api';
 import React, { useState } from 'react';
 import { TextInput, TouchableOpacity, View } from 'react-native';
+import { StatePicker } from './state-picker';
 import { Button, C, Field, u } from './ui';
 
 const ENTITY_TYPES: { value: Business['entity_type']; label: string }[] = [
@@ -61,8 +62,7 @@ export function BusinessProfileForm({ initial, submitLabel, onSubmit, onCancel }
         </View>
       </Field>
       <Field label="State registered in">
-        <TextInput style={[u.input, { width: 96 }]} value={state} onChangeText={(t) => setState(t.replace(/[^a-zA-Z]/g, '').slice(0, 2))}
-          placeholder="TX" autoCapitalize="characters" placeholderTextColor={C.faint} />
+        <StatePicker value={state} onChange={setState} />
       </Field>
       <Field label="Business contact" hint="Optional">
         <View style={{ gap: 8 }}>

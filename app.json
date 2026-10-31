@@ -113,7 +113,9 @@
       "./plugins/with-call-ringtone-channel.js",
       "./plugins/with-call-screen.js",
       "./plugins/with-no-autofill-highlight.js",
-      "@livekit/react-native-expo-plugin"
+      "@livekit/react-native-expo-plugin",
+      "react-native-share",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,
