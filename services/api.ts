@@ -178,7 +178,26 @@ let sessionExpiredNotified = false;
 
 export function setSessionExpiredHandler(fn: () => void): void {
   _onSessionExpired = fn;
+  if (sessionEndPending) {
+    sessionEndPending = false;
+    fn();
+  }
 }
+
+// The session is over (the server refused to renew it): forget the tokens and
+// tell the app once — the "Signed Out" message, then the login screen. Every
+// path that finds a dead session ends here, so none leaves the app looking
+// signed in with nothing loading. Ended before the app registered its handler
+// (during start-up): told as soon as it does.
+let sessionEndPending = false;
+async function endSession(): Promise<void> {
+  await TokenStore.clear();
+  if (sessionExpiredNotified) return;
+  sessionExpiredNotified = true;
+  if (_onSessionExpired) _onSessionExpired();
+  else sessionEndPending = true;
+}
+
 
 // fetch has no timeout of its own: on a dead connection a call can hang for
 // minutes with the button spinning. Every call gets a limit; uploads (photos,
@@ -241,12 +260,8 @@ async function request<T = any>(
       afterWrite(endpoint, fetchOptions.method);
       return retriedResult;
     }
-    // Refresh failed → clear tokens and force back to login
-    await TokenStore.clear();
-    if (!sessionExpiredNotified) {
-      sessionExpiredNotified = true;
-      _onSessionExpired?.();
-    }
+    // Refresh refused → signed out
+    await endSession();
     throw { success: false, error_code: 'SESSION_EXPIRED', message: 'Please log in again.' } as ApiError;
   }
 
@@ -308,7 +323,7 @@ async function requestMultipart<T = any>(endpoint: string, formData: FormData): 
       const retried = await timedFetch(`${BASE_URL}${endpoint}`, { method: 'POST', headers, body: formData }, UPLOAD_TIMEOUT_MS);
       return _parseResponse<T>(retried);
     }
-    await TokenStore.clear();
+    await endSession();
     throw { success: false, error_code: 'SESSION_EXPIRED', message: 'Please log in again.' } as ApiError;
   }
 
@@ -374,8 +389,16 @@ async function _refreshAccessToken(): Promise<string | null> {
 export async function getFreshAccessToken(): Promise<string | null> {
   const token = await TokenStore.getAccessToken();
   if (token && !_expiresWithin(token, 60)) return token;
-  // Offline: hand back the stored token; the socket just retries later.
-  return (await _refreshAccessToken().catch(() => null)) ?? token;
+  try {
+    const fresh = await _refreshAccessToken();
+    if (fresh) return fresh;
+    // Refused: the session is over — signed out, not left half-working.
+    await endSession();
+    return null;
+  } catch {
+    // Offline: hand back the stored token; the socket just retries later.
+    return token;
+  }
 }
 
 function _expiresWithin(token: string, seconds: number): boolean {
