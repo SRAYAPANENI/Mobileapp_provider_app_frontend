@@ -114,7 +114,7 @@
       "./plugins/with-call-screen.js",
       "./plugins/with-no-autofill-highlight.js",
       "@livekit/react-native-expo-plugin",
-      "react-native-share",
+      ["react-native-share", { "ios": [], "android": [] }],
       "expo-asset"
     ],
     "experiments": {
