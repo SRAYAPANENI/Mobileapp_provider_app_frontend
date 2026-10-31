@@ -1,7 +1,7 @@
 import { Fonts } from '@/constants/theme';
 import { Bell, BellRing, Check, Lock } from 'lucide-react-native';
 import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { FlatList, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@/components/scaled-text';
 
 export interface SkillRef { skill_id: string; name: string }
@@ -24,7 +24,20 @@ interface Props {
 // live count each — skills with jobs first, empty ones greyed at the end —
 // then "locked" chips for skills nearby jobs need that they haven't
 // verified yet: tapping one offers the skill test. The bell opens job alerts.
-export function SkillFilterBar({ jobs, mySkills, selected, onSelect, onLockedPress, alertCount, onAlertsPress }: Props) {
+//
+// A provider can have hundreds of skills: the chips are a list drawn as it
+// scrolls, and the bar redraws only when its own inputs change — drawn all at
+// once, it slowed Home on every change and on switching back from the team.
+type Item =
+  | { kind: 'bell' }
+  | { kind: 'all' }
+  | { kind: 'skill'; name: string; count: number }
+  | { kind: 'locked'; ref: SkillRef; count: number };
+
+const keyOf = (it: Item) =>
+  it.kind === 'skill' ? `s:${it.name}` : it.kind === 'locked' ? `l:${it.ref.skill_id}` : it.kind;
+
+export const SkillFilterBar = React.memo(function SkillFilterBar({ jobs, mySkills, selected, onSelect, onLockedPress, alertCount, onAlertsPress }: Props) {
   const { verified, locked } = useMemo(() => {
     const countBySkill = new Map<string, number>();
     const refByName = new Map<string, SkillRef>();
@@ -43,43 +56,72 @@ export function SkillFilterBar({ jobs, mySkills, selected, onSelect, onLockedPre
     return { verified, locked };
   }, [jobs, mySkills]);
 
+  const items = useMemo<Item[]>(() => [
+    { kind: 'bell' }, { kind: 'all' },
+    ...verified.map(({ name, count }) => ({ kind: 'skill' as const, name, count })),
+    ...locked.map(({ ref, count }) => ({ kind: 'locked' as const, ref, count })),
+  ], [verified, locked]);
+
   if (verified.length === 0 && locked.length === 0) return null;
+
+  const renderItem = ({ item }: { item: Item }) => {
+    switch (item.kind) {
+      case 'bell':
+        return (
+          <TouchableOpacity
+            style={[s.bell, alertCount > 0 && s.bellOn]}
+            onPress={onAlertsPress}
+            accessibilityLabel={alertCount > 0 ? `Job alerts for ${alertCount} skills` : 'Job alerts for all skills'}
+          >
+            {alertCount > 0 ? <BellRing size={15} color="#111827" /> : <Bell size={15} color="#6B7280" />}
+            {alertCount > 0 && <Text style={s.bellText}>{alertCount}</Text>}
+          </TouchableOpacity>
+        );
+      case 'all':
+        return <Chip label="All" count={jobs.length} active={selected === null} onPress={() => onSelect(null)} />;
+      case 'skill':
+        return (
+          <Chip
+            label={item.name}
+            count={item.count}
+            active={selected === item.name}
+            dim={item.count === 0}
+            verified
+            onPress={() => onSelect(selected === item.name ? null : item.name)}
+          />
+        );
+      case 'locked':
+        return (
+          <TouchableOpacity style={[s.chip, s.lockedChip]} onPress={() => onLockedPress(item.ref, item.count)}>
+            <Lock size={11} color="#9CA3AF" />
+            <Text style={s.lockedText} numberOfLines={1}>{item.ref.name}</Text>
+            <Text style={s.lockedCount}>{item.count}</Text>
+          </TouchableOpacity>
+        );
+    }
+  };
 
   return (
     <View style={s.wrap}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.row} keyboardShouldPersistTaps="handled">
-        <TouchableOpacity
-          style={[s.bell, alertCount > 0 && s.bellOn]}
-          onPress={onAlertsPress}
-          accessibilityLabel={alertCount > 0 ? `Job alerts for ${alertCount} skills` : 'Job alerts for all skills'}
-        >
-          {alertCount > 0 ? <BellRing size={15} color="#111827" /> : <Bell size={15} color="#6B7280" />}
-          {alertCount > 0 && <Text style={s.bellText}>{alertCount}</Text>}
-        </TouchableOpacity>
-
-        <Chip label="All" count={jobs.length} active={selected === null} onPress={() => onSelect(null)} />
-        {verified.map(({ name, count }) => (
-          <Chip
-            key={name}
-            label={name}
-            count={count}
-            active={selected === name}
-            dim={count === 0}
-            verified
-            onPress={() => onSelect(selected === name ? null : name)}
-          />
-        ))}
-        {locked.map(({ ref, count }) => (
-          <TouchableOpacity key={ref.skill_id} style={[s.chip, s.lockedChip]} onPress={() => onLockedPress(ref, count)}>
-            <Lock size={11} color="#9CA3AF" />
-            <Text style={s.lockedText} numberOfLines={1}>{ref.name}</Text>
-            <Text style={s.lockedCount}>{count}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <FlatList
+        horizontal
+        data={items}
+        keyExtractor={keyOf}
+        renderItem={renderItem}
+        extraData={`${selected}|${alertCount}|${jobs.length}`}
+        ItemSeparatorComponent={Gap}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={s.row}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        windowSize={5}
+      />
     </View>
   );
-}
+});
+
+const Gap = () => <View style={{ width: 8 }} />;
 
 function Chip({ label, count, active, dim, verified, onPress }: {
   label: string; count: number; active: boolean; dim?: boolean; verified?: boolean; onPress: () => void;
@@ -97,7 +139,7 @@ function Chip({ label, count, active, dim, verified, onPress }: {
 
 const s = StyleSheet.create({
   wrap: { marginBottom: 8, marginHorizontal: -20 },
-  row: { paddingHorizontal: 20, gap: 8, alignItems: 'center' },
+  row: { paddingHorizontal: 20, alignItems: 'center' },
   bell: {
     height: 34, minWidth: 34, paddingHorizontal: 9, borderRadius: 17, flexDirection: 'row', gap: 4,
     alignItems: 'center', justifyContent: 'center', backgroundColor: '#F3F4F6',

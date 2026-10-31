@@ -1,7 +1,7 @@
 import { Fonts } from '@/constants/theme';
 import { Check, X } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, Modal, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@/components/scaled-text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { MySkill } from './skill-filter-bar';
@@ -19,7 +19,7 @@ interface Props {
 // skills still show in their feed — only the notification is skipped.
 export function JobAlertsSheet({ visible, mySkills, chosen, onClose, onSave }: Props) {
   const insets = useSafeAreaInsets();
-  const verified = mySkills.filter(s => s.is_verified);
+  const verified = React.useMemo(() => mySkills.filter(s => s.is_verified), [mySkills]);
   const [allSkills, setAllSkills] = useState(chosen.length === 0);
   const [picked, setPicked] = useState<Set<string>>(new Set(chosen));
   const [saving, setSaving] = useState(false);
@@ -72,19 +72,25 @@ export function JobAlertsSheet({ visible, mySkills, chosen, onClose, onSave }: P
         </TouchableOpacity>
 
         {!allSkills && (
-          <ScrollView style={s.list} keyboardShouldPersistTaps="handled">
-            {verified.length === 0 ? (
-              <Text style={s.optionHint}>Verify a skill in your profile to choose it here.</Text>
-            ) : verified.map(skill => {
+          // Drawn as it scrolls: a provider can have hundreds of skills.
+          <FlatList
+            style={s.list}
+            data={verified}
+            keyExtractor={(skill) => skill.skill_id}
+            extraData={picked}
+            keyboardShouldPersistTaps="handled"
+            initialNumToRender={15}
+            ListEmptyComponent={<Text style={s.optionHint}>Verify a skill in your profile to choose it here.</Text>}
+            renderItem={({ item: skill }) => {
               const on = picked.has(skill.skill_id);
               return (
-                <TouchableOpacity key={skill.skill_id} style={s.skillRow} onPress={() => toggle(skill.skill_id)}>
+                <TouchableOpacity style={s.skillRow} onPress={() => toggle(skill.skill_id)}>
                   <View style={[s.box, on && s.boxOn]}>{on && <Check size={13} color="#111827" strokeWidth={3} />}</View>
                   <Text style={s.skillName}>{skill.name}</Text>
                 </TouchableOpacity>
               );
-            })}
-          </ScrollView>
+            }}
+          />
         )}
 
         <TouchableOpacity

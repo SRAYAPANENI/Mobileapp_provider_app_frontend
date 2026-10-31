@@ -1261,7 +1261,17 @@ const filteredJobs = jobs.filter((job) => {
   const repeatRequestCount = jobs.filter((j: any) => j.isRepeatCustomer && !j.isOngoing && j.applicationId == null).length;
 
   // What the skill chips count: the open jobs All Jobs would show unfiltered.
-  const browsableJobs = jobs.filter((j: any) => isAvailable && !j.isOngoing && j.applicationId == null);
+  const browsableJobs = React.useMemo(
+    () => jobs.filter((j: any) => isAvailable && !j.isOngoing && j.applicationId == null),
+    [jobs, isAvailable],
+  );
+  // Stable for the filter bar (memoised: hundreds of skill chips), while
+  // always calling the latest handlers.
+  // (Filled in below, once onLockedSkill is defined.)
+  const filterActionsRef = useRef({ chooseSkillFilter, onLockedSkill: (_r: SkillRef, _c: number) => {} });
+  const onFilterSelect = React.useCallback((skill: string | null) => filterActionsRef.current.chooseSkillFilter(skill), []);
+  const onFilterLocked = React.useCallback((ref: SkillRef, count: number) => filterActionsRef.current.onLockedSkill(ref, count), []);
+  const onAlertsPress = React.useCallback(() => setAlertsSheetOpen(true), []);
 
   // A skill nearby jobs need that this provider hasn't verified: offer the test.
   const onLockedSkill = (ref: SkillRef, count: number) => {
@@ -1283,6 +1293,7 @@ const filteredJobs = jobs.filter((job) => {
       ],
     );
   };
+  filterActionsRef.current = { chooseSkillFilter, onLockedSkill };
 
   const saveJobAlerts = async (skillIds: string[]) => {
     try {
@@ -1912,16 +1923,20 @@ const filteredJobs = jobs.filter((job) => {
             );
           })}
         </View>
-        {activeTab === 0 && isAvailable && !teamMode && (
-          <SkillFilterBar
-            jobs={browsableJobs}
-            mySkills={mySkills}
-            selected={skillFilter}
-            onSelect={chooseSkillFilter}
-            onLockedPress={onLockedSkill}
-            alertCount={alertSkillIds.length}
-            onAlertsPress={() => setAlertsSheetOpen(true)}
-          />
+        {isAvailable && (
+          // Hidden, not removed, on the other tabs and the team view:
+          // switching back is instant instead of drawing every chip again.
+          <View style={teamMode || activeTab !== 0 ? { display: 'none' } : undefined}>
+            <SkillFilterBar
+              jobs={browsableJobs}
+              mySkills={mySkills}
+              selected={skillFilter}
+              onSelect={onFilterSelect}
+              onLockedPress={onFilterLocked}
+              alertCount={alertSkillIds.length}
+              onAlertsPress={onAlertsPress}
+            />
+          </View>
         )}
         <JobAlertsSheet
           visible={alertsSheetOpen}
