@@ -145,6 +145,18 @@ function upfrontPricing(j: any): { myPrice: any; unitWord: string; rate: string;
   };
 }
 
+/** Time left to the job's deadline, ticking on its own — a clock in the
+ * screen's state redrew all of the job's details every second. */
+function TimeLeft({ deadline }: { deadline: number }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const { days, hours, minutes, seconds } = formatTime(deadline, now);
+  return <>{`${days}d : ${hours}h : ${minutes}m : ${seconds}s`}</>;
+}
+
 export default function JobDetailsScreen() {
   const bottomInset = useBottomInset();
   const topInset = useSafeAreaInsets().top;
@@ -168,7 +180,6 @@ export default function JobDetailsScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ latitude: number, longitude: number } | null>(null);
   const [feasibility, setFeasibility] = useState<FeasibilityResult | null>(null);
-  const [now, setNow] = useState(Date.now());
   const [selectedMedia, setSelectedMedia] = useState<{
     type: 'image' | 'video',
     url: string,
@@ -190,8 +201,6 @@ export default function JobDetailsScreen() {
   } | null>(null);
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-
     let locationSubscription: Location.LocationSubscription | null = null;
 
     const startWatching = async () => {
@@ -215,7 +224,6 @@ export default function JobDetailsScreen() {
     startWatching();
 
     return () => {
-      clearInterval(timer);
       if (locationSubscription) {
         locationSubscription.remove();
       }
@@ -802,10 +810,7 @@ export default function JobDetailsScreen() {
               <View style={styles.summaryStatContent}>
                 <Text style={styles.summaryStatLabel}>Remaining Time</Text>
                 <Text style={styles.summaryStatValue}>
-                  {(() => {
-                    const { days, hours, minutes, seconds } = formatTime(job.deadline, now);
-                    return `${days}d : ${hours}h : ${minutes}m : ${seconds}s`;
-                  })()}
+                  <TimeLeft deadline={job.deadline} />
                 </Text>
               </View>
             </View>

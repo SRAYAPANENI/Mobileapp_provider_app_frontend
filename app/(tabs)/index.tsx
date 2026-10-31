@@ -11,6 +11,10 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { callTapAllowed } from '@/services/callManager';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
+import { useRefreshOnFocus } from '@/hooks/use-refresh-on-focus';
+import { useActiveJobs, useInboundJobs } from '@/services/queries/jobs';
+import { useJobAlerts, useMySkills, useProviderProfile } from '@/services/queries/provider';
 import {
   Clock,
   MapPin,
@@ -90,6 +94,282 @@ const formatTime = (deadline: number, now: number) => {
   return { days, hours, minutes, seconds };
 };
 
+/** A job's time left, ticking each second on its own — this used to be a
+ * clock in the screen's state, which redrew all of Home every second. */
+function Countdown({ deadline, secondsStyle }: { deadline: number; secondsStyle: any }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const { days, hours, minutes, seconds } = formatTime(deadline, now);
+  // Text pieces, inside the card's own (urgent-coloured) text.
+  return <>{days}d : {hours}h : {minutes}m : <Text style={secondsStyle}>{seconds}s</Text></>;
+}
+
+interface JobFeedCardProps {
+  job: any;
+  index: number;
+  userCoords: { latitude: number; longitude: number } | null;
+  activeJobId: string | null;
+  hasSkills: boolean;
+  verifiedSkillNames: Set<string>;
+  themeColors: typeof Colors.light;
+  acceptButtonStyle: any;
+  urgentBadgeStyle: any;
+  isTeamJob: boolean;
+  onManage: (jobId: string) => void;
+  onApply: (jobId: string) => void;
+}
+
+/** One job in the Home feed. Its own memoised component: as an inline render
+ * function every card redrew with any change on Home (docs/APP_DATA_ARCHITECTURE.md). */
+const JobFeedCard = React.memo(function JobFeedCard({
+  job, index, userCoords, activeJobId, hasSkills, verifiedSkillNames, themeColors,
+  acceptButtonStyle, urgentBadgeStyle, isTeamJob, onManage, onApply,
+}: JobFeedCardProps) {
+  const Icon = job.icon || Gas;
+  const isUrgent = job.jobType === 'Urgent';
+  const isBookSlot = job.jobType === 'Book Slot';
+
+  const feasibility: FeasibilityResult = job.feasibility || { feasible: true, score: 0, status: 'SAFE', reason: 'Active Job' };
+
+  const getFeasibilityColor = (status: string) => {
+    switch (status) {
+      case 'SAFE': return '#10B981';
+      case 'TIGHT': return '#F59E0B';
+      case 'RISKY': return '#EF4444';
+      case 'NOT_FEASIBLE': return '#7F1D1D';
+      default: return '#9CA3AF';
+    }
+  };
+
+  const isConflict = feasibility.status === 'NOT_FEASIBLE';
+
+  return (
+    <Animated.View
+      key={job.id}
+      entering={FadeInUp.delay(200 * index)}
+      style={[
+        styles.jobCard,
+        {
+          backgroundColor: themeColors.background,
+          shadowColor: themeColors.shadow,
+          borderColor: job.isDirectRequest ? '#6366F1' : isUrgent ? '#FEE2E2' : '#F3F4F6',
+          borderWidth: job.isDirectRequest ? 2 : isUrgent ? 1.5 : 1,
+          opacity: isConflict && !job.isOngoing ? 0.8 : 1,
+        },
+      ]}
+    >
+      <View style={styles.jobCardHeader}>
+        <View style={[styles.iconContainer, { backgroundColor: job.isDirectRequest ? '#EEF2FF' : isUrgent ? '#FEF2F2' : '#F9FAFB' }]}>
+          <Icon size={28} color={job.isDirectRequest ? '#6366F1' : isUrgent ? '#EF4444' : '#FFCE48'} />
+        </View>
+        <View style={styles.jobTitleContainer}>
+          <View style={styles.titleRow}>
+            {job.isDirectRequest && (
+              <View style={styles.directRequestBadge}>
+                <ThemedText style={styles.directRequestText}>DIRECT REQUEST</ThemedText>
+              </View>
+            )}
+            {!job.isOngoing && isTeamJob && (
+              <View style={styles.teamJobBadge}>
+                <ThemedText style={styles.directRequestText}>FOR YOUR TEAM</ThemedText>
+              </View>
+            )}
+            {job.isRepeatCustomer && !job.isOngoing && (
+              <View style={styles.repeatRequestBadge}>
+                <ThemedText style={styles.repeatRequestBadgeText}>
+                  REPEAT CUSTOMER · {job.jobsWithCustomer} {job.jobsWithCustomer === 1 ? 'JOB' : 'JOBS'} WITH YOU
+                </ThemedText>
+              </View>
+            )}
+            {!job.isOngoing && (
+              <View style={[styles.feasibilityBadge, { backgroundColor: getFeasibilityColor(feasibility.status) }]}>
+                <ThemedText style={styles.feasibilityText}>{feasibility.status}</ThemedText>
+              </View>
+            )}
+            {job.jobType && (
+              <Animated.View style={[
+                styles.statusBadge,
+                { backgroundColor: isUrgent ? '#EF4444' : isBookSlot ? '#10B981' : '#F59E0B' },
+                isUrgent && urgentBadgeStyle,
+              ]}>
+                <Text style={styles.statusText}>{job.jobType}</Text>
+              </Animated.View>
+            )}
+            {job.jobKind === 'PICKUP_DROPOFF' && (
+              <View style={[styles.statusBadge, { backgroundColor: '#0EA5E9' }]}>
+                <Text style={styles.statusText}>Pickup & Drop</Text>
+              </View>
+            )}
+            {job.serviceMode === 'REMOTE' && (
+              <View style={[styles.statusBadge, { backgroundColor: '#7C3AED' }]}>
+                <Text style={styles.statusText}>Remote</Text>
+              </View>
+            )}
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <ThemedText style={[styles.jobTitle, { flex: 1 }]} numberOfLines={1}>{job.title}</ThemedText>
+            <View style={styles.distanceBadge}>
+              <Navigation size={12} color="#FFCE48" fill="#FFCE48" />
+              <Text style={styles.distanceBadgeText}>
+                {job.latitude == null || job.longitude == null
+                  ? 'Remote'
+                  : userCoords
+                  ? `${kmToMiles(calculateDistance(userCoords, { latitude: job.latitude, longitude: job.longitude })).toFixed(1)} mi`
+                  : job.distance}
+              </Text>
+            </View>
+          </View>
+          <ThemedText style={styles.jobDescription} numberOfLines={2}>
+            {job.description}
+          </ThemedText>
+        </View>
+      </View>
+
+      {!job.isOngoing && job.serviceMode !== 'REMOTE' && (
+        <View style={styles.feasibilityInfoRow}>
+          <Zap size={12} color={getFeasibilityColor(feasibility.status)} />
+          <ThemedText style={[styles.feasibilityDetailText, { color: getFeasibilityColor(feasibility.status) }]}>
+            {(() => {
+              // job.latitude/longitude are `number | null` (not defaulted to 0
+              // anymore — see mapInbound/mapActive) — this guard now correctly
+              // means "job has no location" rather than happening to work only
+              // because 0 is falsy.
+              if (userCoords && job.latitude != null && job.longitude != null) {
+                const distKm = calculateDistance(userCoords, { latitude: job.latitude, longitude: job.longitude });
+                return `~${formatDriveTime(estimateDriveMinutes(distKm))} drive`;
+              }
+              return `${feasibility.travelTime} min travel`;
+            })()} {'•'} {feasibility.score < 0 ? 'Conflict' : `${feasibility.score} min gap`} {'•'} {feasibility.reason}
+          </ThemedText>
+        </View>
+      )}
+
+      <View style={styles.skillsRow}>
+        {(job.skills || []).map((skill: string, idx: number) => {
+          // Skills they've verified in green, the rest locked (until their
+          // skills have loaded, every pill looks the same as before).
+          const have = !hasSkills || verifiedSkillNames.has(skill);
+          return (
+            <View key={idx} style={[styles.skillBadge, !have && styles.skillBadgeLocked]}>
+              {have ? <CheckCircle2 size={12} color="#10B981" /> : <Lock size={11} color="#9CA3AF" />}
+              <ThemedText style={[styles.skillText, !have && styles.skillTextLocked]}>{skill}</ThemedText>
+            </View>
+          );
+        })}
+        {job.hasMedia && (
+          <View style={[styles.skillBadge, { backgroundColor: '#F3F4F6', borderColor: '#E5E7EB' }]}>
+            <Text style={[styles.skillText, { color: '#666' }]}>+ Photos</Text>
+          </View>
+        )}
+      </View>
+
+      {!job.isOngoing && hasSkills && (job.skills || []).length > 0 && (() => {
+        const total = job.skills.length;
+        const matched = job.skills.filter((sk: string) => verifiedSkillNames.has(sk)).length;
+        return (
+          <Text style={[styles.matchLine, matched === total && styles.matchLineFull]}>
+            {matched === total ? `You match all ${total} skill${total === 1 ? '' : 's'}` : `You match ${matched} of ${total} skills`}
+          </Text>
+        );
+      })()}
+
+      {/* Customer Meter — reverse of the Skill-O-Meter customers see about
+          providers: same review-derived trust signal, but rating the
+          customer (payment reliability, behaviour) instead of skills. */}
+      {job.customerReviewCount > 0 && (
+        <View style={styles.skillsRow}>
+          {job.customerAvgPaymentRating != null && (
+            <View style={[styles.skillBadge, { backgroundColor: job.customerAvgPaymentRating >= 4.0 ? '#FFFBEB' : '#F9FAFB', borderColor: job.customerAvgPaymentRating >= 4.0 ? '#FDE9C0' : '#E5E7EB' }]}>
+              <CheckCircle2 size={12} color={job.customerAvgPaymentRating >= 4.0 ? '#D97706' : '#9CA3AF'} />
+              <ThemedText style={[styles.skillText, { color: job.customerAvgPaymentRating >= 4.0 ? '#92400E' : '#6B7280' }]}>
+                Pays on Time {job.customerAvgPaymentRating.toFixed(1)}★
+              </ThemedText>
+            </View>
+          )}
+          {job.customerAvgBehaviourRating != null && (
+            <View style={[styles.skillBadge, { backgroundColor: job.customerAvgBehaviourRating >= 4.0 ? '#F0FDF4' : '#F9FAFB', borderColor: job.customerAvgBehaviourRating >= 4.0 ? '#BBF7D0' : '#E5E7EB' }]}>
+              <CheckCircle2 size={12} color={job.customerAvgBehaviourRating >= 4.0 ? '#16A34A' : '#9CA3AF'} />
+              <ThemedText style={[styles.skillText, { color: job.customerAvgBehaviourRating >= 4.0 ? '#166534' : '#6B7280' }]}>
+                Good Behaviour {job.customerAvgBehaviourRating.toFixed(1)}★
+              </ThemedText>
+            </View>
+          )}
+        </View>
+      )}
+
+      <View style={styles.jobDetails}>
+        <View style={styles.detailItem}>
+          <Clock size={16} color={isUrgent ? '#EF4444' : themeColors.icon} />
+          <ThemedText style={[styles.detailText, isUrgent && { color: '#EF4444' }]}>
+            <Countdown deadline={job.deadline} secondsStyle={styles.secondsText} />
+          </ThemedText>
+        </View>
+        <View style={[styles.detailItem, { flex: 1, marginLeft: 10 }]}>
+          <MapPin size={16} color={themeColors.icon} />
+          <ThemedText style={styles.detailText} numberOfLines={1}>
+            {job.location}
+          </ThemedText>
+        </View>
+      </View>
+
+      <View style={styles.divider} />
+
+      <View style={styles.cardFooter}>
+        <View>
+          <ThemedText style={styles.feeLabel}>Service Fee</ThemedText>
+          <ThemedText style={styles.feeValue}>{job.fee}</ThemedText>
+        </View>
+        <View style={styles.cardActions}>
+          <TouchableOpacity
+            style={styles.detailsButton}
+            onPress={() => router.push({
+              pathname: '/job-details' as any,
+              params: { id: job.id },
+            })}
+          >
+            <ThemedText style={styles.detailsButtonText}>Details</ThemedText>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.acceptButton,
+              {
+                backgroundColor: job.isOngoing ? '#10B981' :
+                  (job.appStatus === 'REJECTED' ? '#FEF2F2' :
+                  (job.applicationId ? '#F0FDF4' :
+                  (isConflict ? '#F3F4F6' : (activeJobId ? '#E5E7EB' : '#FFCE48')))),
+              },
+            ]}
+            onPress={() => job.isOngoing ? onManage(job.id) : (job.applicationId ? undefined : onApply(job.id))}
+            disabled={!!job.applicationId || (!!activeJobId && !job.isOngoing) || (isConflict && !job.isOngoing)}
+          >
+            <Animated.View style={isUrgent && !job.isOngoing && !isConflict && !job.applicationId ? acceptButtonStyle : null}>
+              <ThemedText style={[
+                styles.acceptButtonText,
+                job.appStatus === 'REJECTED' && { color: '#EF4444' },
+                (job.applicationId && job.appStatus !== 'REJECTED') && { color: '#16A34A' },
+                (!job.applicationId && ((activeJobId && !job.isOngoing) || (isConflict && !job.isOngoing))) && { color: '#9CA3AF' },
+              ]}>
+                {job.isOngoing ? 'Service Room' :
+                  // Already applied takes priority over the other disabled
+                  // states — this used to show "Apply Job" again (or even
+                  // "Locked"/"Conflict" for unrelated reasons) with no way
+                  // to tell a job you'd already bid on apart from one you
+                  // hadn't, until you tapped it and got an error.
+                  (job.applicationId
+                    ? (job.appStatus === 'REJECTED' ? 'Rejected' : 'Applied ✓')
+                    : (isConflict ? 'Conflict' : (activeJobId ? 'Locked' : 'Apply Job')))}
+              </ThemedText>
+            </Animated.View>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Animated.View>
+  );
+});
+
 export default function DashboardScreen() {
   const bottomInset = useBottomInset();
   const { width } = useWindowDimensions();
@@ -126,12 +406,21 @@ export default function DashboardScreen() {
   const [isExitModalVisible, setIsExitModalVisible] = useState(false);
   const lastBackPressTime = useRef(0);
 
+  // The jobs feed (docs/APP_DATA_ARCHITECTURE.md): the server's lists come from
+  // the shared data layer — polled every 15 s while Home is in view, shared
+  // with the Jobs tab — and are turned into cards only when they change. A
+  // poll with nothing new no longer redraws Home, and a failed poll keeps the
+  // jobs shown instead of emptying the feed.
+  const homeInView = useIsFocused();
+  const inboundQuery = useInboundJobs(homeInView ? 15_000 : false);
+  const activeQuery = useActiveJobs(homeInView ? 15_000 : false);
   const loadJobs = React.useCallback(async () => {
+    await Promise.all([inboundQuery.refetch(), activeQuery.refetch()]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const applyJobs = React.useCallback((inbound: any[], active: any[]) => {
     try {
-      const [inbound, active] = await Promise.all([
-        SkoFyApi.jobs.getInbound().catch(() => []),
-        SkoFyApi.jobs.getActive().catch(() => []),
-      ]);
 
       const mapInbound = (j: any) => ({
         id: String(j.job_id ?? j.id),
@@ -291,10 +580,19 @@ export default function DashboardScreen() {
       // ever becomes job-type-specific instead of always just Gas.
       writeDashboardCache({ jobs: allJobs.slice(0, 30).map(({ icon, ...rest }) => rest) });
     } catch (error) {
-      console.error('Failed to load jobs', error);
-      setJobs([]);
+      // A card that can't be built keeps what's shown.
+      console.error('Failed to build the jobs feed', error);
     }
   }, []);
+
+  useEffect(() => {
+    if (inboundQuery.data && activeQuery.data) {
+      applyJobs(inboundQuery.data, activeQuery.data);
+      setIsLoading(false);
+    } else if (inboundQuery.isError || activeQuery.isError) {
+      setIsLoading(false);           // the cached feed (if any) stays; pull to retry
+    }
+  }, [inboundQuery.data, activeQuery.data, inboundQuery.isError, activeQuery.isError, applyJobs]);
 
   const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
@@ -328,7 +626,6 @@ export default function DashboardScreen() {
   useEffect(() => {
     if (skillFilter && mySkills.length > 0 && !verifiedSkillNames.has(skillFilter)) chooseSkillFilter(null);
   }, [mySkills, skillFilter]);
-  const [now, setNow] = useState(Date.now());
   const [address, setAddress] = useState('Locating...');
   const [userName, setUserName] = useState('');
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
@@ -758,25 +1055,42 @@ export default function DashboardScreen() {
     });
   }, []);
 
-  // Load provider profile (name + availability + photo) on mount
+  // The provider's profile, skills and job alerts — from the data layer,
+  // shared with Profile and Rates & hosting. A change made on any of them
+  // reaches Home by itself; coming back refreshes only what's out of date.
+  const profileQuery = useProviderProfile();
+  const skillsQuery = useMySkills();
+  const alertsQuery = useJobAlerts();
+  useRefreshOnFocus(profileQuery, skillsQuery, alertsQuery);
+
   useEffect(() => {
-    SkoFyApi.provider.getProfile()
-      .then((profile: any) => {
-        liveDataArrivedRef.current = true;
-        if (profile?.name) { setUserName(profile.name); writeDashboardCache({ userName: profile.name }); }
-        if (typeof profile?.is_available === 'boolean') {
-          setIsAvailable(profile.is_available);
-          writeDashboardCache({ isAvailable: profile.is_available });
-        }
-        if (profile?.profile_image_url) {
-          setProfileImageUrl(profile.profile_image_url);
-          writeDashboardCache({ profileImageUrl: profile.profile_image_url });
-        }
-        setIsIdentityVerified(!!profile?.is_identity_verified);
-      })
-      .catch((err) => console.error('Failed to fetch provider profile:', err));
+    const profile: any = profileQuery.data;
+    if (!profile) return;
+    liveDataArrivedRef.current = true;
+    if (profile.name) { setUserName(profile.name); writeDashboardCache({ userName: profile.name }); }
+    if (typeof profile.is_available === 'boolean') {
+      setIsAvailable(profile.is_available);
+      writeDashboardCache({ isAvailable: profile.is_available });
+    }
+    // Removed in Profile: cleared here too, not only ever set.
+    setProfileImageUrl(profile.profile_image_url || null);
+    if (profile.profile_image_url) writeDashboardCache({ profileImageUrl: profile.profile_image_url });
+    setIsIdentityVerified(!!profile.is_identity_verified);
+  }, [profileQuery.data]);
+
+  useEffect(() => {
     SkoFyApi.notifications.unreadCount().then(setUnreadNotifCount).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!skillsQuery.data) return;
+    setMySkills(skillsQuery.data as any[]);
+    setPickupDropoffEnabled(skillsQuery.data.some((s) => s.name === 'Pickup & Delivery Errands' && s.is_verified));
+  }, [skillsQuery.data]);
+
+  useEffect(() => {
+    if (alertsQuery.data) setAlertSkillIds(alertsQuery.data);
+  }, [alertsQuery.data]);
 
   // Same skill row (and identity-verification flag) Profile's dedicated
   // toggle reads/writes — surfaced here too since a provider shouldn't have
@@ -784,36 +1098,6 @@ export default function DashboardScreen() {
   // mount: this screen and Profile both stay mounted in the background
   // across tab switches, so toggling it in Profile (or getting verified)
   // and switching back here would otherwise show stale state.
-  const refreshPickupDropoffStatus = React.useCallback(() => {
-    SkoFyApi.provider.getProfile()
-      .then((profile: any) => {
-        setIsIdentityVerified(!!profile?.is_identity_verified);
-        if (typeof profile?.is_available === 'boolean') setIsAvailable(profile.is_available);
-        // Same staleness issue as is_available above: this screen and
-        // Profile both stay mounted across tab switches, and this was only
-        // ever fetched once at cold start — so uploading/changing a photo
-        // in Profile left the Dashboard's header stuck on the generic
-        // person icon (or a stale old photo, if one had been set at cold
-        // start and was since removed) for the rest of the session instead
-        // of picking up the change on the next visit. Unconditional, not
-        // `if (profile?.profile_image_url)`, so a removal (photo_url now
-        // null) actually clears it here instead of only ever being able to
-        // set a new one.
-        if (profile?.name) setUserName(profile.name);
-        setProfileImageUrl(profile?.profile_image_url || null);
-      })
-      .catch(() => {});
-    SkoFyApi.skills.getMySkills()
-      .then((skills: any[]) => {
-        setMySkills(skills || []);
-        setPickupDropoffEnabled((skills || []).some(s => s.name === 'Pickup & Delivery Errands' && s.is_verified));
-      })
-      .catch(() => {});
-    SkoFyApi.skills.getJobAlerts()
-      .then(r => setAlertSkillIds(r?.skill_ids ?? []))
-      .catch(() => {});
-  }, []);
-  useFocusEffect(React.useCallback(() => { refreshPickupDropoffStatus(); }, [refreshPickupDropoffStatus]));
 
   // Double-back-to-exit — same pattern as the customer app's Home/Login
   // screens, previously missing here entirely (this Dashboard is the
@@ -850,11 +1134,6 @@ export default function DashboardScreen() {
     }
   };
 
-  // Load dashboard jobs from API on mount
-  useEffect(() => {
-    setIsLoading(true);
-    loadJobs().finally(() => setIsLoading(false));
-  }, [loadJobs]);
 
   // Quietly re-fetch whenever this tab regains focus (no full-screen spinner)
   // so an edit the customer just made — deadline, budget, title — actually
@@ -866,13 +1145,9 @@ export default function DashboardScreen() {
   // refresh manually. The Service Room modal (opened from here) already
   // pauses this via its own dedicated poll while it's open, so this doesn't
   // fight with that.
-  useFocusEffect(
-    React.useCallback(() => {
-      loadJobs();
-      const interval = setInterval(loadJobs, 15000);
-      return () => clearInterval(interval);
-    }, [loadJobs])
-  );
+  // Coming back to Home: refresh the feed if it's out of date (the poll above
+  // runs only while Home is in view).
+  useRefreshOnFocus(inboundQuery, activeQuery);
 
   const tabs = ['All Jobs', 'Ongoing', 'Booked Slots', 'Applied'];
   const tabWidth = (width - 40) / 3;
@@ -1338,6 +1613,8 @@ const filteredJobs = jobs.filter((job) => {
         SkoFyApi.tracking.updateLocation(initLat, initLng)
           .catch((err) => console.warn('Failed to push initial location:', err));
 
+        let shownCoords: { latitude: number; longitude: number } | null = null;
+        let addressAt: { coords: { latitude: number; longitude: number }; time: number } | null = null;
         locationSubscription = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.High,
@@ -1345,11 +1622,19 @@ const filteredJobs = jobs.filter((job) => {
             timeInterval: 2000,
           },
           (newLocation) => {
-            setUserCoords({
-              latitude: newLocation.coords.latitude,
-              longitude: newLocation.coords.longitude,
-            });
-            updateAddress(newLocation);
+            const here = { latitude: newLocation.coords.latitude, longitude: newLocation.coords.longitude };
+            userCoordsRef.current = here;
+            // GPS fires every few seconds. Each of these redraws all of Home, so
+            // the distances shown follow only real moves (cards show 0.1 mi), and
+            // the address — a lookup over the network — only every 150 m or 2 min.
+            if (!shownCoords || calculateDistance(shownCoords, here) > 0.03) {
+              shownCoords = here;
+              setUserCoords(here);
+            }
+            if (!addressAt || calculateDistance(addressAt.coords, here) > 0.15 || Date.now() - addressAt.time > 120_000) {
+              addressAt = { coords: here, time: Date.now() };
+              updateAddress(newLocation);
+            }
             // Stream live GPS to the backend only while a job is actively underway.
             // Try WebSocket first (real-time, <200ms); fall back to HTTP PATCH
             // if the socket isn't open (e.g. briefly after app reopen).
@@ -1399,10 +1684,7 @@ const filteredJobs = jobs.filter((job) => {
     };
 
     startLocationTracking();
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-
     return () => {
-      clearInterval(interval);
       if (locationSubscription) {
         locationSubscription.remove();
       }
@@ -1453,249 +1735,11 @@ const filteredJobs = jobs.filter((job) => {
     transform: [{ scale: urgentBadgeScale.value }],
   }));
 
-  const renderJobCard = (job: any, index: number) => {
-    const Icon = job.icon || Gas;
-    const isUrgent = job.jobType === 'Urgent';
-    const isBookSlot = job.jobType === 'Book Slot';
-    const { days, hours, minutes, seconds } = formatTime(job.deadline, now);
-
-    const feasibility: FeasibilityResult = job.feasibility || { feasible: true, score: 0, status: 'SAFE', reason: 'Active Job' };
-
-    const getFeasibilityColor = (status: string) => {
-      switch (status) {
-        case 'SAFE': return '#10B981';
-        case 'TIGHT': return '#F59E0B';
-        case 'RISKY': return '#EF4444';
-        case 'NOT_FEASIBLE': return '#7F1D1D';
-        default: return '#9CA3AF';
-      }
-    };
-
-    const isConflict = feasibility.status === 'NOT_FEASIBLE';
-
-    return (
-      <Animated.View
-        key={job.id}
-        entering={FadeInUp.delay(200 * index)}
-        style={[
-          styles.jobCard,
-          {
-            backgroundColor: themeColors.background,
-            shadowColor: themeColors.shadow,
-            borderColor: job.isDirectRequest ? '#6366F1' : isUrgent ? '#FEE2E2' : '#F3F4F6',
-            borderWidth: job.isDirectRequest ? 2 : isUrgent ? 1.5 : 1,
-            opacity: isConflict && !job.isOngoing ? 0.8 : 1,
-          },
-        ]}
-      >
-        <View style={styles.jobCardHeader}>
-          <View style={[styles.iconContainer, { backgroundColor: job.isDirectRequest ? '#EEF2FF' : isUrgent ? '#FEF2F2' : '#F9FAFB' }]}>
-            <Icon size={28} color={job.isDirectRequest ? '#6366F1' : isUrgent ? '#EF4444' : '#FFCE48'} />
-          </View>
-          <View style={styles.jobTitleContainer}>
-            <View style={styles.titleRow}>
-              {job.isDirectRequest && (
-                <View style={styles.directRequestBadge}>
-                  <ThemedText style={styles.directRequestText}>DIRECT REQUEST</ThemedText>
-                </View>
-              )}
-              {!job.isOngoing && myBusiness.teamJob(job.id) && (
-                <View style={styles.teamJobBadge}>
-                  <ThemedText style={styles.directRequestText}>FOR YOUR TEAM</ThemedText>
-                </View>
-              )}
-              {job.isRepeatCustomer && !job.isOngoing && (
-                <View style={styles.repeatRequestBadge}>
-                  <ThemedText style={styles.repeatRequestBadgeText}>
-                    REPEAT CUSTOMER · {job.jobsWithCustomer} {job.jobsWithCustomer === 1 ? 'JOB' : 'JOBS'} WITH YOU
-                  </ThemedText>
-                </View>
-              )}
-              {!job.isOngoing && (
-                <View style={[styles.feasibilityBadge, { backgroundColor: getFeasibilityColor(feasibility.status) }]}>
-                  <ThemedText style={styles.feasibilityText}>{feasibility.status}</ThemedText>
-                </View>
-              )}
-              {job.jobType && (
-                <Animated.View style={[
-                  styles.statusBadge,
-                  { backgroundColor: isUrgent ? '#EF4444' : isBookSlot ? '#10B981' : '#F59E0B' },
-                  isUrgent && urgentBadgeStyle,
-                ]}>
-                  <Text style={styles.statusText}>{job.jobType}</Text>
-                </Animated.View>
-              )}
-              {job.jobKind === 'PICKUP_DROPOFF' && (
-                <View style={[styles.statusBadge, { backgroundColor: '#0EA5E9' }]}>
-                  <Text style={styles.statusText}>Pickup & Drop</Text>
-                </View>
-              )}
-              {job.serviceMode === 'REMOTE' && (
-                <View style={[styles.statusBadge, { backgroundColor: '#7C3AED' }]}>
-                  <Text style={styles.statusText}>Remote</Text>
-                </View>
-              )}
-            </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <ThemedText style={[styles.jobTitle, { flex: 1 }]} numberOfLines={1}>{job.title}</ThemedText>
-              <View style={styles.distanceBadge}>
-                <Navigation size={12} color="#FFCE48" fill="#FFCE48" />
-                <Text style={styles.distanceBadgeText}>
-                  {job.latitude == null || job.longitude == null
-                    ? 'Remote'
-                    : userCoords
-                    ? `${kmToMiles(calculateDistance(userCoords, { latitude: job.latitude, longitude: job.longitude })).toFixed(1)} mi`
-                    : job.distance}
-                </Text>
-              </View>
-            </View>
-            <ThemedText style={styles.jobDescription} numberOfLines={2}>
-              {job.description}
-            </ThemedText>
-          </View>
-        </View>
-
-        {!job.isOngoing && job.serviceMode !== 'REMOTE' && (
-          <View style={styles.feasibilityInfoRow}>
-            <Zap size={12} color={getFeasibilityColor(feasibility.status)} />
-            <ThemedText style={[styles.feasibilityDetailText, { color: getFeasibilityColor(feasibility.status) }]}>
-              {(() => {
-                // job.latitude/longitude are `number | null` (not defaulted to 0
-                // anymore — see mapInbound/mapActive) — this guard now correctly
-                // means "job has no location" rather than happening to work only
-                // because 0 is falsy.
-                if (userCoords && job.latitude != null && job.longitude != null) {
-                  const distKm = calculateDistance(userCoords, { latitude: job.latitude, longitude: job.longitude });
-                  return `~${formatDriveTime(estimateDriveMinutes(distKm))} drive`;
-                }
-                return `${feasibility.travelTime} min travel`;
-              })()} {'•'} {feasibility.score < 0 ? 'Conflict' : `${feasibility.score} min gap`} {'•'} {feasibility.reason}
-            </ThemedText>
-          </View>
-        )}
-
-        <View style={styles.skillsRow}>
-          {(job.skills || []).map((skill: string, idx: number) => {
-            // Skills they've verified in green, the rest locked (until their
-            // skills have loaded, every pill looks the same as before).
-            const have = mySkills.length === 0 || verifiedSkillNames.has(skill);
-            return (
-              <View key={idx} style={[styles.skillBadge, !have && styles.skillBadgeLocked]}>
-                {have ? <CheckCircle2 size={12} color="#10B981" /> : <Lock size={11} color="#9CA3AF" />}
-                <ThemedText style={[styles.skillText, !have && styles.skillTextLocked]}>{skill}</ThemedText>
-              </View>
-            );
-          })}
-          {job.hasMedia && (
-            <View style={[styles.skillBadge, { backgroundColor: '#F3F4F6', borderColor: '#E5E7EB' }]}>
-              <Text style={[styles.skillText, { color: '#666' }]}>+ Photos</Text>
-            </View>
-          )}
-        </View>
-
-        {!job.isOngoing && mySkills.length > 0 && (job.skills || []).length > 0 && (() => {
-          const total = job.skills.length;
-          const matched = job.skills.filter((sk: string) => verifiedSkillNames.has(sk)).length;
-          return (
-            <Text style={[styles.matchLine, matched === total && styles.matchLineFull]}>
-              {matched === total ? `You match all ${total} skill${total === 1 ? '' : 's'}` : `You match ${matched} of ${total} skills`}
-            </Text>
-          );
-        })()}
-
-        {/* Customer Meter — reverse of the Skill-O-Meter customers see about
-            providers: same review-derived trust signal, but rating the
-            customer (payment reliability, behaviour) instead of skills. */}
-        {job.customerReviewCount > 0 && (
-          <View style={styles.skillsRow}>
-            {job.customerAvgPaymentRating != null && (
-              <View style={[styles.skillBadge, { backgroundColor: job.customerAvgPaymentRating >= 4.0 ? '#FFFBEB' : '#F9FAFB', borderColor: job.customerAvgPaymentRating >= 4.0 ? '#FDE9C0' : '#E5E7EB' }]}>
-                <CheckCircle2 size={12} color={job.customerAvgPaymentRating >= 4.0 ? '#D97706' : '#9CA3AF'} />
-                <ThemedText style={[styles.skillText, { color: job.customerAvgPaymentRating >= 4.0 ? '#92400E' : '#6B7280' }]}>
-                  Pays on Time {job.customerAvgPaymentRating.toFixed(1)}★
-                </ThemedText>
-              </View>
-            )}
-            {job.customerAvgBehaviourRating != null && (
-              <View style={[styles.skillBadge, { backgroundColor: job.customerAvgBehaviourRating >= 4.0 ? '#F0FDF4' : '#F9FAFB', borderColor: job.customerAvgBehaviourRating >= 4.0 ? '#BBF7D0' : '#E5E7EB' }]}>
-                <CheckCircle2 size={12} color={job.customerAvgBehaviourRating >= 4.0 ? '#16A34A' : '#9CA3AF'} />
-                <ThemedText style={[styles.skillText, { color: job.customerAvgBehaviourRating >= 4.0 ? '#166534' : '#6B7280' }]}>
-                  Good Behaviour {job.customerAvgBehaviourRating.toFixed(1)}★
-                </ThemedText>
-              </View>
-            )}
-          </View>
-        )}
-
-        <View style={styles.jobDetails}>
-          <View style={styles.detailItem}>
-            <Clock size={16} color={isUrgent ? '#EF4444' : themeColors.icon} />
-            <ThemedText style={[styles.detailText, isUrgent && { color: '#EF4444' }]}>
-              {days}d : {hours}h : {minutes}m : <Text style={styles.secondsText}>{seconds}s</Text>
-            </ThemedText>
-          </View>
-          <View style={[styles.detailItem, { flex: 1, marginLeft: 10 }]}>
-            <MapPin size={16} color={themeColors.icon} />
-            <ThemedText style={styles.detailText} numberOfLines={1}>
-              {job.location}
-            </ThemedText>
-          </View>
-        </View>
-
-        <View style={styles.divider} />
-
-        <View style={styles.cardFooter}>
-          <View>
-            <ThemedText style={styles.feeLabel}>Service Fee</ThemedText>
-            <ThemedText style={styles.feeValue}>{job.fee}</ThemedText>
-          </View>
-          <View style={styles.cardActions}>
-            <TouchableOpacity
-              style={styles.detailsButton}
-              onPress={() => router.push({
-                pathname: '/job-details' as any,
-                params: { id: job.id },
-              })}
-            >
-              <ThemedText style={styles.detailsButtonText}>Details</ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.acceptButton,
-                {
-                  backgroundColor: job.isOngoing ? '#10B981' :
-                    (job.appStatus === 'REJECTED' ? '#FEF2F2' :
-                    (job.applicationId ? '#F0FDF4' :
-                    (isConflict ? '#F3F4F6' : (activeJobId ? '#E5E7EB' : '#FFCE48')))),
-                },
-              ]}
-              onPress={() => job.isOngoing ? handleManageService(job.id) : (job.applicationId ? undefined : handleApplyJob(job.id))}
-              disabled={!!job.applicationId || (!!activeJobId && !job.isOngoing) || (isConflict && !job.isOngoing)}
-            >
-              <Animated.View style={isUrgent && !job.isOngoing && !isConflict && !job.applicationId ? acceptButtonStyle : null}>
-                <ThemedText style={[
-                  styles.acceptButtonText,
-                  job.appStatus === 'REJECTED' && { color: '#EF4444' },
-                  (job.applicationId && job.appStatus !== 'REJECTED') && { color: '#16A34A' },
-                  (!job.applicationId && ((activeJobId && !job.isOngoing) || (isConflict && !job.isOngoing))) && { color: '#9CA3AF' },
-                ]}>
-                  {job.isOngoing ? 'Service Room' :
-                    // Already applied takes priority over the other disabled
-                    // states — this used to show "Apply Job" again (or even
-                    // "Locked"/"Conflict" for unrelated reasons) with no way
-                    // to tell a job you'd already bid on apart from one you
-                    // hadn't, until you tapped it and got an error.
-                    (job.applicationId
-                      ? (job.appStatus === 'REJECTED' ? 'Rejected' : 'Applied ✓')
-                      : (isConflict ? 'Conflict' : (activeJobId ? 'Locked' : 'Apply Job')))}
-                </ThemedText>
-              </Animated.View>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Animated.View>
-    );
-  };
+  // Stable for the cards (JobFeedCard), so they redraw only for their own job.
+  const cardActionsRef = useRef({ handleManageService, handleApplyJob });
+  cardActionsRef.current = { handleManageService, handleApplyJob };
+  const onManageCard = React.useCallback((id: string) => cardActionsRef.current.handleManageService(id), []);
+  const onApplyCard = React.useCallback((id: string) => cardActionsRef.current.handleApplyJob(id), []);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background }]}>
@@ -1939,7 +1983,14 @@ const filteredJobs = jobs.filter((job) => {
             </ThemedText>
           </View>
         ) : (
-          filteredJobs.map((job, i) => renderJobCard(job, i))
+          filteredJobs.map((job, i) => (
+            <JobFeedCard
+              key={job.id} job={job} index={i} userCoords={userCoords} activeJobId={activeJobId}
+              hasSkills={mySkills.length > 0} verifiedSkillNames={verifiedSkillNames} themeColors={themeColors}
+              acceptButtonStyle={acceptButtonStyle} urgentBadgeStyle={urgentBadgeStyle}
+              isTeamJob={!job.isOngoing && !!myBusiness.teamJob(job.id)} onManage={onManageCard} onApply={onApplyCard}
+            />
+          ))
         )}
       </ScrollView>
 

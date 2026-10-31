@@ -1,7 +1,9 @@
 import { NAME_PART_MAX, NameParts, fullName, hasFullName, namePayload } from '@/services/name';
 import { isValidPassword } from '@/services/password';
 import AnimatedBrandMark from '@/components/animated-brand-mark';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { fetchMySkills, fetchProviderProfile } from '@/services/queries/provider';
 import { SkillAssessmentList } from '@/components/skill-assessment-list';
 import { CustomerRatingSheet } from '@/components/customer-rating-sheet';
 import { RateCustomerButton } from '@/components/rate-customer-button';
@@ -122,7 +124,33 @@ const PAYOUT_KIND: Record<string, string> = {
   INSPECTION_FEE: 'Visiting fee', JOB_COST: 'Job', EXTRA_WORK: 'Added work', TIP: 'Tip — all yours',
 };
 
+/** A skill test's seconds left, ticking on its own: in Profile's state it
+ * redrew all of Profile every second of a test. Tells Profile when it pauses
+ * (to show "…s elapsed - Paused" and resume from there) and when time is up. */
+function TestCountdown({ from, running, onPause, onTimeout, style }: {
+  from: number; running: boolean; onPause: (left: number) => void; onTimeout: () => void; style: any;
+}) {
+  const [left, setLeft] = useState(from);
+  const leftRef = useRef(left);
+  leftRef.current = left;
+  useEffect(() => {
+    if (!running) return;
+    if (left <= 0) { onTimeout(); return; }
+    const id = setTimeout(() => setLeft((n) => n - 1), 1000);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running, left]);
+  // Paused, or gone (minimised): Profile keeps where it stopped.
+  useEffect(() => {
+    if (!running) onPause(leftRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running]);
+  useEffect(() => () => onPause(leftRef.current), []);   // eslint-disable-line react-hooks/exhaustive-deps
+  return <ThemedText style={style}>{left}s</ThemedText>;
+}
+
 export default function ProfileScreen() {
+  const queryClient = useQueryClient();
   const bottomInset = useBottomInset();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
@@ -205,7 +233,10 @@ export default function ProfileScreen() {
   // dismissed. A fresh object per call, not a boolean, so two rapid
   // taps/starts can't be confused with each other either.
   const pendingStartTestRef = React.useRef<object | null>(null);
+  // Seconds left as of the last question start or pause — the ticking itself
+  // is TestCountdown's, so Profile isn't redrawn every second of a test.
   const [testTimer, setTestTimer] = useState(30);
+  const [testTimerKey, setTestTimerKey] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(false);
   const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
@@ -304,8 +335,10 @@ export default function ProfileScreen() {
     });
   }, [availableSlots, now]);
 
+  // Slots end on the minute, so a minute's tick hides a past one in time. It
+  // was every second, which redrew all of Profile every second.
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 1000);
+    const interval = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -315,7 +348,8 @@ export default function ProfileScreen() {
   // needing a manual pull-to-refresh.
   const refreshProviderProfile = React.useCallback(async () => {
     try {
-      const profile: any = await SkoFyApi.provider.getProfile();
+      // Through the shared cache, so Home and Rates & hosting see it too.
+      const profile: any = await fetchProviderProfile(queryClient);
       const name = profile?.name || '';
       const city = profile?.city || '';
       const bio = profile?.bio || '';
@@ -362,7 +396,7 @@ export default function ProfileScreen() {
       // Verified) in two requests — it used to be one request per skill,
       // hundreds for a provider with many skills, on every visit.
       const [skills, eligibility] = await Promise.all([
-        SkoFyApi.skills.getMySkills(),
+        fetchMySkills(queryClient),
         SkoFyApi.skills.getAllTestEligibility().catch(() => ({})),
       ]);
       setApiSkills(skills || []);
@@ -372,8 +406,12 @@ export default function ProfileScreen() {
     }
   }, []);
 
+  // Not on the first visit: the full load below covers it (both ran at once,
+  // fetching the profile and skills twice on opening).
+  const firstFocusRef = useRef(true);
   useFocusEffect(
     React.useCallback(() => {
+      if (firstFocusRef.current) { firstFocusRef.current = false; return; }
       refreshProviderProfile();
       refreshSkills();
       // Rated from a popup or the Jobs tab since — drop its button here.
@@ -585,7 +623,7 @@ export default function ProfileScreen() {
   const getEligibilityMessage = eligibilityMessage;
 
   const refreshSkillsAndEligibility = async () => {
-    const skills: any[] | null = await SkoFyApi.skills.getMySkills().catch(() => null);
+    const skills: any[] | null = await fetchMySkills(queryClient).catch(() => null);
     if (!skills) return;
     setApiSkills(skills);
     const eligibility = await SkoFyApi.skills.getAllTestEligibility().catch(() => null);
@@ -643,6 +681,7 @@ export default function ProfileScreen() {
       setSelectedAnswer(null);
       setTestFeedback(null);
       setTestTimer(30);
+      setTestTimerKey((k) => k + 1);
     } catch (e: any) {
       if (pendingStartTestRef.current !== requestToken) return;
       // Must close the modal on failure, not just stop loading — testQuestion
@@ -722,6 +761,7 @@ export default function ProfileScreen() {
       setSelectedAnswer(null);
       setTestFeedback(null);
       setTestTimer(30);
+      setTestTimerKey((k) => k + 1);
       return;
     }
 
@@ -741,6 +781,7 @@ export default function ProfileScreen() {
       setSelectedAnswer(null);
       setTestFeedback(null);
       setTestTimer(30);
+      setTestTimerKey((k) => k + 1);
     } catch (e: any) {
       showAlert('error', 'Could Not Load Question', e?.message || 'Please try again.');
     } finally {
@@ -774,11 +815,10 @@ export default function ProfileScreen() {
     setShowResultsScreen(false);
   };
 
-  useEffect(() => {
-    let timer: any;
-    if (isAssessmentOpen && !isTestMinimized && !finalTestResult && !testFeedback && testTimer > 0 && !isSubmittingAnswer) {
-      timer = setInterval(() => setTestTimer(prev => prev - 1), 1000);
-    } else if (testTimer === 0 && isAssessmentOpen && !isTestMinimized && !finalTestResult && !testFeedback) {
+  const testTimerRunning = isAssessmentOpen && !isTestMinimized && !finalTestResult && !testFeedback && !isSubmittingAnswer;
+  const onTestTimeout = () => {
+    setTestTimer(0);
+    if (isAssessmentOpen && !isTestMinimized && !finalTestResult && !testFeedback) {
       // Auto-submit on timeout (counts as wrong, test continues normally) —
       // and, since there's no one left to tap "Next Question"/"View
       // Results", auto-advance ourselves once the feedback has had a beat
@@ -796,8 +836,11 @@ export default function ProfileScreen() {
         }, TIMEOUT_AUTO_ADVANCE_DELAY_MS);
       });
     }
-    return () => clearInterval(timer);
-  }, [isAssessmentOpen, isTestMinimized, testTimer, testFeedback, finalTestResult, isSubmittingAnswer]);
+  };
+  // Stable for the countdown, while always calling the latest handler.
+  const onTestTimeoutRef = useRef(onTestTimeout);
+  onTestTimeoutRef.current = onTestTimeout;
+  const handleTestTimeout = React.useCallback(() => onTestTimeoutRef.current(), []);
 
   const [isSavingSlot, setIsSavingSlot] = useState(false);
 
@@ -2680,7 +2723,8 @@ export default function ProfileScreen() {
                     <ThemedText style={styles.assessStepText}>{testQuestion.questionNumber} of {testQuestion.totalQuestions} Questions</ThemedText>
                     <View style={styles.assessTimer}>
                       <Clock size={14} color="#EF4444" />
-                      <ThemedText style={styles.assessTimerText}>{testTimer}s</ThemedText>
+                      <TestCountdown key={testTimerKey} from={testTimer} running={testTimerRunning}
+                        onPause={setTestTimer} onTimeout={handleTestTimeout} style={styles.assessTimerText} />
                     </View>
                   </View>
 

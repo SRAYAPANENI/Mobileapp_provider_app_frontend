@@ -1,11 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Platform } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
+import { usePullRefresh } from '@/hooks/use-pull-refresh';
+import { useRefreshOnFocus } from '@/hooks/use-refresh-on-focus';
+import { qk } from '@/services/queries/keys';
+import { useActiveJobs, useJobHistory, useMarkComplete, usePendingRatings } from '@/services/queries/jobs';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { SkoFyApi } from '@/services/api';
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import { CustomerRatingSheet } from '@/components/customer-rating-sheet';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useAppAlert } from '@/components/app-alert';
@@ -78,7 +82,7 @@ function formatBudget(job: ProviderJob): string {
   return 'Negotiable';
 }
 
-function JobCard({
+const JobCard = React.memo(function JobCard({
   job,
   index,
   onAction,
@@ -90,7 +94,7 @@ function JobCard({
   onAction: (jobId: string) => void;
   onDispute: (jobId: string) => void;
   /** Set only for a finished job whose customer the provider hasn't rated. */
-  onRate?: () => void;
+  onRate?: (jobId: string) => void;
 }) {
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
@@ -215,7 +219,7 @@ function JobCard({
           <ThemedText style={styles.reportIssueLinkText}>Report an Issue</ThemedText>
         </TouchableOpacity>
       )}
-      {onRate && <RateCustomerButton onPress={onRate} />}
+      {onRate && <RateCustomerButton onPress={() => onRate(job.job_id)} />}
       {job.job_status === 'COMPLETED' && (
         <View style={styles.historyActionsRow}>
           <TouchableOpacity
@@ -232,7 +236,7 @@ function JobCard({
       )}
     </Animated.View>
   );
-}
+});
 
 function EmptyState({ tab }: { tab: 'active' | 'history' }) {
   const colorScheme = useColorScheme() ?? 'light';
@@ -259,10 +263,17 @@ export default function JobsScreen() {
   const themeColors = Colors[colorScheme];
   const styles = React.useMemo(() => makeStyles(themeColors), [colorScheme]);
   const [tab, setTab] = useState<'active' | 'history'>('active');
-  const [activeJobs, setActiveJobs] = useState<ProviderJob[]>([]);
-  const [historyJobs, setHistoryJobs] = useState<ProviderJob[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  // On the data layer (docs/APP_DATA_ARCHITECTURE.md): shared with other
+  // screens, fetched once, refreshed when out of date.
+  const active = useActiveJobs<ProviderJob>();
+  const history = useJobHistory<ProviderJob>();
+  const ratings = usePendingRatings();
+  const markComplete = useMarkComplete();
+  const queryClient = useQueryClient();
+  useRefreshOnFocus(active, history, ratings);
+  const refreshControl = usePullRefresh(() => Promise.all([active.refetch(), history.refetch(), ratings.refetch()]));
+  const activeJobs = active.data ?? [];
+  const historyJobs = history.data ?? [];
 
   // Dispute modal state
   const [disputeModal, setDisputeModal] = useState(false);
@@ -271,28 +282,12 @@ export default function JobsScreen() {
 
   // Finished jobs whose customer still needs a rating (job id → customer
   // name). Popups ask once; this is where a provider can always find it.
-  const [unrated, setUnrated] = useState<Record<string, string>>({});
+  const unrated = ratings.data ?? {};
   const [ratingJob, setRatingJob] = useState<{ id: string; customerName: string } | null>(null);
-
-  const load = useCallback(async () => {
-    try {
-      const [active, history, pendingRatings] = await Promise.all([
-        SkoFyApi.jobs.getActive().catch(() => []),
-        SkoFyApi.jobs.getHistory().catch(() => []),
-        SkoFyApi.jobs.pendingRatings().catch(() => []),
-      ]);
-      setActiveJobs(Array.isArray(active) ? active : []);
-      setHistoryJobs(Array.isArray(history) ? history : []);
-      setUnrated(Object.fromEntries((Array.isArray(pendingRatings) ? pendingRatings : []).map(p => [p.job_id, p.counterpart_name])));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-  // Refresh when coming back to this tab — a job may have finished or been rated elsewhere.
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  const openRating = useCallback((jobId: string) => {
+    const name = queryClient.getQueryData<Record<string, string>>(qk.jobs.pendingRatings)?.[jobId];
+    if (name !== undefined) setRatingJob({ id: jobId, customerName: name });
+  }, [queryClient]);
 
   // Starting a job is handled entirely in the Service Room now (on-site
   // inspection gated by an OTP) — this only ever completes an already
@@ -309,8 +304,7 @@ export default function JobsScreen() {
             text: 'Complete',
             onPress: async () => {
               try {
-                await SkoFyApi.jobs.markComplete(jobId);
-                load();
+                await markComplete.mutateAsync(jobId);
               } catch (err: any) {
                 appAlert.show('error', 'Action Failed', err?.message ?? 'Failed. Please try again.');
               }
@@ -319,20 +313,33 @@ export default function JobsScreen() {
         ]
       );
     },
-    [load]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
   );
 
-  const openDispute = (jobId: string) => {
+  const openDispute = useCallback((jobId: string) => {
     setDisputeJobId(jobId);
     setDisputeModal(true);
-  };
+  }, []);
 
   const displayJobs = tab === 'active' ? activeJobs : historyJobs;
 
-  if (loading) {
+  if (active.isPending) {
     return (
       <ThemedView style={[styles.container, styles.centered]}>
         <ActivityIndicator size="large" color="#FFCE48" />
+      </ThemedView>
+    );
+  }
+  // Couldn't load: say so — an empty list would read as "no jobs".
+  if (active.isError && !active.data) {
+    return (
+      <ThemedView style={[styles.container, styles.centered, { gap: 12, padding: 24 }]}>
+        <ThemedText style={{ textAlign: 'center' }}>We couldn't load your jobs. Check your connection and try again.</ThemedText>
+        <TouchableOpacity onPress={() => { active.refetch(); history.refetch(); ratings.refetch(); }}
+          style={{ paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, backgroundColor: '#FFCE48' }}>
+          <ThemedText style={{ fontWeight: '700', color: '#111827' }}>Try again</ThemedText>
+        </TouchableOpacity>
       </ThemedView>
     );
   }
@@ -374,21 +381,12 @@ export default function JobsScreen() {
             index={index}
             onAction={handleAction}
             onDispute={openDispute}
-            onRate={tab === 'history' && unrated[item.job_id] !== undefined
-              ? () => setRatingJob({ id: item.job_id, customerName: unrated[item.job_id] })
-              : undefined}
+            onRate={tab === 'history' && unrated[item.job_id] !== undefined ? openRating : undefined}
           />
         )}
         contentContainerStyle={padBottom(styles.listContent, bottomInset)}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => { setRefreshing(true); load(); }}
-            colors={['#FFCE48']}
-            tintColor="#FFCE48"
-          />
-        }
+        refreshControl={refreshControl}
         ListEmptyComponent={<EmptyState tab={tab} />}
       />
 
@@ -398,7 +396,11 @@ export default function JobsScreen() {
         onClose={(submitted) => {
           if (submitted && ratingJob) {
             const { id } = ratingJob;
-            setUnrated(prev => { const next = { ...prev }; delete next[id]; return next; });
+            queryClient.setQueryData<Record<string, string>>(qk.jobs.pendingRatings, (prev) => {
+              const next = { ...(prev ?? {}) };
+              delete next[id];
+              return next;
+            });
             appAlert.show('success', 'Thanks!', 'Your rating has been submitted.');
           }
           setRatingJob(null);
@@ -409,7 +411,7 @@ export default function JobsScreen() {
         jobId={disputeJobId}
         visible={disputeModal}
         onClose={() => setDisputeModal(false)}
-        onFiled={load}
+        onFiled={() => { active.refetch(); history.refetch(); }}
       />
       {appAlert.element}
     </ThemedView>

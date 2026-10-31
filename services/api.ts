@@ -16,6 +16,8 @@
 
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import { queryClient } from '@/services/query-client';
+import { afterWrite } from '@/services/queries/invalidate';
 import { File, Paths } from 'expo-file-system';
 import { API_BASE_URL } from './api-config';
 
@@ -73,6 +75,9 @@ export const TokenStore = {
     await SecureStore.deleteItemAsync(REFRESH_KEY);
     await SecureStore.deleteItemAsync(USER_KEY);
     await SecureStore.deleteItemAsync(REGISTERING_KEY);
+    // Signed out (or a session ended): nothing cached for this account may
+    // show to the next one on this phone.
+    queryClient.clear();
   },
 };
 
@@ -232,7 +237,9 @@ async function request<T = any>(
     if (newToken) {
       headers['Authorization'] = `Bearer ${newToken}`;
       const retried = await timedFetch(`${BASE_URL}${endpoint}`, { ...fetchOptions, headers }, limit);
-      return _parseResponse<T>(retried);
+      const retriedResult = await _parseResponse<T>(retried);
+      afterWrite(endpoint, fetchOptions.method);
+      return retriedResult;
     }
     // Refresh failed → clear tokens and force back to login
     await TokenStore.clear();
@@ -247,7 +254,10 @@ async function request<T = any>(
     sessionExpiredNotified = false;
   }
 
-  return _parseResponse<T>(response);
+  const result = await _parseResponse<T>(response);
+  // A write refreshes the cached reads it changes (services/queries/invalidate.ts).
+  afterWrite(endpoint, fetchOptions.method);
+  return result;
 }
 
 async function _parseResponse<T>(response: Response): Promise<T> {
