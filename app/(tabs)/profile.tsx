@@ -65,6 +65,7 @@ import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
+import { useNavigationState } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import FaceDetection from '@react-native-ml-kit/face-detection';
 import * as WebBrowser from 'expo-web-browser';
@@ -630,14 +631,52 @@ export default function ProfileScreen() {
     if (eligibility) setSkillEligibility(eligibility as typeof skillEligibility);
   };
 
+  // Profile is a tab kept alive behind the dashboard ((tabs)/_layout.tsx), so
+  // it used to reopen on whatever section and panel was left — straight back
+  // into Verification, say. Leaving it for the dashboard now resets it, so it
+  // opens at the top; a page opened from here (a job, Business, Help) sits on
+  // top of the tabs, so coming Back from one still lands where you were.
+  const isCurrentTab = useNavigationState(state => state.routes[state.index]?.name === 'profile');
+  useEffect(() => {
+    if (isCurrentTab) return;
+    setActiveProfileTab('profile');
+    profileScrollRef.current?.scrollTo({ y: 0, animated: false });
+    setIsSettingsOpen(false);
+    setIsPasswordOpen(false);
+    setIsTermsOpen(false);
+    setIsJobHistoryOpen(false);
+    setIsEditProfileOpen(false);
+    setIsEarningsModalOpen(false);
+    setIsSlotModalOpen(false);
+    setPickerMode(null);
+    setIsViewerOpen(false);
+    setIsViewAllOpen(false);
+    setShowTagModal(false);
+    setIsAddSkillOpen(false);
+    setSkillSearch('');
+    // Shown outside the history once that's closed — it would pop up over the dashboard.
+    setRatingJob(null);
+  }, [isCurrentTab]);
+
   // Opened from a locked skill on the dashboard: start that skill's test.
-  const { testSkillId: requestedTestSkillId, testSkillName: requestedTestSkillName } =
-    useLocalSearchParams<{ testSkillId?: string; testSkillName?: string }>();
+  // Opened from an apply prompt (test, identity, payouts, checks): the
+  // Verification section, where each of those is done.
+  const { testSkillId: requestedTestSkillId, testSkillName: requestedTestSkillName, section: requestedSection } =
+    useLocalSearchParams<{ testSkillId?: string; testSkillName?: string; section?: ProfileTab }>();
   useEffect(() => {
     if (!requestedTestSkillId || !requestedTestSkillName) return;
     router.setParams({ testSkillId: undefined, testSkillName: undefined } as any);
+    handleProfileTabChange('verification');
     startTest(requestedTestSkillId, requestedTestSkillName);
   }, [requestedTestSkillId]);
+  useEffect(() => {
+    if (!requestedSection) return;
+    router.setParams({ section: undefined } as any);
+    // Only a real section — anything else would show an empty screen.
+    if ((['profile', 'verification', 'earnings', 'availability'] as string[]).includes(requestedSection)) {
+      handleProfileTabChange(requestedSection);
+    }
+  }, [requestedSection]);
 
   const startTest = async (skillId: string, skillName: string) => {
     const eligibility = skillEligibility[skillId];
@@ -1518,7 +1557,8 @@ export default function ProfileScreen() {
 
         <TouchableOpacity
           style={styles.historyHelpBtn}
-          onPress={() => router.push(`/support-chat?jobId=${item.job_id}` as any)}
+          // Also shown in the full-screen history: close it first, or the chat opens behind it.
+          onPress={() => { setIsJobHistoryOpen(false); router.push(`/support-chat?jobId=${item.job_id}` as any); }}
         >
           <MessageSquare size={16} color="#6B7280" />
           <ThemedText style={styles.historyHelpText}>Help & Support</ThemedText>

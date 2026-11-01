@@ -24,6 +24,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { PRO_APP_DOWNLOAD_URL } from '@/services/api-config';
 import { Asset } from 'expo-asset';
+import * as LegacyFS from 'expo-file-system/legacy';
 import RNShare from 'react-native-share';
 import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 import { usePullRefresh } from '@/hooks/use-pull-refresh';
@@ -111,7 +112,12 @@ export default function BusinessScreen() {
     try {
       const [card] = await Asset.loadAsync(require('@/assets/images/team-invite.jpg'));
       if (!card.localUri) throw new Error('no card');
-      await RNShare.open({ message, url: card.localUri, type: 'image/jpeg', failOnCancel: false });
+      // In a release build the card's localUri is a bundled resource name
+      // (assets_images_teaminvite), not a file — copy it to a real file first
+      // or WhatsApp gets the name as text instead of the image.
+      const file = `${LegacyFS.cacheDirectory}team-invite.jpg`;
+      await LegacyFS.copyAsync({ from: card.localUri, to: file });
+      await RNShare.open({ message, url: file, type: 'image/jpeg', failOnCancel: false });
     } catch {
       // The card couldn't be attached: the message alone still goes.
       Share.share({ message }).catch(() => {});

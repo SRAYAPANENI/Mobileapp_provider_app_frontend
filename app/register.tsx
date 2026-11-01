@@ -1510,7 +1510,7 @@ export default function RegisterScreen() {
                   // Land on Profile (not the dashboard) so they immediately see their skills
                   // section and discover they can add more skills/professions anytime.
                   await TokenStore.finishRegistering().catch(() => {});
-                  const goToProfile = () => router.replace('/(tabs)/profile' as any);
+                  const goToProfile = () => router.replace({ pathname: '/(tabs)/profile', params: { section: 'verification' } } as any);
                   if (failedDocs.length > 0) {
                     setSaveStage('Account created');
                     afterAlert.current = goToProfile;

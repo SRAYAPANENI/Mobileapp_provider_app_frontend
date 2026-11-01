@@ -486,7 +486,7 @@ export default function JobDetailsScreen() {
           title: gate.title,
           message: gate.message,
           actionLabel: gate.actionLabel,
-          onAction: () => { setGateModal(null); router.push('/(tabs)/profile'); },
+          onAction: () => { setGateModal(null); router.push({ pathname: '/(tabs)/profile', params: { section: 'verification' } } as any); },
         });
       } else {
         Alert.alert('Failed', msg || 'Could not accept this request. Please try again.');
@@ -532,7 +532,7 @@ export default function JobDetailsScreen() {
           title: gate.title,
           message: gate.message,
           actionLabel: gate.actionLabel,
-          onAction: () => { setGateModal(null); router.push('/(tabs)/profile'); },
+          onAction: () => { setGateModal(null); router.push({ pathname: '/(tabs)/profile', params: { section: 'verification' } } as any); },
         });
       } else {
         Alert.alert('Failed', msg || 'Could not apply for this job. Please try again.');

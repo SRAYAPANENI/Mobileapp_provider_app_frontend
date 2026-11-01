@@ -1331,7 +1331,7 @@ const filteredJobs = jobs.filter((job) => {
         if (gate) {
           appAlert.show('warning', gate.title, gate.message, [
             { text: 'Not Now', variant: 'secondary' },
-            { text: gate.actionLabel, onPress: () => router.push('/(tabs)/profile') },
+            { text: gate.actionLabel, onPress: () => router.push({ pathname: '/(tabs)/profile', params: { section: 'verification' } } as any) },
           ]);
         } else {
           appAlert.show('error', 'Could Not Apply', msg || 'Failed to apply for this job. Please try again.');

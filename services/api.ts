@@ -1401,6 +1401,14 @@ export const SkoFyApi = {
         method: 'POST',
         body: JSON.stringify({ message }),
       }),
+    // A photo (or PDF) with an optional caption — the paperclip in the chat.
+    addAttachment: async (ticketId: string, file: { uri: string; mimeType: string; name?: string }, message = '') => {
+      const form = new FormData();
+      form.append('message', message);
+      const ext = file.mimeType === 'application/pdf' ? 'pdf' : file.mimeType.split('/')[1] || 'jpg';
+      form.append('file', { uri: file.uri, name: file.name ?? `attachment.${ext}`, type: file.mimeType } as any);
+      return requestMultipart(`/support-tickets/${ticketId}/attachments`, form);
+    },
     addSystemMessage: async (ticketId: string, message: string) =>
       request(`/support-tickets/${ticketId}/system-message`, {
         method: 'POST',
