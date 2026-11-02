@@ -22,6 +22,9 @@ interface Props {
   onRemove: (member: TeamMember) => void;
   /** Let someone who asked to leave go now. */
   onRelease?: (member: TeamMember) => void;
+  /** Share the invite again — for someone not on Dodorez, who only hears
+   *  about it from the owner. */
+  onResend?: (member: TeamMember) => void;
 }
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -29,7 +32,7 @@ const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, {
 // The team: who's on it and their checks, and — for the owner — inviting
 // people by phone, changing roles and removing them. A member can do jobs
 // once their ID is verified and their background check is clear.
-export function TeamSection({ team, canManage, onInvite, onChangeRole, onRemove, onRelease }: Props) {
+export function TeamSection({ team, canManage, onInvite, onChangeRole, onRemove, onRelease, onResend }: Props) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const active = team.members.filter((m) => m.status === 'ACTIVE').length;
@@ -75,6 +78,9 @@ export function TeamSection({ team, canManage, onInvite, onChangeRole, onRemove,
                   {m.status === 'ACTIVE' && !m.leave_at && (
                     <Button small kind="secondary" label={`Make ${m.role === 'WORKER' ? 'dispatcher' : 'worker'}`}
                       onPress={() => { setOpen(null); onChangeRole(m, m.role === 'WORKER' ? 'DISPATCHER' : 'WORKER'); }} />
+                  )}
+                  {m.status === 'INVITED' && !m.provider_id && m.phone && onResend && (
+                    <Button small kind="secondary" label="Send invite" onPress={() => { setOpen(null); onResend(m); }} />
                   )}
                   <Button small kind="danger" label={m.status === 'INVITED' ? 'Cancel invite' : 'Remove'}
                     onPress={() => { setOpen(null); onRemove(m); }} />

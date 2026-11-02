@@ -96,7 +96,8 @@ export default function BusinessScreen() {
   // An invite to someone not on Dodorez, sent from the owner's phone.
   // Sent from the owner's own phone (WhatsApp, a text…): the invite card
   // (marketing/flyers/team-invite.html) with the message as its caption.
-  const shareInvite = async (phone: string, r: MemberRole) => {
+  // Resolves true once handed to an app, false if the owner backed out.
+  const shareInvite = async (phone: string, r: MemberRole): Promise<boolean> => {
     const as = r === 'DISPATCHER' ? 'a dispatcher' : 'a team member';
     const message = `🎉 Big news! ${business?.name ?? 'Our team'} wants you on the team as ${as} on Dodorez!
 
@@ -117,11 +118,50 @@ export default function BusinessScreen() {
       // or WhatsApp gets the name as text instead of the image.
       const file = `${LegacyFS.cacheDirectory}team-invite.jpg`;
       await LegacyFS.copyAsync({ from: card.localUri, to: file });
-      await RNShare.open({ message, url: file, type: 'image/jpeg', failOnCancel: false });
+      const res = await RNShare.open({ message, url: file, type: 'image/jpeg', failOnCancel: false });
+      return !(res as any)?.dismissedAction && (res as any)?.success !== false;
     } catch {
       // The card couldn't be attached: the message alone still goes.
-      Share.share({ message }).catch(() => {});
+      try {
+        const res = await Share.share({ message });
+        return res.action !== Share.dismissedAction;
+      } catch {
+        return false;
+      }
     }
+  };
+
+  // Not sent after all: the invite comes off the list, so it isn't left
+  // waiting for someone who was never told.
+  const withdrawInvite = async (memberId: string | undefined) => {
+    if (!memberId) {
+      reload();
+      appAlert.show('error', 'Not done', "Couldn't find that invite — cancel it from your team list.");
+      return;
+    }
+    try {
+      setTeam(await SkoFyApi.business.removeMember(memberId));
+      appAlert.show('info', 'Invite not sent', "Nothing went to them, so it's off your team list. Invite them again whenever you're ready.");
+    } catch (err: any) {
+      reload();
+      appAlert.show('error', 'Not cancelled', err?.message ?? "The invite is still on your team list — cancel it from there.");
+    }
+  };
+
+  // Opens the share sheet for an invite that's on the list. Backing out
+  // doesn't delete it on its own: Android can report "closed" even after
+  // WhatsApp was picked (the pick arrives late while the app is in the
+  // background), and deleting an invite that did go out would leave them
+  // signing up to nothing — so the owner says which it was.
+  const sendInvite = async (phone: string, r: MemberRole, memberId: string | undefined) => {
+    if (await shareInvite(phone, r)) {
+      appAlert.show('success', 'Invite sent', 'It’s waiting for their number when they sign up.');
+      return;
+    }
+    appAlert.show('warning', 'Invite not sent?', "It looks like you closed it without sending. If nothing went to them, cancel the invite so it's off your list.", [
+      { text: 'I sent it', variant: 'secondary' },
+      { text: 'Cancel invite', variant: 'primary', onPress: () => { withdrawInvite(memberId); } },
+    ]);
   };
 
   const run = async (key: string, action: () => Promise<unknown>, success?: string) => {
@@ -347,15 +387,20 @@ export default function BusinessScreen() {
                 <TeamSection team={team} canManage={owner}
                   onInvite={async (phone, r: MemberRole) => {
                     try {
+                      const before = new Set(team.members.map((m) => m.id));
                       const result = await SkoFyApi.business.invite(phone, r);
                       setTeam(result);
                       if (result.invited_on_dodorez === false) {
                         // Not on Dodorez: nothing reaches them from us. Sent from the
                         // owner's own phone (WhatsApp, a text…) — it comes from someone
-                        // they know, and the invite is waiting for this number.
+                        // they know, and the invite is waiting for this number. Cancel here
+                        // withdraws it; backing out of the share sheet asks (sendInvite).
+                        const digits = phone.replace(/\D/g, '').slice(-10);
+                        const fresh = result.members.filter((m) => m.status === 'INVITED' && !before.has(m.id));
+                        const newId = (fresh.find((m) => (m.phone ?? '').replace(/\D/g, '').endsWith(digits)) ?? fresh[0])?.id;
                         appAlert.show('success', 'Invite ready', "They're not on Dodorez yet. Send them the invite yourself — by WhatsApp, a text or anything else.", [
-                          { text: 'Later', variant: 'secondary' },
-                          { text: 'Send invite', variant: 'primary', onPress: () => { shareInvite(phone, r); } },
+                          { text: 'Cancel', variant: 'secondary', onPress: () => { withdrawInvite(newId); } },
+                          { text: 'Send invite', variant: 'primary', onPress: () => { sendInvite(phone, r, newId); } },
                         ]);
                       } else {
                         appAlert.show('success', 'Invite sent', 'They can answer it in the Dodorez Pro app, under Business.');
@@ -367,6 +412,7 @@ export default function BusinessScreen() {
                   }}
                   onChangeRole={(m, r) => teamAction(m.id, () => SkoFyApi.business.changeRole(m.id, r))}
                   onRemove={removeMember}
+                  onResend={(m) => { if (m.phone) sendInvite(m.phone, m.role, m.id); }}
                   onRelease={(m) => appAlert.show('warning', `Release ${m.name ?? 'them'} now?`,
                     'They leave the team today instead of at the end of their notice.', [
                       { text: 'Keep notice', variant: 'secondary' },
