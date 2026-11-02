@@ -17,8 +17,8 @@ export type Notify = (type: 'success' | 'error', title: string, message: string)
 export const UNITS: { unit: Unit; label: string; hint: string }[] = [
   { unit: 'HOUR', label: 'Per hour', hint: 'Booked by the hour. Empty uses your usual hourly rate' },
   { unit: 'VISIT', label: 'Per visit', hint: 'One set price for a visit or session' },
-  { unit: 'DAY', label: 'Per day', hint: "Over days at the customer's place, or a full day at yours (like daycare)" },
-  { unit: 'NIGHT', label: 'Per night', hint: 'Stays at your place — e.g. pet boarding (turn on hosting below)' },
+  { unit: 'DAY', label: 'Per day', hint: "Each day you're booked: drop-ins while they're away, live-in care, a day of daycare, storage" },
+  { unit: 'NIGHT', label: 'Per night', hint: "Overnight stays — at the customer's place, or at yours like pet boarding (turn on hosting below)" },
   // Long stays: used by themselves when they come out cheaper than the nights
   // or days (skofy-backend/app/domain/rate_card.py best_price).
   { unit: 'WEEK', label: 'Per week', hint: 'Optional — for stays of 7 nights or days and more' },
