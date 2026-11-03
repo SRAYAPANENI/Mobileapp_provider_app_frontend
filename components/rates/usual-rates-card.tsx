@@ -16,7 +16,7 @@ const asUsual = (profile: any): Usual => ({
   hourly: profile?.hourly_rate != null ? String(profile.hourly_rate) : '',
 });
 
-/** The visiting fee and hourly rate for ordinary visits — saved together. */
+/** The visiting fee (needed) and the optional hourly rate — saved together. */
 export const UsualRatesCard = React.memo(function UsualRatesCard({ profile, notify }: { profile: any; notify: Notify }) {
   const { draft, edit, saved } = useDraft<Usual>(asUsual(profile), (u) => `${u.fee}|${u.hourly}`);
   const [typing, setTyping] = useState<keyof Usual | null>(null);
@@ -25,9 +25,14 @@ export const UsualRatesCard = React.memo(function UsualRatesCard({ profile, noti
 
   const onSave = () => {
     const fee = Number(draft.fee);
-    const hourly = Number(draft.hourly);
-    if (!draft.fee || !draft.hourly || !(fee > 0) || !(hourly > 0)) {
-      notify('error', 'Both prices needed', 'Fill in your visiting fee and hourly rate.');
+    // The hourly rate is optional — empty clears it.
+    const hourly = draft.hourly ? Number(draft.hourly) : null;
+    if (!draft.fee || !(fee > 0)) {
+      notify('error', 'Visiting fee needed', 'Fill in your visiting fee.');
+      return;
+    }
+    if (hourly !== null && !(hourly > 0)) {
+      notify('error', 'Hourly rate not valid', 'Enter an hourly rate above $0, or leave it empty.');
       return;
     }
     if (fee < MIN_VISITING_FEE) {
@@ -38,7 +43,7 @@ export const UsualRatesCard = React.memo(function UsualRatesCard({ profile, noti
       onSuccess: () => {
         saved();
         refreshUsualRate();
-        notify('success', 'Saved', 'Customers now see your visiting fee and hourly rate.');
+        notify('success', 'Saved', hourly !== null ? 'Customers now see your visiting fee and hourly rate.' : 'Customers now see your visiting fee.');
       },
       onError: (err: any) => notify('error', 'Not saved', err?.message ?? 'Please try again.'),
     });
@@ -65,7 +70,7 @@ export const UsualRatesCard = React.memo(function UsualRatesCard({ profile, noti
           <ThemedText style={rs.suggestText}>{suggesting ? 'Suggesting…' : 'Suggest for me'}</ThemedText>
         </TouchableOpacity>
       </View>
-      <ThemedText style={rs.muted}>For ordinary visits — you go to the customer to fix, clean or help.</ThemedText>
+      <ThemedText style={rs.muted}>For visits — you go to the customer. For work you inspect first, the visiting fee is paid at hire and counts toward your invoice.</ThemedText>
       {USUAL.map(({ field, label, hint }) => (
         <View key={field} style={rs.rateRow}>
           <View style={{ flex: 1 }}>

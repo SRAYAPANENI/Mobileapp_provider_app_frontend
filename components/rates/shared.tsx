@@ -27,7 +27,8 @@ export const UNITS: { unit: Unit; label: string; hint: string }[] = [
 
 export const USUAL: { field: 'fee' | 'hourly'; label: string; hint: string }[] = [
   { field: 'fee', label: 'Visiting fee', hint: `Covers your trip — at least $${MIN_VISITING_FEE}` },
-  { field: 'hourly', label: 'Hourly rate', hint: 'For the work itself' },
+  // Not what quoted work costs — that's the invoice after the inspection.
+  { field: 'hourly', label: 'Hourly rate (optional)', hint: "Used for skills booked by the hour that have no price of their own, and to work out an invoice from hours worked. Inspect-and-quote jobs are priced by your invoice" },
 ];
 
 // Each skill is priced one standard way (skofy-backend/app/domain/skill_pricing.py):

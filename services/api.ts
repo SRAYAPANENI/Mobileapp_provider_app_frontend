@@ -817,7 +817,7 @@ export const SkoFyApi = {
         body: JSON.stringify({ is_available: isAvailable }),
       }),
 
-    setRates: async (visitingFee: number, hourlyRate: number) =>
+    setRates: async (visitingFee: number, hourlyRate: number | null) =>
       request('/providers/me/rates', {
         method: 'PATCH',
         body: JSON.stringify({ visiting_fee: visitingFee, hourly_rate: hourlyRate }),

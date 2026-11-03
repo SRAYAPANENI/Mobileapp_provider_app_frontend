@@ -47,7 +47,7 @@ export function useHosting() {
 export function useSaveUsualRates() {
   return useMutation({
     // The profile refreshes by itself after the write (services/queries/invalidate.ts).
-    mutationFn: ({ fee, hourly }: { fee: number; hourly: number }) => SkoFyApi.provider.setRates(fee, hourly),
+    mutationFn: ({ fee, hourly }: { fee: number; hourly: number | null }) => SkoFyApi.provider.setRates(fee, hourly),
   });
 }
 
