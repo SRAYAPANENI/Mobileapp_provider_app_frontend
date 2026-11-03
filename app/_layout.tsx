@@ -25,6 +25,7 @@ import { clearDashboardCache } from '@/services/homeCache';
 import { NetworkStatusBanner } from '@/components/network-status-banner';
 import AppLockGate from '@/components/app-lock-gate';
 import SessionExpiredModal from '@/components/session-expired-modal';
+import { AlertHost } from '@/components/alert-host';
 import '@/services/background-location'; // registers background GPS task at startup
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
@@ -133,6 +134,8 @@ export default function RootLayout() {
               </Stack>
               <NetworkStatusBanner />
             </AppLockGate>
+            {/* The app's dialog for showAlert() calls (components/alert-host.tsx). */}
+            <AlertHost />
             <SessionExpiredModal
               visible={signedOutVisible}
               onDismiss={() => {

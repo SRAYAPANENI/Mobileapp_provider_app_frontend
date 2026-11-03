@@ -1,4 +1,6 @@
 import AnimatedBackground from '@/components/animated-background';
+import { AppAlert } from '@/components/app-alert';
+import { showDialog } from '@/components/alert-host';
 import { CodeTimerRow } from '@/components/code-timer-row';
 import { useCodeTimer } from '@/hooks/use-code-timer';
 import { API_BASE_URL } from '@/services/api-config';
@@ -21,7 +23,6 @@ import FaceDetection from '@react-native-ml-kit/face-detection';
 import * as ExpoLocation from 'expo-location';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
-  AlertTriangle,
   Briefcase,
   Camera,
   CheckCircle2,
@@ -40,12 +41,11 @@ import {
   Play,
   Plus,
   ShieldCheck,
-  Trash2,
   Upload,
   X
 } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Linking, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, TextInput } from '@/components/scaled-text';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { UsPhonePrefix, US_CALLING_CODE, US_PHONE_INPUT_MAX, formatUsPhone, isUsPhone, usPhoneDigits } from '@/components/us-phone-prefix';
@@ -441,7 +441,7 @@ export default function RegisterScreen() {
       if (permission.canAskAgain) {
         showAlert('error', 'Camera Required', 'Please allow camera access to take your profile photo.');
       } else {
-        Alert.alert(
+        showDialog(
           'Camera Access Needed',
           'Camera access is turned off for Dodorez Pro. Enable it in Settings to take your profile photo.',
           [{ text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
@@ -1719,32 +1719,16 @@ export default function RegisterScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Custom Alert Modal */}
-      <Modal visible={customAlert.visible} transparent animationType="fade">
-        <View style={styles.alertOverlay}>
-          <Animated.View entering={FadeIn.duration(300)} style={styles.customAlertContainer}>
-            <View style={[styles.alertIconContainer, { backgroundColor: customAlert.type === 'success' ? '#ECFDF5' : customAlert.type === 'delete' ? '#FEF2F2' : '#FEF2F2' }]}>
-              {customAlert.type === 'success' ? (
-                <CheckCircle2 size={32} color="#10B981" />
-              ) : customAlert.type === 'delete' ? (
-                <Trash2 size={32} color="#EF4444" />
-              ) : (
-                <AlertTriangle size={32} color="#EF4444" />
-              )}
-            </View>
-
-            <ThemedText style={styles.alertTitle}>{customAlert.title}</ThemedText>
-            <ThemedText style={styles.alertMessage}>{customAlert.message}</ThemedText>
-
-            <TouchableOpacity
-              style={[styles.alertButton, { backgroundColor: customAlert.type === 'success' ? '#10B981' : '#EF4444' }]}
-              onPress={hideAlert}
-            >
-              <ThemedText style={styles.alertButtonText}>Got it!</ThemedText>
-            </TouchableOpacity>
-          </Animated.View>
-        </View>
-      </Modal >
+      {/* This screen's own messages, in the shared dialog ("delete" says
+          something was removed, as asked — a success). */}
+      <AppAlert
+        visible={customAlert.visible}
+        type={customAlert.type === 'error' ? 'error' : 'success'}
+        title={customAlert.title}
+        message={customAlert.message}
+        onDismiss={hideAlert}
+        buttons={[{ text: 'Got it' }]}
+      />
 
     </ThemedView >
   );

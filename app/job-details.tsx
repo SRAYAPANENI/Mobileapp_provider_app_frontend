@@ -1,4 +1,6 @@
 import { CareSheetCard } from '@/components/care-sheet-card';
+import { AppAlert } from '@/components/app-alert';
+import { showDialog } from '@/components/alert-host';
 import { purchaseSummary } from '@/services/pickupDelivery';
 import React, { useCallback, useState, useEffect } from 'react';
 import { StyleSheet, View, ScrollView, TouchableOpacity, SafeAreaView, Platform, Dimensions, ActivityIndicator, Share, Modal, Pressable } from 'react-native';
@@ -15,7 +17,6 @@ import {
   Navigation,
   Share2,
   Lock,
-  AlertTriangle,
   Zap,
   XCircle,
   X,
@@ -35,7 +36,6 @@ import { checkFeasibility, FeasibilityResult, calculateDistance, kmToMiles, esti
 import { resolveApplyGate } from '@/services/applyErrorGate';
 import { SkoFyApi } from '@/services/api';
 import Animated, { FadeInUp, FadeInRight } from 'react-native-reanimated';
-import { Alert } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { getJobById, JOBS_LIST } from '@/data/jobsData';
 import { fitBottom, useBottomInset } from '@/hooks/use-bottom-inset';
@@ -447,7 +447,7 @@ export default function JobDetailsScreen() {
 
   const handleApply = () => {
     if (feasibility?.status === 'NOT_FEASIBLE') {
-      Alert.alert('Conflict Detected', 'This job overlaps with your existing bookings.');
+      showDialog('Conflict Detected', 'This job overlaps with your existing bookings.');
       return;
     }
     // Accepting a direct request already IS the customer's hire decision —
@@ -489,7 +489,7 @@ export default function JobDetailsScreen() {
           onAction: () => { setGateModal(null); router.push({ pathname: '/(tabs)/profile', params: { section: 'verification' } } as any); },
         });
       } else {
-        Alert.alert('Failed', msg || 'Could not accept this request. Please try again.');
+        showDialog('Failed', msg || 'Could not accept this request. Please try again.');
       }
     } finally {
       setIsAcceptingDirect(false);
@@ -522,7 +522,7 @@ export default function JobDetailsScreen() {
       const msg = err?.message ?? '';
       if (msg.toLowerCase().includes('already') || err?.error_code === 'ALREADY_BID') {
         setShowBidModal(false);
-        Alert.alert('Already Applied', 'You have already applied for this job.');
+        showDialog('Already Applied', 'You have already applied for this job.');
         return;
       }
       const gate = resolveApplyGate(err);
@@ -535,7 +535,7 @@ export default function JobDetailsScreen() {
           onAction: () => { setGateModal(null); router.push({ pathname: '/(tabs)/profile', params: { section: 'verification' } } as any); },
         });
       } else {
-        Alert.alert('Failed', msg || 'Could not apply for this job. Please try again.');
+        showDialog('Failed', msg || 'Could not apply for this job. Please try again.');
       }
     } finally {
       setIsSubmittingBid(false);
@@ -918,7 +918,7 @@ export default function JobDetailsScreen() {
                   style={styles.declineBtn}
                   disabled={isAcceptingDirect}
                   onPress={() => {
-                    Alert.alert(
+                    showDialog(
                       'Decline Direct Request',
                       'The customer will be notified and can choose to broadcast to all providers.',
                       [
@@ -931,7 +931,7 @@ export default function JobDetailsScreen() {
                               await SkoFyApi.jobs.declineDirectRequest(job.id);
                               router.back();
                             } catch {
-                              Alert.alert('Error', 'Could not decline. Please try again.');
+                              showDialog('Error', 'Could not decline. Please try again.');
                             }
                           },
                         },
@@ -1104,52 +1104,31 @@ export default function JobDetailsScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Success Modal */}
-      <Modal
+      {/* Applied or hired: the shared dialog. It closes itself and moves on
+          (the timers in acceptDirect / submitBid); OK just closes it sooner. */}
+      <AppAlert
         visible={showSuccessModal}
-        transparent
-        animationType="fade"
-      >
-        <View style={styles.successOverlay}>
-          <Animated.View entering={FadeInUp} style={styles.successCardPopup}>
-            <View style={styles.successIconBadge}>
-              <CheckCircle2 size={40} color="#10B981" />
-            </View>
-            <Text style={styles.successHeading}>{hiredSuccess ? "You're Hired!" : 'Application Submitted!'}</Text>
-            <Text style={styles.successSubheading}>
-              {hiredSuccess
-                ? 'Head to the job when you\'re ready — the customer has been notified.'
-                : "The employer will review your profile. You'll be notified once you're hired."}
-            </Text>
-          </Animated.View>
-        </View>
-      </Modal>
+        type="success"
+        title={hiredSuccess ? "You're Hired!" : 'Application Submitted!'}
+        message={hiredSuccess
+          ? "Head to the job when you're ready — the customer has been notified."
+          : "The customer will review your profile. You'll be notified once you're hired."}
+        onDismiss={() => setShowSuccessModal(false)}
+      />
 
-      {/* Gate Modal — skill test / identity verification required before applying */}
-      <Modal
+      {/* Gate — a skill test or identity verification is needed before
+          applying: the shared dialog, with the way to get it done. */}
+      <AppAlert
         visible={!!gateModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setGateModal(null)}
-      >
-        <View style={styles.successOverlay}>
-          <Animated.View entering={FadeInUp} style={styles.successCardPopup}>
-            <View style={[styles.successIconBadge, { backgroundColor: '#FEF3C7' }]}>
-              <AlertTriangle size={40} color="#F59E0B" />
-            </View>
-            <Text style={styles.successHeading}>{gateModal?.title}</Text>
-            <Text style={styles.successSubheading}>{gateModal?.message}</Text>
-            <View style={styles.gateActions}>
-              <TouchableOpacity style={styles.gateCancelBtn} onPress={() => setGateModal(null)}>
-                <Text style={styles.gateCancelText}>Not Now</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.gateActionBtn} onPress={gateModal?.onAction}>
-                <Text style={styles.gateActionText}>{gateModal?.actionLabel}</Text>
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
-        </View>
-      </Modal>
+        type="info"
+        title={gateModal?.title ?? ''}
+        message={gateModal?.message ?? ''}
+        onDismiss={() => setGateModal(null)}
+        buttons={[
+          { text: 'Not now', variant: 'secondary' },
+          { text: gateModal?.actionLabel ?? 'Continue', onPress: gateModal?.onAction },
+        ]}
+      />
     </SafeAreaView>
   );
 }

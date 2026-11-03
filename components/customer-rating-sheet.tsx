@@ -1,9 +1,10 @@
 import { Fonts } from '@/constants/theme';
+import { showDialog } from '@/components/alert-host';
 import { SkoFyApi } from '@/services/api';
 import { markRatingSkipped, markRatingSubmitted } from '@/services/ratingReminders';
 import { Star } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, TextInput } from '@/components/scaled-text';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -47,7 +48,7 @@ export function CustomerRatingSheet({
   const submit = async () => {
     if (!jobId || submitting) return;
     if (Object.values(ratings).some(v => v === 0)) {
-      Alert.alert('Incomplete', 'Please rate all dimensions before submitting.');
+      showDialog('Incomplete', 'Please rate all dimensions before submitting.');
       return;
     }
     setSubmitting(true);
@@ -62,7 +63,7 @@ export function CustomerRatingSheet({
       markRatingSubmitted(jobId);
       onClose(true);
     } catch (err: any) {
-      Alert.alert('Error', err?.message ?? 'Failed to submit rating. Please try again.');
+      showDialog('Error', err?.message ?? 'Failed to submit rating. Please try again.');
     } finally {
       setSubmitting(false);
     }

@@ -160,7 +160,7 @@ export default function BusinessScreen() {
     }
     appAlert.show('warning', 'Invite not sent?', "It looks like you closed it without sending. If nothing went to them, cancel the invite so it's off your list.", [
       { text: 'I sent it', variant: 'secondary' },
-      { text: 'Cancel invite', variant: 'primary', onPress: () => { withdrawInvite(memberId); } },
+      { text: 'Cancel invite', variant: 'destructive', onPress: () => { withdrawInvite(memberId); } },
     ]);
   };
 
@@ -204,7 +204,7 @@ export default function BusinessScreen() {
   const removeMember = (m: TeamMember) => appAlert.show('warning', m.status === 'INVITED' ? 'Cancel this invite?' : 'Remove from the team?',
     m.name ?? m.phone ?? '', [
       { text: 'Keep', variant: 'secondary' },
-      { text: m.status === 'INVITED' ? 'Cancel invite' : 'Remove', variant: 'primary',
+      { text: m.status === 'INVITED' ? 'Cancel invite' : 'Remove', variant: 'destructive',
         onPress: () => teamAction(m.id, () => SkoFyApi.business.removeMember(m.id)) },
     ]);
   // Leaving is on notice: they ask, and go a week later — sooner if the
@@ -212,7 +212,7 @@ export default function BusinessScreen() {
   const leaveTeam = () => appAlert.show('warning', 'Ask to leave?',
     `You'll leave ${business?.name ?? 'the team'} in 7 days — sooner if they release you. Finish or hand back your team jobs before then.`, [
     { text: 'Stay', variant: 'secondary' },
-    { text: 'Ask to leave', variant: 'primary', onPress: () => run('leave', async () => {
+    { text: 'Ask to leave', variant: 'destructive', onPress: () => run('leave', async () => {
       // The server says when, and which team jobs fall after that.
       const { message } = await SkoFyApi.business.leave();
       appAlert.show('success', 'You asked to leave', message);
@@ -221,7 +221,7 @@ export default function BusinessScreen() {
   const stayOnTeam = () => run('leave', () => SkoFyApi.business.cancelLeave(), "You're staying on the team.");
   const removeDoc = (doc: BusinessDocument) => appAlert.show('warning', 'Remove this document?', DOC_NAMES[doc.kind], [
     { text: 'Keep', variant: 'secondary' },
-    { text: 'Remove', variant: 'primary', onPress: () => run(doc.id, () => SkoFyApi.business.removeDocument(doc.id)) },
+    { text: 'Remove', variant: 'destructive', onPress: () => run(doc.id, () => SkoFyApi.business.removeDocument(doc.id)) },
   ]);
   const startUpload = (kind: BusinessDocumentKind) => {
     setAddingDoc(kind);
@@ -416,7 +416,7 @@ export default function BusinessScreen() {
                   onRelease={(m) => appAlert.show('warning', `Release ${m.name ?? 'them'} now?`,
                     'They leave the team today instead of at the end of their notice.', [
                       { text: 'Keep notice', variant: 'secondary' },
-                      { text: 'Release now', variant: 'primary', onPress: () => teamAction(m.id, () => SkoFyApi.business.releaseMember(m.id)) },
+                      { text: 'Release now', variant: 'destructive', onPress: () => teamAction(m.id, () => SkoFyApi.business.releaseMember(m.id)) },
                     ])} />
               )}
 

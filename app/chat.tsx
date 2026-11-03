@@ -1,4 +1,5 @@
 import { ThemedText } from '@/components/themed-text';
+import { showDialog } from '@/components/alert-host';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Image } from 'expo-image';
@@ -12,7 +13,7 @@ import {
 } from 'lucide-react-native';
 import { describeChatEvent, parseChatEvent } from '@/services/chat-events';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, BackHandler, FlatList, Keyboard, Linking, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, Vibration, View } from 'react-native';
+import { ActivityIndicator, BackHandler, FlatList, Keyboard, Linking, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, Vibration, View } from 'react-native';
 import { Text, TextInput } from '@/components/scaled-text';
 import { OffAppNote } from '@/components/off-app-note';
 // The keyboard-controller version: works with KeyboardProvider (app/_layout.tsx)
@@ -473,13 +474,13 @@ export default function ChatScreen() {
   const handleStartCall = async () => {
     if (!jobId || callState !== 'idle' || callActionInFlightRef.current) return;
     if (!contactOpen) {
-      Alert.alert('Job closed', CLOSED_TEXT);
+      showDialog('Job closed', CLOSED_TEXT);
       return;
     }
     // The offer travels over the socket — without it the other phone never
     // hears about the call, so don't play ringback to nobody.
     if (wsRef.current?.readyState !== WebSocket.OPEN) {
-      Alert.alert('Not connected', "You're offline right now. Check your internet and try again in a moment.");
+      showDialog('Not connected', "You're offline right now. Check your internet and try again in a moment.");
       return;
     }
     // Another screen (a second copy of this chat) is already placing a call.
@@ -520,7 +521,7 @@ export default function ChatScreen() {
       // if the mic permission was denied (especially permanently, after
       // repeated testing), the only path forward is Settings, so give a
       // direct way there instead of leaving the user to find it themselves.
-      Alert.alert(
+      showDialog(
         'Call Failed',
         'Could not access the microphone. Enable microphone access for Dodorez in your phone\'s settings and try again.',
         [{ text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
@@ -559,7 +560,7 @@ export default function ChatScreen() {
     } catch (err) {
       if (err instanceof CallMediaEnded) return;
       console.error('Failed to answer call:', err);
-      Alert.alert(
+      showDialog(
         'Call Failed',
         'Could not answer the call. Enable microphone access for Dodorez in your phone\'s settings and try again.',
         [{ text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
@@ -842,7 +843,7 @@ export default function ChatScreen() {
             } catch (err) {
               if (err instanceof CallMediaEnded) return;
               console.error('Failed to connect the call:', err);
-              Alert.alert('Call Failed', "Couldn't connect the call. Check your internet and try again.");
+              showDialog('Call Failed', "Couldn't connect the call. Check your internet and try again.");
               handleEndCallRef.current();
             }
             return;
@@ -955,7 +956,7 @@ export default function ChatScreen() {
         refreshJobStatus();
         return;
       }
-      Alert.alert('Message not sent', 'Check your connection and try again.');
+      showDialog('Message not sent', 'Check your connection and try again.');
     }
   };
 

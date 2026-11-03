@@ -1,4 +1,6 @@
 import { NAME_PART_MAX, NameParts, fullName, hasFullName, namePayload } from '@/services/name';
+import { AppAlert } from '@/components/app-alert';
+import { showDialog } from '@/components/alert-host';
 import { isValidPassword } from '@/services/password';
 import AnimatedBrandMark from '@/components/animated-brand-mark';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -16,7 +18,7 @@ import { signOutDevice } from '@/services/callManager';
 import { stopBackgroundLocation } from '@/services/background-location';
 import { disconnectLocationSocket } from '@/services/location-socket';
 import { clearDashboardCache } from '@/services/homeCache';
-import { StyleSheet, View, TouchableOpacity, ScrollView, Platform, Dimensions, Modal, Switch, RefreshControl, SafeAreaView, Pressable, BackHandler, PanResponder, Animated as RNAnimated, ActivityIndicator, Alert, Linking } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, ScrollView, Platform, Dimensions, Modal, Switch, RefreshControl, SafeAreaView, Pressable, BackHandler, PanResponder, Animated as RNAnimated, ActivityIndicator, Linking } from 'react-native';
 import { TextInput } from '@/components/scaled-text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -70,8 +72,8 @@ import * as ImagePicker from 'expo-image-picker';
 import FaceDetection from '@react-native-ml-kit/face-detection';
 import * as WebBrowser from 'expo-web-browser';
 import { Calendar } from 'react-native-calendars';
-import Animated, { FadeInUp, FadeInDown, FadeInRight, FadeIn, LinearTransition, ZoomIn } from 'react-native-reanimated';
-import { Camera, Image as ImageIcon, Trash2, Edit2, AlertTriangle, Layers, Zap, Clock, Trophy } from 'lucide-react-native';
+import Animated, { FadeInUp, FadeInDown, FadeInRight, LinearTransition, ZoomIn } from 'react-native-reanimated';
+import { Camera, Image as ImageIcon, Trash2, Edit2, Layers, Zap, Clock, Trophy } from 'lucide-react-native';
 import { usePushPreference } from '@/hooks/use-push-preference';
 import { SkillPicker, type PickedSkill } from '@/components/skill-picker';
 import { fitBottom, padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
@@ -584,7 +586,7 @@ export default function ProfileScreen() {
 
   const handleTogglePickupDropoff = async (value: boolean) => {
     if (value && !isIdentityVerified) {
-      Alert.alert('Identity verification required', 'Complete identity verification (in Settings) before enabling Pickup & Delivery.');
+      showDialog('Identity verification required', 'Complete identity verification (in Settings) before enabling Pickup & Delivery.');
       return;
     }
     setPickupDropoffSaving(true);
@@ -592,7 +594,7 @@ export default function ProfileScreen() {
       const skills = await SkoFyApi.skills.setPickupDropoffEnabled(value);
       setApiSkills(skills || []);
     } catch (err: any) {
-      Alert.alert('Error', err?.message || 'Could not update Pickup & Delivery.');
+      showDialog('Error', err?.message || 'Could not update Pickup & Delivery.');
     } finally {
       setPickupDropoffSaving(false);
     }
@@ -1343,7 +1345,7 @@ export default function ProfileScreen() {
       if (permissionResult.canAskAgain) {
         showAlert('error', 'Camera Required', 'Please allow camera access to update your photo.');
       } else {
-        Alert.alert(
+        showDialog(
           'Camera Access Needed',
           'Camera access is turned off for Dodorez Pro. Enable it in Settings to update your photo.',
           [{ text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
@@ -3078,7 +3080,7 @@ export default function ProfileScreen() {
           onClose={(submitted) => {
             if (submitted && ratingJob) {
               markRated(ratingJob.id);
-              Alert.alert('Thanks!', 'Your rating has been submitted.');
+              showDialog('Thanks!', 'Your rating has been submitted.');
             }
             setRatingJob(null);
           }}
@@ -3090,7 +3092,7 @@ export default function ProfileScreen() {
         onClose={(submitted) => {
           if (submitted && ratingJob) {
             markRated(ratingJob.id);
-            Alert.alert('Thanks!', 'Your rating has been submitted.');
+            showDialog('Thanks!', 'Your rating has been submitted.');
           }
           setRatingJob(null);
         }}
@@ -3307,7 +3309,6 @@ export default function ProfileScreen() {
         )
       }
 
-      {/* Custom Alert Modal */}
       {/* Earnings Modal — real totals + payout history, Stripe manages the
           actual bank account and payout schedule on its own hosted dashboard */}
       <Modal visible={isEarningsModalOpen} animationType="slide" transparent={false} onRequestClose={() => setIsEarningsModalOpen(false)}>
@@ -3406,31 +3407,16 @@ export default function ProfileScreen() {
         excludeProfessions={['Personal Errands']}
       />
 
-      <Modal visible={customAlert.visible} transparent animationType="fade" onRequestClose={hideAlert}>
-        <View style={[styles.modalOverlay, { justifyContent: 'center', padding: 20 }]}>
-          <Animated.View entering={FadeIn.duration(300)} style={styles.customAlertContainer}>
-            <View style={[styles.alertIconContainer, { backgroundColor: customAlert.type === 'success' ? '#ECFDF5' : customAlert.type === 'delete' ? '#FEF2F2' : '#FFFBEB' }]}>
-              {customAlert.type === 'success' ? (
-                <CheckCircle2 size={32} color="#10B981" />
-              ) : customAlert.type === 'delete' ? (
-                <Trash2 size={32} color="#EF4444" />
-              ) : (
-                <AlertTriangle size={32} color="#F59E0B" />
-              )}
-            </View>
-
-            <ThemedText style={styles.alertTitle}>{customAlert.title}</ThemedText>
-            <ThemedText style={styles.alertMessage}>{customAlert.message}</ThemedText>
-
-            <TouchableOpacity
-              style={[styles.alertButton, { backgroundColor: customAlert.type === 'success' ? '#10B981' : customAlert.type === 'delete' ? '#EF4444' : '#F59E0B' }]}
-              onPress={hideAlert}
-            >
-              <ThemedText style={styles.alertButtonText}>Got it!</ThemedText>
-            </TouchableOpacity>
-          </Animated.View>
-        </View>
-      </Modal>
+      {/* This screen's own messages, in the shared dialog ("delete" says
+          something was removed, as asked — a success). */}
+      <AppAlert
+        visible={customAlert.visible}
+        type={customAlert.type === 'error' ? 'error' : 'success'}
+        title={customAlert.title}
+        message={customAlert.message}
+        onDismiss={hideAlert}
+        buttons={[{ text: 'Got it' }]}
+      />
 
     </ThemedView>
   );

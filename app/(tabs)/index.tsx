@@ -5,7 +5,7 @@ import { AppState, BackHandler, StyleSheet, View, ScrollView, TouchableOpacity, 
 import { Text, TextInput as RNTextInput } from '@/components/scaled-text';
 import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAppAlert } from '@/components/app-alert';
+import { AppAlert, useAppAlert } from '@/components/app-alert';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -25,7 +25,6 @@ import {
   Navigation,
   User,
   CheckCircle2,
-  PartyPopper,
   Check,
   Zap,
   Phone,
@@ -37,7 +36,6 @@ import {
   X as XIcon,
   Package,
   AlertTriangle,
-  LogOut,
   Camera,
   Repeat as RepeatIcon,
   Lock,
@@ -2829,68 +2827,33 @@ const filteredJobs = jobs.filter((job) => {
 
       {/* Exit App Modal — double-back-press to exit, matching the customer
           app's Home/Login screens */}
-      <Modal visible={isExitModalVisible} transparent animationType="fade">
-        <View style={styles.exitModalOverlay}>
-          <View style={styles.exitModalContent}>
-            <View style={styles.exitIconContainer}><AlertTriangle size={36} color="#F59E0B" /></View>
-            <ThemedText style={styles.exitTitle}>Exit Dodorez Pro?</ThemedText>
-            <ThemedText style={styles.exitMessage}>Are you sure you want to close the app?</ThemedText>
-            <View style={styles.exitActionRow}>
-              <TouchableOpacity style={[styles.exitButton, styles.exitCancelButton]} onPress={() => setIsExitModalVisible(false)}>
-                <ThemedText style={styles.exitCancelText}>No</ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.exitButton, styles.exitConfirmButton]}
-                onPress={() => {
-                  // Reset first — Android doesn't always fully destroy the
-                  // JS process on exitApp(), so without this the modal can
-                  // still be "visible" in the resumed state on next launch.
-                  setIsExitModalVisible(false);
-                  BackHandler.exitApp();
-                }}
-              >
-                <ThemedText style={styles.exitConfirmText}>Yes</ThemedText>
-                <LogOut size={18} color="#fff" />
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* Leaving the app: the shared dialog. Closing it first matters —
+          Android can keep the JS alive after exitApp(), and reopening would
+          resume with the dialog still showing. */}
+      <AppAlert
+        visible={isExitModalVisible}
+        type="info"
+        title="Exit Dodorez Pro?"
+        message="Are you sure you want to close the app?"
+        onDismiss={() => setIsExitModalVisible(false)}
+        buttons={[
+          { text: 'Stay', variant: 'secondary' },
+          { text: 'Exit', onPress: () => BackHandler.exitApp() },
+        ]}
+      />
 
-      {/* Location Required Modal — replaces a plain native Alert.alert that
-          used to just say "enable location access" with an "OK" button that
-          did nothing actionable, regardless of whether the permission was
-          merely not-yet-granted or permanently denied. */}
-      <Modal
+      {/* Location is off: the shared dialog, straight to Settings. */}
+      <AppAlert
         visible={showLocationModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowLocationModal(false)}
-      >
-        <View style={styles.successOverlayBg}>
-          <Animated.View entering={FadeInUp} style={styles.locationModalCard}>
-            <View style={styles.locationModalIconWrap}>
-              <MapPin size={32} color="#EF4444" />
-            </View>
-            <ThemedText style={styles.locationModalTitle}>Location Access Needed</ThemedText>
-            <ThemedText style={styles.locationModalSubtitle}>
-              We need to confirm you've reached the site before starting this job. Enable location access for Dodorez in your phone's settings, then come back and try again.
-            </ThemedText>
-            <TouchableOpacity
-              style={styles.locationModalPrimaryBtn}
-              onPress={() => { setShowLocationModal(false); Linking.openSettings(); }}
-            >
-              <ThemedText style={styles.locationModalPrimaryBtnText}>Open Settings</ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.locationModalSecondaryBtn}
-              onPress={() => setShowLocationModal(false)}
-            >
-              <ThemedText style={styles.locationModalSecondaryBtnText}>Cancel</ThemedText>
-            </TouchableOpacity>
-          </Animated.View>
-        </View>
-      </Modal>
+        type="info"
+        title="Location Access Needed"
+        message="We need to confirm you've reached the site before starting this job. Enable location access for Dodorez in your phone's settings, then come back and try again."
+        onDismiss={() => setShowLocationModal(false)}
+        buttons={[
+          { text: 'Cancel', variant: 'secondary' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ]}
+      />
 
       {/* Rating Modal */}
       <Modal statusBarTranslucent navigationBarTranslucent
@@ -2957,29 +2920,14 @@ const filteredJobs = jobs.filter((job) => {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Final Success Modal */}
-      <Modal
+      <AppAlert
         visible={showFinalSuccess}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowFinalSuccess(false)}
-      >
-        <View style={styles.successOverlayBg}>
-          <Animated.View entering={FadeInUp} style={styles.finalSuccessCard}>
-            <PartyPopper size={60} color="#FFCE48" />
-            <ThemedText style={styles.finalSuccessTitle}>Job Completed!</ThemedText>
-            <ThemedText style={styles.finalSuccessSubtitle}>
-              Great work! Payment will be credited to your account shortly.
-            </ThemedText>
-            <TouchableOpacity
-              style={styles.finalSuccessBtn}
-              onPress={() => setShowFinalSuccess(false)}
-            >
-              <ThemedText style={styles.finalSuccessBtnText}>Continue</ThemedText>
-            </TouchableOpacity>
-          </Animated.View>
-        </View>
-      </Modal>
+        type="success"
+        title="Job Completed!"
+        message="Great work! Payment will be credited to your account shortly."
+        onDismiss={() => setShowFinalSuccess(false)}
+        buttons={[{ text: 'Continue' }]}
+      />
       {appAlert.element}
     </SafeAreaView>
   );

@@ -179,7 +179,7 @@ export default function NotificationsScreen() {
       { text: 'Cancel', variant: 'secondary' },
       {
         text: 'Clear all',
-        variant: 'primary',
+        variant: 'destructive',
         onPress: async () => {
           const before = notifications;
           setNotifications([]);
