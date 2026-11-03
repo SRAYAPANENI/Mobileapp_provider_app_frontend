@@ -15,7 +15,7 @@ export type Notify = (type: 'success' | 'error', title: string, message: string)
 // The prices a job can be booked at up front (docs/JOB_SHAPE_DESIGN.md) — in
 // the words a provider thinks in, with an example of each.
 export const UNITS: { unit: Unit; label: string; hint: string }[] = [
-  { unit: 'HOUR', label: 'Per hour', hint: 'Booked by the hour. Empty uses your usual hourly rate' },
+  { unit: 'HOUR', label: 'Per hour', hint: 'Booked by the hour. Empty uses your usual hourly rate, if you set one above' },
   { unit: 'VISIT', label: 'Per visit', hint: 'One set price for a visit or session' },
   { unit: 'DAY', label: 'Per day', hint: "Each day you're booked: drop-ins while they're away, live-in care, a day of daycare, storage" },
   { unit: 'NIGHT', label: 'Per night', hint: "Overnight stays — at the customer's place, or at yours like pet boarding (turn on hosting below)" },
