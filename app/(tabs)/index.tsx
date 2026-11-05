@@ -60,6 +60,7 @@ import { ReportIssueModal } from '@/components/report-issue-modal';
 import { useGoodsHoldHeld } from '@/hooks/use-goods-hold';
 import { useMyBusiness } from '@/hooks/use-my-business';
 import { BusinessHomeCard } from '@/components/business/business-home-card';
+import { SkillTestPrompt } from '@/components/skill-test-prompt';
 import { TeamPanel } from '@/components/business/team-panel';
 import { WorkspaceSwitch, type Workspace } from '@/components/business/workspace-switch';
 import notifee from '@notifee/react-native';
@@ -398,7 +399,9 @@ export default function DashboardScreen() {
     SecureStore.setItemAsync(WORKSPACE_KEY, next).catch(() => {});
   };
   const teamMode = myBusiness.canDispatch && workspace === 'team';
-  const teamOnlyFor = myBusiness.data?.enabled && myBusiness.data.business && myBusiness.data.works_for_self === false
+  // In their work hours with a business right now: new jobs come through it
+  // (docs/EMPLOYER_PARTNERS_DESIGN.md), so an empty feed says so.
+  const teamOnlyFor = myBusiness.data?.enabled && myBusiness.data.business && myBusiness.data.hours?.for_business_now
     ? myBusiness.data.business.name : null;
   const [pickupDropoffSaving, setPickupDropoffSaving] = useState(false);
   const [isExitModalVisible, setIsExitModalVisible] = useState(false);
@@ -1865,6 +1868,8 @@ const filteredJobs = jobs.filter((job) => {
           </View>
         </View>
 
+        {/* New providers: what to do to start getting jobs (no test passed yet). */}
+        <SkillTestPrompt skills={skillsQuery.data} />
         <BusinessHomeCard state={myBusiness} />
         {myBusiness.canDispatch && myBusiness.data?.business && (
           <WorkspaceSwitch businessName={myBusiness.data.business.name} value={workspace} onChange={chooseWorkspace}
@@ -1988,7 +1993,7 @@ const filteredJobs = jobs.filter((job) => {
                 : 'Waiting for job assignments...'}
             </ThemedText>
             <ThemedText style={styles.emptySubText}>
-              {activeTab === 0 && teamOnlyFor ? `Your jobs come through ${teamOnlyFor} — they show under Ongoing once you're given one.`
+              {activeTab === 0 && teamOnlyFor ? `You're in your hours with ${teamOnlyFor} — jobs come through them and show under Ongoing once you're given one. After your hours, your own jobs show here.`
                 : activeTab === 0 && !isAvailable ? 'Turn on availability at the top of the dashboard to see new jobs.'
                 : activeTab === 0 && skillFilter ? `No ${skillFilter} jobs right now. Tap All to see every job you qualify for.`
                 : activeTab === 0 ? 'Jobs posted by customers will appear here once assigned to you.'

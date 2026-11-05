@@ -5,19 +5,21 @@ import { router } from 'expo-router';
 import { ChevronRight } from 'lucide-react-native';
 import React from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { EmployerBenefitsLine } from './employer-benefits';
 import { Badge, C, Monogram, Tone, u } from './ui';
 
 // A slim business line on the home screen (docs/BUSINESS_PROVIDERS_DESIGN.md)
 // for an invite, a business still being set up, or a worker on a team. An
 // owner or dispatcher of an approved business gets the Myself | Team switch
-// instead (WorkspaceSwitch); someone with neither sees nothing.
+// instead (WorkspaceSwitch). Someone working alone is told, once, what working
+// with an employer offers (EmployerBenefitsLine, dismissible).
 export function BusinessHomeCard({ state }: { state: MyBusinessState }) {
   const { data, invites, canDispatch } = state;
   if (!data?.enabled || canDispatch) return null;
   const business = data.business;
 
   if (!business) {
-    if (invites.length === 0) return null;
+    if (invites.length === 0) return <EmployerBenefitsLine />;
     return (
       <Line name={invites[0].business_name} title={invites[0].business_name} badge={{ label: 'Invite', tone: 'brand' }}
         detail={invites.length > 1 ? `Invited you to their team · ${invites.length - 1} more` : 'Invited you to their team — tap to answer'} />
@@ -38,7 +40,9 @@ export function BusinessHomeCard({ state }: { state: MyBusinessState }) {
 
   return (
     <Line name={business.name} title={business.name} badge={{ label: data.role === 'DISPATCHER' ? 'Dispatcher' : 'Worker', tone: 'brand' }}
-      detail={data.works_for_self ? 'Its jobs show under Ongoing · you take your own too' : 'Jobs it gives you show under Ongoing'} />
+      detail={data.hours?.offer?.from === 'BUSINESS' ? 'New hours offered — tap to answer'
+        : data.hours?.for_business_now ? `Working for them now · ${data.hours.agreed_label}`
+        : `Working for yourself now · with them ${data.hours?.agreed_label ?? ''}`} />
   );
 }
 

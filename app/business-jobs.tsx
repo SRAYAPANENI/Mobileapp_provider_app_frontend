@@ -23,6 +23,12 @@ const when = (iso: string | null) => iso
 // until someone sets off. Each job then runs in the assigned member's app.
 // Opened with a jobId (job details' "Apply as", a team-job alert), it goes
 // straight to choosing who'd do that job.
+/** When a team job's work happens: its start, or when it was posted. */
+function workTimeOf(job: { scheduled_at: string | null; created_at?: string } | null): Date | null {
+  const iso = job?.scheduled_at ?? job?.created_at;
+  return iso ? new Date(iso) : null;
+}
+
 export default function BusinessJobsScreen() {
   const { jobId } = useLocalSearchParams<{ jobId?: string }>();
   const bottomInset = useBottomInset();
@@ -84,6 +90,21 @@ export default function BusinessJobsScreen() {
 
   const setOff = (j: TeamActiveJob) => !!(j.navigation_started_at || j.arrived_at || j.checked_in_at);
 
+  // Taking back the business's application — final, as for anyone.
+  const withdraw = (j: TeamOpenJob) => appAlert.show('warning', 'Withdraw your business’s application?',
+    'The customer won’t see it any more, and your business can’t apply for this job again.', [
+      { text: 'Keep it', variant: 'secondary' },
+      { text: 'Withdraw', variant: 'destructive', onPress: async () => {
+        try {
+          const { message } = await SkoFyApi.business.withdrawApplication(j.job_id);
+          appAlert.show('success', 'Withdrawn', message);
+          load();
+        } catch (err: any) {
+          appAlert.show('error', 'Not withdrawn', err?.message ?? 'Please try again.');
+        }
+      } },
+    ]);
+
   return (
     <ThemedView style={s.container}>
       <StatusBar barStyle="dark-content" />
@@ -105,7 +126,8 @@ export default function BusinessJobsScreen() {
                 <ThemedText style={u.muted}>{applying ? 'Who would do it? The customer sees your business and them.' : "Only until someone sets off — then it's theirs to finish."}</ThemedText>
               </View>
               <MemberPicker members={team.members} selectedId={workerId} onSelect={(m) => setWorkerId(m.provider_id)}
-                preferredIds={applying?.reached_member_ids} excludeId={assigning?.worker_id} />
+                preferredIds={applying?.reached_member_ids} excludeId={assigning?.worker_id}
+                workTime={workTimeOf(applying ?? assigning)} />
               {applying && (
                 <TextInput style={[u.input, { minHeight: 72, textAlignVertical: 'top' }]} value={message} onChangeText={setMessage} multiline maxLength={1000}
                   placeholder="A note for the customer (optional)" placeholderTextColor={C.faint} />
@@ -135,7 +157,12 @@ export default function BusinessJobsScreen() {
                   </View>
                 </TouchableOpacity>
                 {j.applied ? (
-                  <Badge label="Applied" tone="ok" icon={<Check size={12} color={C.ok} />} />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Badge label="Applied" tone="ok" icon={<Check size={12} color={C.ok} />} />
+                    <Button small kind="secondary" label="Withdraw" onPress={() => withdraw(j)} />
+                  </View>
+                ) : j.withdrawn ? (
+                  <Badge label="Withdrawn" tone="neutral" />
                 ) : (
                   <Button small label="Apply as the business" style={{ alignSelf: 'flex-start' }}
                     onPress={() => { close(); setApplying(j); scroll.current?.scrollTo({ y: 0, animated: true }); }} />

@@ -16,6 +16,7 @@
 
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import { reportReachable, setHealthCheck } from '@/services/server-status';
 import { queryClient } from '@/services/query-client';
 import { afterWrite } from '@/services/queries/invalidate';
 import { File, Paths } from 'expo-file-system';
@@ -44,6 +45,7 @@ export interface FeePreview {
 
 export const TokenStore = {
   async setTokens(access: string, refresh: string) {
+    signedOutOnPurpose = false;          // a new login (endSession)
     await SecureStore.setItemAsync(TOKEN_KEY, access);
     await SecureStore.setItemAsync(REFRESH_KEY, refresh);
   },
@@ -190,8 +192,13 @@ export function setSessionExpiredHandler(fn: () => void): void {
 // signed in with nothing loading. Ended before the app registered its handler
 // (during start-up): told as soon as it does.
 let sessionEndPending = false;
+// Set by logout, cleared by the next login (TokenStore.setTokens).
+let signedOutOnPurpose = false;
 async function endSession(): Promise<void> {
   await TokenStore.clear();
+  // They logged out themselves: a request still in flight then being refused
+  // is expected — never a "Signed out" message on the login screen.
+  if (signedOutOnPurpose) return;
   if (sessionExpiredNotified) return;
   sessionExpiredNotified = true;
   if (_onSessionExpired) _onSessionExpired();
@@ -205,12 +212,40 @@ async function endSession(): Promise<void> {
 const REQUEST_TIMEOUT_MS = 30_000;
 const UPLOAD_TIMEOUT_MS = 120_000;
 
+// The server (or the proxy in front of it) answering that the server is down.
+const GATEWAY_DOWN = new Set([502, 503, 504]);
+
+// While unreachable, services/server-status.ts asks /health every few seconds.
+setHealthCheck(async () => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5_000);
+  try {
+    const res = await fetch(`${BASE_URL}/health`, { signal: controller.signal, headers: { 'ngrok-skip-browser-warning': 'true' } });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
 async function timedFetch(url: string, init: RequestInit, ms = REQUEST_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    // Any answer means the server is there; a proxy's gateway error means it
+    // isn't (services/server-status.ts — the "Can't reach Dodorez" banner).
+    // Our API's own 502/503 (payments, the assistant or SMS unavailable)
+    // come as JSON, from a server that's up, so they don't count.
+    const fromApi = (response.headers.get('content-type') ?? '').includes('application/json');
+    // A tunnel to a local backend (ngrok) answers with its own error when the
+    // backend behind it is down or the tunnel is over its limit.
+    const tunnelDown = !!response.headers.get('ngrok-error-code');
+    reportReachable(!tunnelDown && (fromApi || !GATEWAY_DOWN.has(response.status)));
+    return response;
   } catch {
+    reportReachable(false);
     throw {
       success: false,
       error_code: controller.signal.aborted ? 'TIMEOUT' : 'NETWORK_ERROR',
@@ -228,6 +263,7 @@ async function request<T = any>(
   options: RequestInit & { skipAuth?: boolean } = {}
 ): Promise<T> {
   const { skipAuth = false, ...fetchOptions } = options;
+  if (pendingServerLogout && endpoint.startsWith('/auth/')) await pendingServerLogout;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -380,6 +416,37 @@ async function _refreshAccessToken(): Promise<string | null> {
   return refreshPromise;
 }
 
+// ─── LOGOUT ON THE SERVER ────────────────────────────────────────────────────
+// After this phone has signed out: the server revokes the login and forgets
+// this phone's push tokens. With the tokens captured before they were
+// cleared, so nothing here can sign anyone in again or show "Signed out".
+// An access token past its 15 minutes is renewed first, or the server would
+// refuse the logout and the login would live on there. Best effort: offline,
+// the phone is signed out all the same, and it deleted its own push token.
+// The server's logout revokes every login for the role, so one still on its
+// way could end a login made after it: signing in (any /auth/ call) waits
+// for it first — normally well under a second, at most its two timeouts.
+let pendingServerLogout: Promise<void> | null = null;
+
+async function _logoutOnServer(access: string | null, refresh: string | null, body: object): Promise<void> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' };
+  try {
+    let token = access;
+    if ((!token || _expiresWithin(token, 30)) && refresh) {
+      const renewed = await timedFetch(`${BASE_URL}/auth/refresh`, {
+        method: 'POST', headers, body: JSON.stringify({ refresh_token: refresh }),
+      }, 10_000);
+      if (renewed.ok) token = (await renewed.json())?.data?.access_token ?? token;
+    }
+    if (!token) return;
+    await timedFetch(`${BASE_URL}/auth/logout`, {
+      method: 'POST', headers: { ...headers, Authorization: `Bearer ${token}` }, body: JSON.stringify(body),
+    }, 10_000);
+  } catch {
+    // Offline or refused: signed out on this phone regardless.
+  }
+}
+
 // ─── TOKEN FOR LIVE CONNECTIONS ──────────────────────────────────────────────
 // request() refreshes on a 401, but a WebSocket gets no 401 — the server just
 // closes it (4401) when the token in the auth message has expired (access
@@ -466,18 +533,42 @@ export interface Business {
   id: string; name: string; legal_name: string; entity_type: 'LLC' | 'CORPORATION' | 'PARTNERSHIP' | 'SOLE_PROPRIETOR';
   state: string; email: string | null; phone: string | null; status: BusinessStatus;
   /** Whether its members may also work for themselves. */
-  allow_independent_work: boolean;
   /** Its logo, shown to customers on its applications and jobs. */
   logo_url?: string | null;
   review_note: string | null; connect_onboarding_status: string;
   documents: BusinessDocument[]; ready_for_on_site_work: boolean; missing: string[];
 }
+/** Work hours with an employer (docs/EMPLOYER_PARTNERS_DESIGN.md): the same
+ * hours on each day, in the member's time zone. Inside them, jobs come through
+ * the business; outside them, the member works for themselves. */
+export interface WorkHours {
+  /** ISO weekdays: 1 is Monday, 7 is Sunday. */
+  days: number[];
+  /** "09:00"; end up to "24:00", after the start. */
+  start: string; end: string;
+  /** An IANA time zone, like "America/Chicago". */
+  tz: string;
+}
+/** An offer of hours waiting for the other side. */
+export interface HoursOffer {
+  hours: WorkHours; label: string;
+  /** Who sent it — the other side answers. */
+  from: 'BUSINESS' | 'MEMBER';
+  sent_at: string | null;
+  /** A change lapses unanswered after a week; an invite's offer doesn't. */
+  lapses_at: string | null;
+}
+export interface HoursView {
+  /** The agreed hours; null on an invite. */
+  agreed: WorkHours | null; agreed_label: string | null;
+  /** Whether right now is in their hours: jobs come through the business. */
+  for_business_now: boolean;
+  offer: HoursOffer | null;
+}
 export interface MyBusiness {
   enabled: boolean; business: Business | null; role: 'OWNER' | 'DISPATCHER' | 'WORKER' | null;
-  /** Two hats (§7): their own "Myself" switch, and whether it's in effect. */
-  own_switch?: boolean; works_for_self?: boolean;
-  /** Whether their business lets them work for themselves; null as its owner. */
-  own_work_allowed?: boolean | null;
+  /** A member's work hours, and any change waiting; null as the owner. */
+  hours?: HoursView | null;
   /** Asked to leave: the day they go (sooner if released). */
   leave_at?: string | null;
   /** General liability required for on-site work, in dollars. */
@@ -490,8 +581,8 @@ export type MemberRole = 'OWNER' | 'DISPATCHER' | 'WORKER';
 export interface TeamMember {
   id: string; provider_id: string | null; name: string | null; phone: string | null; role: MemberRole;
   status: 'INVITED' | 'ACTIVE'; joined_at: string | null; is_identity_verified: boolean | null;
-  /** Whether the business lets them also take jobs for themselves (§7). */
-  own_work_allowed?: boolean;
+  /** Their work hours and any offer waiting; null for the owner. */
+  hours?: HoursView | null;
   /** Asked to leave: the day they go. */
   leave_at?: string | null;
   background_check_status: 'NOT_STARTED' | 'PENDING' | 'CLEAR' | 'CONSIDER' | 'FAILED' | null;
@@ -506,6 +597,10 @@ export interface BusinessInvite {
   notice: string;
   /** No clear background check yet: they authorise one (this disclosure) before joining. */
   needs_check: boolean; check_disclosure: string | null;
+  /** The hours on offer (null from an app before work hours: all the time). */
+  offer: HoursOffer | null;
+  /** Whose turn: theirs, or the business's after they sent other hours back. */
+  waiting_on: 'YOU' | 'BUSINESS';
 }
 /** The business's jobs (docs/BUSINESS_PROVIDERS_DESIGN.md §3). */
 export interface TeamOpenJob {
@@ -513,9 +608,11 @@ export interface TeamOpenJob {
   venue: string; pricing_unit: string; lat: number | null; lng: number | null;
   /** Members the job reached — the business can name anyone able to do it. */
   reached_member_ids: string[]; applied: boolean;
+  /** The business withdrew its application: final, it can't apply again. */
+  withdrawn?: boolean;
 }
 export interface TeamActiveJob {
-  job_id: string; title: string; status: string; scheduled_at: string | null; hired_at: string | null;
+  job_id: string; title: string; status: string; scheduled_at: string | null; created_at?: string; hired_at: string | null;
   navigation_started_at: string | null; arrived_at: string | null; checked_in_at: string | null;
   worker_id: string | null; worker_name: string | null; customer_name: string | null;
 }
@@ -782,15 +879,16 @@ export const SkoFyApi = {
      * logged-out device that keeps its token registered keeps receiving
      * calls/notifications for the account indefinitely. Best-effort: if
      * fetching them fails, logout still proceeds. */
+    /** Signs out at once on this phone — the login is gone before anything
+     * else, so a dead connection can never hold someone in. The server is
+     * told in the background (_logoutOnServer). */
     logout: async (fcmToken?: string, voipToken?: string) => {
-      try {
-        await request('/auth/logout', {
-          method: 'POST',
-          body: JSON.stringify({ fcm_token: fcmToken, voip_token: voipToken }),
-        });
-      } finally {
-        await TokenStore.clear();
-      }
+      const access = await TokenStore.getAccessToken().catch(() => null);
+      const refresh = await TokenStore.getRefreshToken().catch(() => null);
+      signedOutOnPurpose = true;
+      await TokenStore.clear();
+      pendingServerLogout = _logoutOnServer(access, refresh, { fcm_token: fcmToken, voip_token: voipToken })
+        .finally(() => { pendingServerLogout = null; });
     },
   },
 
@@ -993,6 +1091,11 @@ export const SkoFyApi = {
 
     getMySkills: async () =>
       request('/providers/me/skills'),
+
+    /** Their unverified skills, each with the open jobs near them needing it —
+     * what passing its test would let them apply for. */
+    waitingJobs: async (): Promise<{ skills: { skill_id: string; name: string; waiting: number }[]; total: number }> =>
+      request('/providers/me/skill-tests/waiting') as any,
 
     /** Every skill's test status in one request: { [skill_id]: eligibility }. */
     getAllTestEligibility: async (): Promise<Record<string, any>> =>
@@ -1294,6 +1397,10 @@ export const SkoFyApi = {
     declineDirectRequest: async (jobId: string) =>
       request(`/jobs/${jobId}/decline-direct`, { method: 'POST' }),
 
+    /** Takes back their own application while the customer hasn't chosen. */
+    withdrawApplication: async (jobId: string): Promise<{ message: string }> =>
+      request(`/jobs/${jobId}/withdraw`, { method: 'POST' }) as any,
+
     submitCustomerReview: async (jobId: string, review: {
       behaviour_rating: number;
       negotiation_rating: number;
@@ -1470,10 +1577,13 @@ export const SkoFyApi = {
     update: async (body: BusinessProfileInput): Promise<MyBusiness> =>
       request('/businesses/me', { method: 'PUT', body: JSON.stringify(body) }) as any,
     submit: async (): Promise<MyBusiness> => request('/businesses/me/submit', { method: 'POST' }) as any,
-    setIndependentWork: async (on: boolean): Promise<MyBusiness> =>
-      request('/businesses/me/independent-work', { method: 'PUT', body: JSON.stringify({ on }) }) as any,
-    setOwnWork: async (on: boolean): Promise<MyBusiness> =>
-      request('/businesses/me/own-work', { method: 'PUT', body: JSON.stringify({ on }) }) as any,
+    /** A member asks their business for new hours; theirs stay until it accepts. */
+    offerMyHours: async (hours: WorkHours): Promise<{ message: string }> =>
+      request('/businesses/me/hours', { method: 'PUT', body: JSON.stringify(hours) }) as any,
+    /** A member accepts or declines the hours their business offered. */
+    answerMyHours: async (accept: boolean): Promise<{ message: string }> =>
+      request('/businesses/me/hours/answer', { method: 'POST', body: JSON.stringify({ approve: accept }) }) as any,
+    withdrawMyHours: async (): Promise<{ message: string }> => request('/businesses/me/hours', { method: 'DELETE' }) as any,
     addDocument: async (doc: BusinessDocumentInput): Promise<MyBusiness> => {
       const form = new FormData();
       form.append('kind', doc.kind);
@@ -1498,12 +1608,16 @@ export const SkoFyApi = {
     /** The logo, as an image data: URL — or null to remove it. */
     setLogo: async (image: string | null): Promise<MyBusiness> =>
       request('/businesses/me/logo', { method: 'PUT', body: JSON.stringify({ image }) }) as any,
-    invite: async (phone: string, role: MemberRole): Promise<Team & { invited_on_dodorez?: boolean }> =>
-      request('/businesses/me/team/invites', { method: 'POST', body: JSON.stringify({ phone, role }) }) as any,
+    invite: async (phone: string, role: MemberRole, hours: WorkHours): Promise<Team & { invited_on_dodorez?: boolean }> =>
+      request('/businesses/me/team/invites', { method: 'POST', body: JSON.stringify({ phone, role, hours }) }) as any,
     changeRole: async (memberId: string, role: MemberRole): Promise<Team> =>
       request(`/businesses/me/team/${memberId}`, { method: 'PUT', body: JSON.stringify({ role }) }) as any,
-    setMemberOwnWork: async (memberId: string, on: boolean): Promise<Team> =>
-      request(`/businesses/me/team/${memberId}/own-work`, { method: 'PUT', body: JSON.stringify({ on }) }) as any,
+    /** The owner offers hours: a change for a member, or on an invite. */
+    offerMemberHours: async (memberId: string, hours: WorkHours): Promise<Team> =>
+      request(`/businesses/me/team/${memberId}/hours`, { method: 'PUT', body: JSON.stringify(hours) }) as any,
+    /** The owner accepts or declines hours a member sent. */
+    answerMemberHours: async (memberId: string, accept: boolean): Promise<Team> =>
+      request(`/businesses/me/team/${memberId}/hours/answer`, { method: 'POST', body: JSON.stringify({ approve: accept }) }) as any,
     removeMember: async (memberId: string): Promise<Team> =>
       request(`/businesses/me/team/${memberId}`, { method: 'DELETE' }) as any,
     /** Asks to leave: they go on leave_at, after the notice — sooner if released. */
@@ -1522,15 +1636,20 @@ export const SkoFyApi = {
     earnings: async (): Promise<BusinessEarnings> => request('/businesses/me/earnings') as any,
     applyForJob: async (jobId: string, workerId: string, message?: string): Promise<{ message: string }> =>
       request(`/businesses/me/jobs/${jobId}/apply`, { method: 'POST', body: JSON.stringify({ worker_id: workerId, message }) }) as any,
+    /** Takes back the business's application while the customer hasn't chosen — final. */
+    withdrawApplication: async (jobId: string): Promise<{ message: string }> =>
+      request(`/businesses/me/jobs/${jobId}/withdraw`, { method: 'POST' }) as any,
     assignJob: async (jobId: string, workerId: string): Promise<{ message: string }> =>
       request(`/businesses/me/jobs/${jobId}/assign`, { method: 'POST', body: JSON.stringify({ worker_id: workerId }) }) as any,
     invites: async (): Promise<BusinessInvite[]> => request('/businesses/invites') as any,
     /** The states a business can be registered in (the list a save is checked against). */
     usStates: async (): Promise<{ code: string; name: string }[]> => request('/businesses/us-states') as any,
-    answerInvite: async (memberId: string, accept: boolean, acknowledgedNotice: boolean, authorizedCheck = false): Promise<{ message: string }> =>
+    /** Accept the hours offered, or — with other `hours` — send the invite back with those. */
+    answerInvite: async (memberId: string, accept: boolean, acknowledgedNotice: boolean, authorizedCheck = false,
+      hours?: WorkHours): Promise<{ message: string }> =>
       request(`/businesses/invites/${memberId}`, {
         method: 'POST',
-        body: JSON.stringify({ accept, acknowledged_notice: acknowledgedNotice, authorized_check: authorizedCheck }),
+        body: JSON.stringify({ accept, acknowledged_notice: acknowledgedNotice, authorized_check: authorizedCheck, hours }),
       }) as any,
   },
 

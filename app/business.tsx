@@ -3,7 +3,8 @@ import { CloseBusiness } from '@/components/business/close-business';
 import { BusinessDocumentForm } from '@/components/business/business-document-form';
 import { BusinessInvites } from '@/components/business/business-invites';
 import { BusinessProfileForm } from '@/components/business/business-profile-form';
-import { OwnWorkSetting } from '@/components/business/own-work-setting';
+import { EmployerBenefits } from '@/components/business/employer-benefits';
+import { MyHours } from '@/components/business/my-hours';
 import { SetupChecklist } from '@/components/business/setup-checklist';
 import { TeamSection } from '@/components/business/team-section';
 import { Badge, Button, C, Monogram, Progress, Row, Section, Tone, u } from '@/components/business/ui';
@@ -14,6 +15,7 @@ import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { useMyBusiness } from '@/hooks/use-my-business';
 import {
   BusinessDocument, BusinessDocumentKind, BusinessEarnings, BusinessInvite, MemberRole, SkoFyApi, Team, TeamMember,
+  WorkHours,
 } from '@/services/api';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
@@ -190,10 +192,13 @@ export default function BusinessScreen() {
     await WebBrowser.openBrowserAsync(url);
   });
 
-  const answerInvite = async (invite: BusinessInvite, accept: boolean, acknowledged: boolean, authorizedCheck: boolean) => {
+  // Accepting the hours offered joins; other hours send the invite back.
+  const answerInvite = async (invite: BusinessInvite, accept: boolean, acknowledged: boolean, authorizedCheck: boolean,
+    hours?: WorkHours) => {
     try {
-      const { message } = await SkoFyApi.business.answerInvite(invite.id, accept, acknowledged, authorizedCheck);
-      appAlert.show('success', accept ? 'Welcome to the team' : 'Declined', message);
+      const { message } = await SkoFyApi.business.answerInvite(invite.id, accept, acknowledged, authorizedCheck, hours);
+      appAlert.show('success', !accept ? (invite.waiting_on === 'BUSINESS' ? 'Withdrawn' : 'Declined')
+        : hours ? 'Your hours are sent' : 'Welcome to the team', message);
       reload();
     } catch (err: any) {
       appAlert.show('error', 'Not done', err?.message ?? 'Please try again.');
@@ -219,6 +224,11 @@ export default function BusinessScreen() {
     }) },
   ]);
   const stayOnTeam = () => run('leave', () => SkoFyApi.business.cancelLeave(), "You're staying on the team.");
+  // A member's hours: the server words what happened, so its message is shown.
+  const hoursAction = (key: string, action: () => Promise<{ message: string }>) => run(key, async () => {
+    const { message } = await action();
+    appAlert.show('success', 'Done', message);
+  });
   const removeDoc = (doc: BusinessDocument) => appAlert.show('warning', 'Remove this document?', DOC_NAMES[doc.kind], [
     { text: 'Keep', variant: 'secondary' },
     { text: 'Remove', variant: 'destructive', onPress: () => run(doc.id, () => SkoFyApi.business.removeDocument(doc.id)) },
@@ -255,6 +265,8 @@ export default function BusinessScreen() {
 
           {!business ? (
             <>
+              {/* Working alone today: what an employer offers, and how to join one. */}
+              {invites.length === 0 && <EmployerBenefits />}
               <View style={s.intro}>
                 <View style={s.introIcon}><Building2 size={28} color={C.brandInk} /></View>
                 <ThemedText style={s.introTitle}>Run your business on Dodorez</ThemedText>
@@ -358,15 +370,17 @@ export default function BusinessScreen() {
 
               {!owner && (
                 <>
-                {data.own_work_allowed && (
-                  <OwnWorkSetting who="member" businessName={business.name} value={!!data.own_switch} busy={busy === 'own'}
-                    onChange={(on) => { run('own', () => SkoFyApi.business.setOwnWork(on)); }} />
+                {data.hours && (
+                  <MyHours key={`${data.hours.agreed_label}-${data.hours.offer?.from ?? ''}-${data.hours.offer?.label ?? ''}`}
+                    businessName={business.name} hours={data.hours}
+                    busy={busy === 'answer-yes' || busy === 'answer-no' || busy === 'offer' || busy === 'withdraw' ? busy : null}
+                    onAnswer={(accept) => { hoursAction(accept ? 'answer-yes' : 'answer-no', () => SkoFyApi.business.answerMyHours(accept)); }}
+                    onOffer={(h) => hoursAction('offer', () => SkoFyApi.business.offerMyHours(h))}
+                    onWithdraw={() => { hoursAction('withdraw', () => SkoFyApi.business.withdrawMyHours()); }} />
                 )}
                 <Section title="Your membership" flush>
-                  {!data.own_work_allowed && (
-                    <Row icon={<Briefcase size={18} color={C.ink} />} title={`Your jobs come through ${business.name}`}
-                      detail="They show under Ongoing once you're given one" />
-                  )}
+                  <Row icon={<Briefcase size={18} color={C.ink} />} title={`In your hours, jobs come through ${business.name}`}
+                    detail="They show under Ongoing once you're given one. Outside your hours, your feed is your own." />
                   <Row icon={<ShieldCheck size={18} color={C.ink} />} title="Your location"
                     detail={`${business.name} can see it only while you're on its jobs`} />
                   {data.leave_at ? (
@@ -385,10 +399,21 @@ export default function BusinessScreen() {
 
               {team && (
                 <TeamSection team={team} canManage={owner}
-                  onInvite={async (phone, r: MemberRole) => {
+                  onOfferHours={(m, h) => teamAction(`hours-${m.id}`, () => SkoFyApi.business.offerMemberHours(m.id, h))}
+                  onAnswerHours={(m, accept) => {
+                    if (accept) { teamAction(`hours-${m.id}`, () => SkoFyApi.business.answerMemberHours(m.id, true)); return; }
+                    appAlert.show('warning', m.status === 'INVITED' ? 'Withdraw this invite?' : 'Decline their hours?',
+                      m.status === 'INVITED' ? 'Their invite comes off your team list. You can invite them again.'
+                        : 'Their hours stay as they are now.', [
+                        { text: 'Keep', variant: 'secondary' },
+                        { text: m.status === 'INVITED' ? 'Withdraw invite' : 'Decline', variant: 'destructive',
+                          onPress: () => { teamAction(`hours-${m.id}`, () => SkoFyApi.business.answerMemberHours(m.id, false)); } },
+                      ]);
+                  }}
+                  onInvite={async (phone, r: MemberRole, hours: WorkHours) => {
                     try {
                       const before = new Set(team.members.map((m) => m.id));
-                      const result = await SkoFyApi.business.invite(phone, r);
+                      const result = await SkoFyApi.business.invite(phone, r, hours);
                       setTeam(result);
                       if (result.invited_on_dodorez === false) {
                         // Not on Dodorez: nothing reaches them from us. Sent from the
@@ -491,13 +516,6 @@ export default function BusinessScreen() {
                     right={<Button small kind="secondary" label={payoutsDone ? 'Manage' : 'Set up'} busy={busy === 'payouts'}
                       onPress={payoutsDone ? managePayouts : setUpPayouts} />} />
                 </Section>
-              )}
-
-              {owner && (
-                <OwnWorkSetting who="owner" businessName={business.name} value={business.allow_independent_work} busy={busy === 'indep'}
-                  onChange={(on) => { run('indep', () => SkoFyApi.business.setIndependentWork(on)); }}
-                  members={team?.members} busyMemberId={busy}
-                  onMemberChange={(m, on) => { teamAction(m.id, () => SkoFyApi.business.setMemberOwnWork(m.id, on)); }} />
               )}
 
               {owner && (

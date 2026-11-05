@@ -696,7 +696,24 @@ const ROUTED_UPDATES: Record<string, string> = {
   business_job: '/business-job',
   // A new job reached your team — apply as the business and choose who does it.
   team_job: '/business-jobs',
+  // A skill they listed and never tested: straight into its test
+  // (skofy-backend app/domain/skill_nudges.py; extraParams below).
+  skill_test: '/(tabs)/profile',
 };
+
+/** What a routed push carries that its screen needs, beyond the job — keyed
+ * the same way (routedKey). */
+function extraParams(data: Record<string, unknown>): Record<string, string> | undefined {
+  if (data.type === 'skill_test' && data.skill_id) {
+    return { testSkillId: String(data.skill_id), testSkillName: String(data.skill_name ?? '') };
+  }
+  return undefined;
+}
+
+/** A routed push's key: its job, business or skill. */
+function routedKey(data: Record<string, unknown>): string {
+  return String(data.job_id ?? data.business_id ?? data.skill_id ?? data.type);
+}
 
 /** Where a job-update push opens, or null if it isn't one of these — the
  * notifications list opens the same place. */
@@ -705,7 +722,17 @@ export function updateRoute(type: unknown): string | null {
   return ROUTED_UPDATES[type as string] ?? null;
 }
 
-async function showJobUpdateNotification(jobId: string, title: string, body: string, route: string) {
+/** The extra screen params a routed notification was shown with. */
+function tappedParams(raw: unknown): Record<string, string> {
+  try {
+    return typeof raw === 'string' ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+async function showJobUpdateNotification(jobId: string, title: string, body: string, route: string,
+  params?: Record<string, string>) {
   await notifee.createChannel({
     id: JOB_UPDATE_CHANNEL_ID,
     name: 'Job Updates',
@@ -716,7 +743,7 @@ async function showJobUpdateNotification(jobId: string, title: string, body: str
     id: `job-update-${jobId}`,
     title,
     body,
-    data: { jobUpdateJobId: jobId, jobUpdateRoute: route } as any,
+    data: { jobUpdateJobId: jobId, jobUpdateRoute: route, jobUpdateParams: JSON.stringify(params ?? {}) } as any,
     android: {
       channelId: JOB_UPDATE_CHANNEL_ID,
       pressAction: { id: 'default' },
@@ -868,7 +895,8 @@ function handleNotifeeEvent(type: EventType, detail: any) {
     // Was a bare router.push(route) with no jobId param — harmless for '/'
     // (the dashboard needs nothing), but would silently break '/chat' (needs
     // jobId to know which thread to load) the moment that route got used.
-    safeNavigate(() => openScreen(route, jobUpdateJobId, { jobId: jobUpdateJobId }));
+    const extra = tappedParams(detail.notification?.data?.jobUpdateParams);
+    safeNavigate(() => openScreen(route, jobUpdateJobId, { jobId: jobUpdateJobId, ...extra }));
     if (detail.notification?.id) notifee.cancelNotification(detail.notification.id);
     return;
   }
@@ -974,7 +1002,8 @@ export async function handleInitialNotification(): Promise<boolean> {
     const jobUpdateJobId = initial.notification?.data?.jobUpdateJobId as string | undefined;
     if (jobUpdateJobId) {
       const route = (initial.notification?.data?.jobUpdateRoute as string) || '/';
-      safeNavigate(() => openScreen(route, jobUpdateJobId, { jobId: jobUpdateJobId }));
+      const extra = tappedParams(initial.notification?.data?.jobUpdateParams);
+      safeNavigate(() => openScreen(route, jobUpdateJobId, { jobId: jobUpdateJobId, ...extra }));
       if (initial.notification?.id) notifee.cancelNotification(initial.notification.id);
       return true;
     }
@@ -1524,13 +1553,27 @@ export async function clearPushForSignOut(): Promise<void> {
 /** Logout: the server drops this phone's tokens and the login, then the
  * phone clears its own push state — either alone is enough to stop calls. */
 export async function signOutDevice(): Promise<void> {
-  const fcmToken = await messaging().getToken().catch(() => undefined);
+  // A few seconds at most for the push token: offline, Firebase can take far
+  // longer, and logging out must never wait on the network.
+  const fcmToken = await Promise.race([
+    messaging().getToken().catch(() => undefined),
+    new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 3_000)),
+  ]);
   const voipToken = getCurrentVoipToken() ?? undefined;
+  // Signed out on this phone at once; the server is told in the background.
   await SkoFyApi.auth.logout(fcmToken, voipToken).catch((err) => {
-    console.error('Server-side logout failed:', err);
+    console.error('Logout failed:', err);
   });
-  await clearPushForSignOut();
+  // Stops any ringing now; Firebase forgets the token when it can. A push
+  // arriving meanwhile finds no login and is dropped (registerBackgroundHandler).
+  pushCleanup = clearPushForSignOut().finally(() => { pushCleanup = null; });
 }
+
+// The last sign-out's push cleanup, while it runs. Signing back in waits for
+// it before registering a token (registerFcmToken): otherwise its late
+// deleteToken() could delete the very token the new login just registered,
+// and calls and notifications would silently stop.
+let pushCleanup: Promise<void> | null = null;
 
 export function registerBackgroundHandler() {
   messaging().setBackgroundMessageHandler(async (remoteMessage) => {
@@ -1591,10 +1634,11 @@ export function registerBackgroundHandler() {
     const route = remoteMessage.data ? updateRoute(remoteMessage.data.type) : null;
     if (remoteMessage.data && route) {
       await showJobUpdateNotification(
-        (remoteMessage.data.job_id ?? remoteMessage.data.business_id) as string,
+        routedKey(remoteMessage.data),
         (remoteMessage.data.title as string) || 'Job update',
         (remoteMessage.data.body as string) || 'Open the app to see what changed.',
         route,
+        extraParams(remoteMessage.data),
       );
       return;
     }
@@ -1773,10 +1817,11 @@ export function initCallManager() {
     if (remoteMessage.data?.type === 'business_job' && remoteMessage.data.job_id === watchedBusinessJobId) return;
     if (remoteMessage.data && route) {
       await showJobUpdateNotification(
-        (remoteMessage.data.job_id ?? remoteMessage.data.business_id) as string,
+        routedKey(remoteMessage.data),
         (remoteMessage.data.title as string) || 'Job update',
         (remoteMessage.data.body as string) || 'Open the app to see what changed.',
         route,
+        extraParams(remoteMessage.data),
       );
       return;
     }
@@ -1828,6 +1873,7 @@ export function initCallManager() {
 }
 
 export async function registerFcmToken() {
+  if (pushCleanup) await pushCleanup;
   try {
     const token = await messaging().getToken();
     await SkoFyApi.fcm.registerToken(token, Platform.OS === 'ios' ? 'IOS' : 'ANDROID');

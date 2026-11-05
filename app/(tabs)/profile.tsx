@@ -15,6 +15,7 @@ import { SkoFyApi } from '@/services/api';
 import { isEmail, tidyEmail } from '@/services/email';
 import { AppLock } from '@/services/appLock';
 import { signOutDevice } from '@/services/callManager';
+import { useServerReachable } from '@/services/server-status';
 import { stopBackgroundLocation } from '@/services/background-location';
 import { disconnectLocationSocket } from '@/services/location-socket';
 import { clearDashboardCache } from '@/services/homeCache';
@@ -151,6 +152,9 @@ function TestCountdown({ from, running, onPause, onTimeout, style }: {
   useEffect(() => () => onPause(leftRef.current), []);   // eslint-disable-line react-hooks/exhaustive-deps
   return <ThemedText style={style}>{left}s</ThemedText>;
 }
+
+// The longest the full-screen loader stays (loadProfile).
+const PROFILE_LOADER_MAX_MS = 6_000;
 
 export default function ProfileScreen() {
   const queryClient = useQueryClient();
@@ -465,13 +469,28 @@ export default function ProfileScreen() {
     await Promise.allSettled([profileCall, earningsCall, skillsCall, historyCall, documentsCall, slotsCall, reloadUnrated()]);
   }, []);
 
+  // The full-screen loader covers Profile — Logout included — so it never
+  // waits long: at most a few seconds, then the screen shows with whatever
+  // has arrived, and the rest fills in as it lands. It used to wait for all
+  // seven calls, which on a dead connection (30 s each, more with a token
+  // refresh) left no way to log out.
   const loadProfile = React.useCallback(async () => {
     setIsProfileLoading(true);
-    await fetchAllProfileData();
+    await Promise.race([fetchAllProfileData(), new Promise((resolve) => setTimeout(resolve, PROFILE_LOADER_MAX_MS))]);
     setIsProfileLoading(false);
   }, [fetchAllProfileData]);
 
   useEffect(() => { loadProfile(); }, [loadProfile]);
+
+  // Loaded directly, not through the shared data layer, so the connection
+  // banner's refresh doesn't reach it: when the server answers again after
+  // being unreachable, reload what failed (services/server-status.ts).
+  const serverReachable = useServerReachable();
+  const wasReachable = useRef(serverReachable);
+  useEffect(() => {
+    if (!wasReachable.current && serverReachable) fetchAllProfileData();
+    wasReachable.current = serverReachable;
+  }, [serverReachable, fetchAllProfileData]);
 
   useEffect(() => {
     (async () => {

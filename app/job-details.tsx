@@ -41,6 +41,7 @@ import { getJobById, JOBS_LIST } from '@/data/jobsData';
 import { fitBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMyBusiness } from '@/hooks/use-my-business';
+import { inHours } from '@/components/business/work-hours';
 import { usePullRefresh } from '@/hooks/use-pull-refresh';
 
 const { width } = Dimensions.get('window');
@@ -171,6 +172,11 @@ export default function JobDetailsScreen() {
   const [job, setJob] = useState<any>(null);
   const teamJob = job && !job.isOngoing && !job.isClosed && myBusiness.canDispatch ? myBusiness.teamJob(job.id) : undefined;
   const businessName = myBusiness.data?.business?.name ?? 'your business';
+  // A dispatcher's own hours cover this job: it's the business's, not theirs
+  // to apply for themselves. Unknown on the phone: the button shows, and the
+  // server's answer counts.
+  const myHours = myBusiness.data?.hours?.agreed;
+  const inMyEmployerHours = !!(job?.workTime && myHours && inHours(myHours, new Date(job.workTime)) === true);
   const [isLoading, setIsLoading] = useState(true);
   // Set when the job fetch fails permanently (404/403) — a stale notification
   // tap (direct request, new job nearby) landing here after the job expired,
@@ -322,6 +328,10 @@ export default function JobDetailsScreen() {
             // 9 hours every time this screen was opened, never actually
             // counting down to anything real.
             deadline: scheduledMs ?? new Date(j.created_at).getTime() + 9 * 3600000,
+            // When the work happens — its start, or when it was posted: in a
+            // team member's work hours that makes it the business's job
+            // (docs/EMPLOYER_PARTNERS_DESIGN.md).
+            workTime: scheduledMs ?? new Date(j.created_at).getTime(),
             budgetMin: j.budget_min,
             budgetMax: j.budget_max,
             rate: upfront?.rate ?? budgetStr,
@@ -890,17 +900,17 @@ export default function JobDetailsScreen() {
       <View style={[styles.footer, { paddingBottom: Math.max(bottomInset + 8, 16) }, teamJob && styles.footerStacked]}>
         {teamJob && (
           <TouchableOpacity
-            style={[styles.applyButtonFull, styles.footerItem, teamJob.applied && styles.appliedButton]}
-            disabled={teamJob.applied}
+            style={[styles.applyButtonFull, styles.footerItem, (teamJob.applied || teamJob.withdrawn) && styles.appliedButton]}
+            disabled={teamJob.applied || !!teamJob.withdrawn}
             onPress={() => router.push({ pathname: '/business-jobs', params: { jobId: job.id } } as any)}
           >
             {teamJob.applied ? <CheckCircle2 size={20} color="#16A34A" /> : <Users size={20} color="#111827" />}
             <Text style={[styles.applyButtonText, teamJob.applied && styles.appliedButtonText, { flexShrink: 1 }]} numberOfLines={1}>
-              {teamJob.applied ? `Applied as ${businessName} ✓` : `Apply as ${businessName}`}
+              {teamJob.applied ? `Applied as ${businessName} ✓` : teamJob.withdrawn ? `${businessName} withdrew` : `Apply as ${businessName}`}
             </Text>
           </TouchableOpacity>
         )}
-        {!(teamJob && (teamJob.applied || myBusiness.data?.works_for_self === false)) && (() => {
+        {!(teamJob && (teamJob.applied || inMyEmployerHours)) && (() => {
           // Precedence matters here: isOngoing (I'm the hired provider) >
           // isClosed (job died — cancelled/expired/disputed, nobody won it)
           // > isLockedByOther (job moved on, someone else got it — true
@@ -913,6 +923,33 @@ export default function JobDetailsScreen() {
           const disabled = job.isOngoing ? false : (isApplied || isLocked || isConflictLocked || job.isClosed || isAcceptingDirect);
           return (
             <View style={[styles.footerRow, teamJob && styles.footerItem]}>
+              {/* Applied and waiting: they can take it back (for example before
+                  agreeing work hours with a business that cover it). */}
+              {isApplied && !teamJob && (
+                <TouchableOpacity
+                  style={styles.declineBtn}
+                  onPress={() => {
+                    showDialog('Withdraw your application?', 'The customer won’t see it any more, and you can’t apply for this job again.', [
+                      { text: 'Keep it', style: 'cancel' },
+                      {
+                        text: 'Withdraw',
+                        style: 'destructive',
+                        onPress: async () => {
+                          try {
+                            await SkoFyApi.jobs.withdrawApplication(job.id);
+                            fetchJobAndLocation(true);
+                          } catch (err: any) {
+                            showDialog('Not withdrawn', err?.message ?? 'Please try again.');
+                          }
+                        },
+                      },
+                    ]);
+                  }}
+                >
+                  <XCircle size={18} color="#EF4444" />
+                  <Text style={styles.declineBtnText}>Withdraw</Text>
+                </TouchableOpacity>
+              )}
               {job.isDirectRequest && !job.isOngoing && !isApplied && !isLocked && !job.isClosed && (
                 <TouchableOpacity
                   style={styles.declineBtn}
@@ -945,7 +982,8 @@ export default function JobDetailsScreen() {
               )}
               <TouchableOpacity
                 style={[
-                  job.isDirectRequest && !job.isOngoing && !isApplied && !isLocked ? styles.applyButtonFlex : styles.applyButtonFull,
+                  (job.isDirectRequest && !job.isOngoing && !isApplied && !isLocked) || (isApplied && !teamJob)
+                    ? styles.applyButtonFlex : styles.applyButtonFull,
                   job.isOngoing && styles.ongoingButton,
                   isApplied && styles.appliedButton,
                   (isLocked || isConflictLocked) && styles.conflictButton,

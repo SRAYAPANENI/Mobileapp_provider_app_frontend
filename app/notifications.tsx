@@ -137,6 +137,11 @@ export default function NotificationsScreen() {
       router.push('/business' as any);
       return;
     }
+    // A skill-test reminder: the skills to test, each with its test.
+    if (item.notif_type === 'skill_test') {
+      router.push({ pathname: '/(tabs)/profile', params: { section: 'verification' } } as any);
+      return;
+    }
     if (!item.job_id) return;
     switch (item.notif_type) {
       case 'new_job':
