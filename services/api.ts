@@ -496,7 +496,8 @@ export interface GuaranteeClaim {
 
 /** Your prices per hour / day / night, and hosting at your place
  * (docs/JOB_SHAPE_DESIGN.md phase 4). */
-export interface ProviderRate { skill_id: string; skill_name: string; unit: 'HOUR' | 'DAY' | 'NIGHT' | 'WEEK' | 'MONTH' | 'VISIT' | 'FIXED'; amount: number }
+/** TRIP_BASE / TRIP_MILE: a Pickup & Delivery fare — base + per mile × the trip's miles. */
+export interface ProviderRate { skill_id: string; skill_name: string; unit: 'HOUR' | 'DAY' | 'NIGHT' | 'WEEK' | 'MONTH' | 'VISIT' | 'FIXED' | 'TRIP_BASE' | 'TRIP_MILE' | 'TRIP_BOX' | 'TRIP_TRUNK' | 'TRIP_VAN' | 'TRIP_WAIT'; amount: number }
 export type PetKind = 'DOG' | 'CAT' | 'BIRD' | 'SMALL_PET' | 'REPTILE' | 'FISH' | 'OTHER';
 export type DogSize = 'SMALL' | 'MEDIUM' | 'LARGE' | 'GIANT';
 export type ItemSize = 'SMALL' | 'MEDIUM' | 'LARGE' | 'BULKY';
@@ -512,7 +513,10 @@ export interface Hosting {
   hosts_at_home: boolean; host_capacity: number; base_address: string | null;
   base_lat: number | null; base_lng: number | null; rates: ProviderRate[];
   hosting_prefs: HostingPrefs;
+  /** Waiting on a delivery, as the server sets it (skofy-backend app/domain/trip_wait.py). */
+  trip_wait?: WaitRules;
 }
+export interface WaitRules { free_minutes: number; max_minutes: number }
 
 /** The hand-over photos and every update, for a pet or home in your care. */
 export interface CareRecord {
@@ -1222,6 +1226,9 @@ export const SkoFyApi = {
 
     // ── Pickup & Drop: hand-over at the drop-off ─────────────────────────
 
+    /** "I'm here" at a delivery's drop-off — starts the waiting clock there. */
+    arrivedAtDropoff: async (jobId: string, lat: number, lng: number): Promise<{ dropoff_arrived_at: string; free_until: string | null }> =>
+      request(`/jobs/${jobId}/delivery/arrived`, { method: 'POST', body: JSON.stringify({ lat, lng }) }) as any,
     requestDeliveryCode: async (jobId: string) =>
       request(`/jobs/${jobId}/delivery/request-code`, { method: 'POST' }),
 

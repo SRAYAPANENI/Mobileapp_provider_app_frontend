@@ -6,25 +6,7 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { StyleSheet, View, ScrollView, TouchableOpacity, SafeAreaView, Platform, Dimensions, ActivityIndicator, Share, Modal, Pressable } from 'react-native';
 import { Text, TextInput } from '@/components/scaled-text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import {
-  ChevronLeft,
-  MapPin,
-  Clock,
-  Briefcase,
-  Star,
-  ShieldCheck,
-  Play,
-  Navigation,
-  Share2,
-  Lock,
-  Zap,
-  XCircle,
-  X,
-  CheckCircle2,
-  User,
-  Home,
-  Users,
-} from 'lucide-react-native';
+import { ChevronLeft, MapPin, Clock, Briefcase, Star, ShieldCheck, Play, Navigation, Share2, Lock, Zap, XCircle, X, CheckCircle2, User, Home, Users, Package } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
 import Svg, { Circle, G, Text as SvgText, LinearGradient, Stop, Defs } from 'react-native-svg';
@@ -129,7 +111,12 @@ const SkillMatchCircle = ({ percentage, styles }: { percentage: number; styles: 
   );
 };
 
-const UNIT_WORD: Record<string, string> = { HOUR: 'hour', DAY: 'day', NIGHT: 'night', VISIT: 'visit' };
+// What a delivery takes to carry (skofy-backend app/domain/trip_fare.py).
+const ITEM_SIZE_WORDS: Record<string, string> = {
+  SMALL: 'Fits in a bag', MEDIUM: 'A box', LARGE: 'Fills a car trunk', BULKY: 'Needs a van or pickup truck',
+};
+
+const UNIT_WORD: Record<string, string> = { HOUR: 'hour', DAY: 'day', NIGHT: 'night', VISIT: 'visit', TRIP: 'trip' };
 
 /** A job priced up front, as this provider sees it: their total, or what's
  * missing to apply. null for a job priced by a quote. */
@@ -142,7 +129,8 @@ function upfrontPricing(j: any): { myPrice: any; unitWord: string; rate: string;
   return {
     myPrice, unitWord,
     rate: `$${Number(myPrice.total).toFixed(2)}`,
-    duration: `${qty} ${unitWord}${qty === 1 ? '' : 's'}`,
+    // A trip's fare already says its miles ("… 4.2 mi × $1.50 = $12.30").
+    duration: j.shape?.pricing_unit === 'TRIP' ? 'this trip' : `${qty} ${unitWord}${qty === 1 ? '' : 's'}`,
   };
 }
 
@@ -319,6 +307,8 @@ export default function JobDetailsScreen() {
               : null,
             serviceMode: j.service_mode ?? 'ON_SITE',
             location: j.pickup_address ?? j.full_address ?? 'Customer Location',
+            // Pickup & Delivery: what it takes to carry it (bag, box, car trunk, van).
+            itemSize: j.job_type === 'PICKUP_DROPOFF' ? (j.item_size ?? 'SMALL') : null,
             startTime: scheduledMs ?? Date.now() + 3600000,
             endTime: scheduledMs ? scheduledMs + 7200000 : Date.now() + 7200000,
             // Anchored to when the job was actually POSTED (j.created_at),
@@ -650,6 +640,12 @@ export default function JobDetailsScreen() {
                 <MapPin size={16} color="#6B7280" />
                 <Text style={styles.locationText}>{job.location}</Text>
               </View>
+              {!!job.itemSize && (
+                <View style={styles.locationLink}>
+                  <Package size={16} color="#6B7280" />
+                  <Text style={styles.locationText}>{ITEM_SIZE_WORDS[job.itemSize] ?? 'Fits in a bag'}</Text>
+                </View>
+              )}
             </View>
             <View style={styles.rateBadge}>
               <Text style={styles.rateText}>{job.rate} / {job.duration}</Text>
@@ -1101,7 +1097,9 @@ export default function JobDetailsScreen() {
               ) : (
                 <TouchableOpacity onPress={() => { setShowBidModal(false); router.push('/rates-and-hosting' as any); }}>
                   <Text style={styles.bidFieldLabel}>
-                    Add your price per {job.upfront.unitWord} for this skill in Rates & hosting to apply — tap to set it.
+                    {job.upfront.unitWord === 'trip'
+                      ? 'Add your base fare and price per mile for Pickup & Delivery in Rates & hosting to apply — tap to set them.'
+                      : `Add your price per ${job.upfront.unitWord} for this skill in Rates & hosting to apply — tap to set it.`}
                   </Text>
                 </TouchableOpacity>
               )

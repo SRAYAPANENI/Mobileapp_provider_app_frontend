@@ -15,30 +15,16 @@ interface Props {
   onError: (title: string, message: string) => void;
 }
 
-// After the report: is the inspection confirmed? The customer can confirm in
-// their app, or read you their end code here. If they say it wasn't done,
-// the visiting fee is held and you add your side for support
-// (docs/MONEY_RULES_DESIGN.md §4–5).
+// After the report: is the inspection confirmed? The customer confirms in
+// their app — one tap, the one way (an end code to read out added nothing:
+// it lived in the same app). Unanswered, it's paid in 24 hours if all is in
+// order. If they say it wasn't done, the visiting fee is held and you add
+// your side for support (docs/MONEY_RULES_DESIGN.md §4–5).
 export function InspectionStatus({ jobId, confidence, disputed, onChanged, onError }: Props) {
-  const [code, setCode] = useState('');
-  const [checking, setChecking] = useState(false);
   const [statement, setStatement] = useState('');
   const [photos, setPhotos] = useState<{ uri: string; mimeType: string }[]>([]);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
-
-  const verify = async () => {
-    setChecking(true);
-    try {
-      await SkoFyApi.jobs.verifyInspectionEndCode(jobId, code);
-      setCode('');
-      onChanged();
-    } catch (err: any) {
-      onError('Wrong Code', err?.message ?? 'That code is incorrect or expired.');
-    } finally {
-      setChecking(false);
-    }
-  };
 
   const addPhoto = async () => {
     if (photos.length >= 3) return;
@@ -126,23 +112,9 @@ export function InspectionStatus({ jobId, confidence, disputed, onChanged, onErr
       </View>
       <Text style={s.body}>
         {confidence === 'REVIEW'
-          ? "Support will check this one before the visiting fee is paid — ask the customer to confirm, or read you their code."
-          : 'They can confirm in their app, or read you the code on their screen. Otherwise it’s paid in 24 hours if all is in order.'}
+          ? 'Support will check this one before the visiting fee is paid — ask the customer to confirm in their app.'
+          : 'They confirm with one tap in their app. If they don’t answer, it’s paid in 24 hours if all is in order.'}
       </Text>
-      <View style={s.codeRow}>
-        <TextInput
-          style={s.codeInput}
-          placeholder="Customer's code"
-          placeholderTextColor="#9CA3AF"
-          keyboardType="number-pad"
-          maxLength={4}
-          value={code}
-          onChangeText={(t) => setCode(t.replace(/\D/g, ''))}
-        />
-        <TouchableOpacity style={[s.verify, (code.length !== 4 || checking) && { opacity: 0.5 }]} onPress={verify} disabled={code.length !== 4 || checking}>
-          {checking ? <ActivityIndicator color="#fff" /> : <Text style={s.buttonText}>Confirm</Text>}
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
@@ -156,12 +128,6 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   title: { fontSize: 13.5, lineHeight: 18, fontFamily: Fonts.poppinsBold, color: '#111827' },
   body: { fontSize: 12.5, lineHeight: 17, fontFamily: Fonts.poppins, color: '#4B5563' },
-  codeRow: { flexDirection: 'row', gap: 8 },
-  codeInput: {
-    flex: 1, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 12, backgroundColor: '#FFFFFF',
-    fontSize: 16, letterSpacing: 4, fontFamily: Fonts.poppinsBold, color: '#111827',
-  },
-  verify: { paddingHorizontal: 18, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#111827' },
   input: {
     minHeight: 80, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, padding: 10, backgroundColor: '#FFFFFF',
     fontSize: 13, lineHeight: 18, fontFamily: Fonts.poppins, color: '#111827', textAlignVertical: 'top',

@@ -84,8 +84,9 @@ export default function RatesAndHostingScreen() {
     <SkillPricesCard
       sk={item} rates={ratesBySkill[item.skill_id] ?? NO_RATES} hourlyHint={hourlyHint}
       notify={notify} expanded={open.has(item.skill_id)} onToggle={toggle} drafts={drafts}
+      waitRules={hosting.data?.trip_wait}
     />
-  ), [ratesBySkill, hourlyHint, notify, open, toggle, drafts]);
+  ), [ratesBySkill, hourlyHint, notify, open, toggle, drafts, hosting.data?.trip_wait]);
 
   const header = ready ? (
     <View style={s.section}>

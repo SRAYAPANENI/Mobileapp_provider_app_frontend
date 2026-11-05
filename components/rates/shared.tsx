@@ -9,7 +9,8 @@ import { StyleSheet, Switch, TouchableOpacity, View } from 'react-native';
 
 // What Rates & hosting's cards share: units, choices, small controls, styles.
 
-export type Unit = Extract<ProviderRate['unit'], 'HOUR' | 'VISIT' | 'DAY' | 'NIGHT' | 'WEEK' | 'MONTH'>;
+export type Unit = Extract<ProviderRate['unit'], 'HOUR' | 'VISIT' | 'DAY' | 'NIGHT' | 'WEEK' | 'MONTH'
+  | 'TRIP_BASE' | 'TRIP_MILE' | 'TRIP_BOX' | 'TRIP_TRUNK' | 'TRIP_VAN' | 'TRIP_WAIT'>;
 export type Notify = (type: 'success' | 'error', title: string, message: string) => void;
 
 // The prices a job can be booked at up front (docs/JOB_SHAPE_DESIGN.md) — in
@@ -23,7 +24,31 @@ export const UNITS: { unit: Unit; label: string; hint: string }[] = [
   // or days (skofy-backend/app/domain/rate_card.py best_price).
   { unit: 'WEEK', label: 'Per week', hint: 'Optional — for stays of 7 nights or days and more' },
   { unit: 'MONTH', label: 'Per month', hint: 'Optional — for stays of 30 and more, like storage' },
+  // Pickup & Delivery, priced up front like a ride: base + per mile × the
+  // trip's miles (skofy-backend app/domain/trip_fare.py).
+  { unit: 'TRIP_BASE', label: 'Base fare', hint: 'Each trip: getting going and collecting it. Typical: $5–$8' },
+  { unit: 'TRIP_MILE', label: 'Per mile', hint: 'Pickup to drop-off, measured when the job is posted. Typical: $1–$2' },
+  // Size extras: a bag is always included. A box is included unless you set
+  // an extra. A car trunk or a van only reaches you once you set one (it can
+  // be $0) — that's how you say you can carry it.
+  { unit: 'TRIP_BOX', label: 'Box extra', hint: 'Empty: boxes at no extra' },
+  { unit: 'TRIP_TRUNK', label: 'Car-trunk extra', hint: 'Set it (even $0) to take items that fill a car trunk' },
+  { unit: 'TRIP_VAN', label: 'Van extra', hint: 'Set it (even $0) to take items that need a van or pickup truck' },
+  // Waiting at the pickup (skofy-backend app/domain/trip_wait.py): after the
+  // free minutes, up to a cap the customer pays with the fare.
+  { unit: 'TRIP_WAIT', label: 'Waiting, per minute', hint: 'At the pickup and drop-off, after the free minutes. Empty: waiting is free. Typical: $0.30–$0.50' },
 ];
+
+/** Size extras: $0 is a real price (room, no extra), unlike every other box. */
+export const TRIP_EXTRAS: Unit[] = ['TRIP_BOX', 'TRIP_TRUNK', 'TRIP_VAN'];
+
+/** What a trip of `miles` costs at these prices, or null without both. */
+export function tripExample(base: string | undefined, perMile: string | undefined, miles = 5): string | null {
+  const b = Number(base);
+  const m = Number(perMile);
+  if (!base || !perMile || !(b > 0) || !(m > 0)) return null;
+  return `A ${miles}-mile trip: $${(b + m * miles).toFixed(2)}`;
+}
 
 export const USUAL: { field: 'fee' | 'hourly'; label: string; hint: string }[] = [
   { field: 'fee', label: 'Visiting fee', hint: `Covers your trip — at least $${MIN_VISITING_FEE}` },
@@ -33,17 +58,21 @@ export const USUAL: { field: 'fee' | 'hourly'; label: string; hint: string }[] =
 
 // Each skill is priced one standard way (skofy-backend/app/domain/skill_pricing.py):
 // only its own price boxes show. A skill priced by quote has none — the
-// visiting fee above, then an invoice. An older skill without one shows all.
+// visiting fee above, then an invoice. A trip (Pickup & Delivery) has its
+// base fare and price per mile. An older skill without one shows the rest.
 const UNITS_BY_PRICING: Record<string, Unit[]> = {
   QUOTE: [],
   HOUR: ['HOUR'],
   VISIT: ['VISIT'],
   NIGHT: ['NIGHT', 'WEEK', 'MONTH'],
   DAY: ['DAY', 'WEEK', 'MONTH'],
+  TRIP: ['TRIP_BASE', 'TRIP_MILE', 'TRIP_BOX', 'TRIP_TRUNK', 'TRIP_VAN', 'TRIP_WAIT'],
 };
+const TRIP_PARTS: Unit[] = ['TRIP_BASE', 'TRIP_MILE', 'TRIP_BOX', 'TRIP_TRUNK', 'TRIP_VAN', 'TRIP_WAIT'];
 export const unitsFor = (sk: MySkill) => {
   const allowed = sk.pricing ? UNITS_BY_PRICING[sk.pricing] : null;
-  return allowed ? UNITS.filter((u) => allowed.includes(u.unit)) : UNITS.filter((u) => u.unit !== 'VISIT');
+  return allowed ? UNITS.filter((u) => allowed.includes(u.unit))
+    : UNITS.filter((u) => u.unit !== 'VISIT' && !TRIP_PARTS.includes(u.unit));
 };
 
 // What a host takes in (skofy-backend/app/domain/care_sheet.py).

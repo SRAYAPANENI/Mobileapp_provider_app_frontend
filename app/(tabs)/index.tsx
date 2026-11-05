@@ -458,6 +458,7 @@ export default function DashboardScreen() {
         // Priced up front: your total once you've applied, else your rate's unit.
         fee: (j.steps ?? []).includes('PAY_UPFRONT')
           ? (j.proposed_fee ? `$${Number(j.proposed_fee).toFixed(2)} total`
+            : j.shape?.pricing_unit === 'TRIP' ? 'Your fare for this trip'
             : `Your price per ${({ HOUR: 'hour', DAY: 'day', NIGHT: 'night', VISIT: 'visit' } as Record<string, string>)[j.shape?.pricing_unit] ?? 'unit'}`)
           : j.budget_min && j.budget_max ? `$${j.budget_min}–$${j.budget_max}` : j.budget_min ? `From $${j.budget_min}` : 'Negotiable',
         skills: j.skills ?? [],
@@ -746,6 +747,10 @@ export default function DashboardScreen() {
   // Buy it for me: the receipt total, and whether the customer's money is held.
   const [goodsAmountText, setGoodsAmountText] = useState('');
   const buyingForCustomer = isDelivery(selectedJob) && isBuyForMe(manageJobDetail);
+  // A trip priced up front (Pickup & Delivery, skofy-backend app/domain/trip_fare.py)
+  // not booked and paid yet: nothing is collected until it is.
+  const tripUnpaid = manageJobDetail?.shape?.pricing_unit === 'TRIP'
+    && !['HELD', 'PAID'].includes(manageJobDetail?.payment_status);
   const goodsHeld = useGoodsHoldHeld(
     selectedJob?.id, buyingForCustomer && selectedJob?.status === 'ACCEPTED' && !manageJobDetail?.pickup_confirmed_at,
   );
@@ -2221,7 +2226,7 @@ const filteredJobs = jobs.filter((job) => {
                   <ThemedText style={styles.completeDisclaimer}>
                     This job is under review. Our team will get back to you within 24 hours.
                   </ThemedText>
-                ) : manageJobDetail?.steps?.includes('PAY_UPFRONT') ? (
+                ) : manageJobDetail?.steps?.includes('PAY_UPFRONT') && !manageJobDetail?.steps?.includes('PICKUP_PROOF') ? (
                   // Priced up front — booked and paid, then check-in, hand-over,
                   // updates and hand-back (docs/JOB_SHAPE_DESIGN.md phase 4).
                   <CareJobPanel
@@ -2233,11 +2238,26 @@ const filteredJobs = jobs.filter((job) => {
                     onMessage={(kind, title, message) => appAlert.show(kind, title, message)}
                   />
                 ) : selectedJob.status === 'IN_PROGRESS' && isDelivery(selectedJob) && !isDelivered(manageJobDetail) ? (
-                  <DeliveryHandover
-                    jobId={selectedJob.id}
-                    onDelivered={() => setManageJobDetail((prev: any) => ({ ...prev, delivered_at: new Date().toISOString() }))}
-                    recipientName={manageJobDetail?.pickup_details?.recipient_name}
-                  />
+                  <>
+                    {/* "I'm at the drop-off": tells the customer, and starts the
+                        waiting clock there when waiting was agreed (trip_wait.py). */}
+                    <ArrivalPanel
+                      jobId={selectedJob.id}
+                      stop="dropoff"
+                      arrivedAt={manageJobDetail?.dropoff_arrived_at}
+                      customerExpected={false}
+                      wait={manageJobDetail?.trip_wait}
+                      getCoords={currentCoords}
+                      onArrived={refreshManageDetail}
+                      onCustomerAbsent={handleCustomerAbsent}
+                      onError={(title, message) => appAlert.show('error', title, message)}
+                    />
+                    <DeliveryHandover
+                      jobId={selectedJob.id}
+                      onDelivered={() => { setManageJobDetail((prev: any) => ({ ...prev, delivered_at: new Date().toISOString() })); refreshManageDetail(); }}
+                      recipientName={manageJobDetail?.pickup_details?.recipient_name}
+                    />
+                  </>
                 ) : selectedJob.status === 'IN_PROGRESS' ? (
                   <>
                     <ExtraWorkPanel jobId={selectedJob.id} onMessage={(kind, title, message) => appAlert.show(kind, title, message)} />
@@ -2426,6 +2446,18 @@ const filteredJobs = jobs.filter((job) => {
                   // geofence-checked photo of what was picked up substitutes
                   // for it instead.
                   <>
+                    {/* "I'm here" at the pickup tells the customer, and starts
+                        the waiting clock when waiting was agreed (trip_wait.py). */}
+                    <ArrivalPanel
+                      jobId={selectedJob.id}
+                      arrivedAt={manageJobDetail?.arrived_at}
+                      customerExpected={false}
+                      wait={manageJobDetail?.trip_wait}
+                      getCoords={currentCoords}
+                      onArrived={refreshManageDetail}
+                      onCustomerAbsent={handleCustomerAbsent}
+                      onError={(title, message) => appAlert.show('error', title, message)}
+                    />
                     {pickupFromPerson ? (
                       <PickupFromPerson
                         key={selectedJob.id}
@@ -2478,10 +2510,15 @@ const filteredJobs = jobs.filter((job) => {
                         {pickupPhoto ? 'Retake Photo' : 'Take Photo'}
                       </ThemedText>
                     </TouchableOpacity>
+                    {tripUnpaid && (
+                      <ThemedText style={[styles.completeDisclaimer, { color: '#B45309' }]}>
+                        Waiting for the customer to book and pay your fare — collect it once they have.
+                      </ThemedText>
+                    )}
                     <TouchableOpacity
-                      style={[styles.completeJobBtn, (!pickupPhoto || confirmingPickup || (buyingForCustomer && (!goodsHeld || !!goodsError)) || (pickupFromPerson && !personItemChecked)) && { opacity: 0.5 }]}
+                      style={[styles.completeJobBtn, (tripUnpaid || !pickupPhoto || confirmingPickup || (buyingForCustomer && (!goodsHeld || !!goodsError)) || (pickupFromPerson && !personItemChecked)) && { opacity: 0.5 }]}
                       onPress={handleConfirmPickup}
-                      disabled={!pickupPhoto || confirmingPickup || (buyingForCustomer && (!goodsHeld || !!goodsError)) || (pickupFromPerson && !personItemChecked)}
+                      disabled={tripUnpaid || !pickupPhoto || confirmingPickup || (buyingForCustomer && (!goodsHeld || !!goodsError)) || (pickupFromPerson && !personItemChecked)}
                     >
                       <CheckCircle size={20} color="#fff" />
                       <ThemedText style={styles.completeJobText}>
