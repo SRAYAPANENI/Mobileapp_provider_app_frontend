@@ -3,7 +3,7 @@ import { AppAlert } from '@/components/app-alert';
 import { showDialog } from '@/components/alert-host';
 import { purchaseSummary } from '@/services/pickupDelivery';
 import React, { useCallback, useState, useEffect } from 'react';
-import { StyleSheet, View, ScrollView, TouchableOpacity, SafeAreaView, Platform, Dimensions, ActivityIndicator, Share, Modal, Pressable } from 'react-native';
+import { StyleSheet, View, ScrollView, TouchableOpacity, SafeAreaView, Platform, Dimensions, ActivityIndicator, Share, Modal, Pressable, LayoutChangeEvent } from 'react-native';
 import { Text, TextInput } from '@/components/scaled-text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft, MapPin, Clock, Briefcase, Star, ShieldCheck, Play, Navigation, Share2, Lock, Zap, XCircle, X, CheckCircle2, User, Home, Users, Package } from 'lucide-react-native';
@@ -27,6 +27,16 @@ import { inHours } from '@/components/business/work-hours';
 import { usePullRefresh } from '@/hooks/use-pull-refresh';
 
 const { width } = Dimensions.get('window');
+
+type MapRegion = { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
+
+// Equirectangular approximation — accurate enough at the street-level zoom this
+// map preview sits at — turns a lat/lng into a pixel offset within the map box.
+function projectToScreen(lat: number, lng: number, region: MapRegion, boxWidth: number, boxHeight: number) {
+  const x = ((lng - (region.longitude - region.longitudeDelta / 2)) / region.longitudeDelta) * boxWidth;
+  const y = ((region.latitude + region.latitudeDelta / 2 - lat) / region.latitudeDelta) * boxHeight;
+  return { x, y };
+}
 
 
 
@@ -173,6 +183,14 @@ export default function JobDetailsScreen() {
   // Details..." forever since it can't tell "still loading" from "never will".
   const [loadError, setLoadError] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ latitude: number, longitude: number } | null>(null);
+  // Tracks the map preview's live viewport so the provider's own location dot
+  // can be drawn as a plain overlay view instead of Marker children — on
+  // Android, react-native-maps turns a Marker's children into a bitmap, and
+  // that snapshot pipeline crops custom views unreliably, worst on a marker
+  // like this one that re-renders on every GPS update (see the same fix in
+  // business-map.tsx and the customer app's provider-map.tsx).
+  const [mapRegion, setMapRegion] = useState<MapRegion | null>(null);
+  const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
   const [feasibility, setFeasibility] = useState<FeasibilityResult | null>(null);
   const [selectedMedia, setSelectedMedia] = useState<{
     type: 'image' | 'video',
@@ -223,6 +241,20 @@ export default function JobDetailsScreen() {
       }
     };
   }, []);
+
+  // Seeds the map overlay's projection region as soon as the job's location
+  // loads, matching the MapView's own initialRegion — otherwise the provider
+  // dot has nothing to project against until the first onRegionChangeComplete.
+  useEffect(() => {
+    if (!mapRegion && job?.coordinates?.latitude != null && job?.coordinates?.longitude != null) {
+      setMapRegion({
+        latitude: job.coordinates.latitude,
+        longitude: job.coordinates.longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      });
+    }
+  }, [job, mapRegion]);
 
   // Quiet: a pull-down reload keeps the job on screen while it reloads.
   const fetchJobAndLocation = useCallback(async (quiet = false) => {
@@ -667,6 +699,16 @@ export default function JobDetailsScreen() {
                   longitudeDelta: 0.05,
                 }}
                 scrollEnabled={true}
+                onLayout={(e: LayoutChangeEvent) => setMapSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
+                // Gesture end only, not onRegionChange (every frame of a pan) —
+                // unlike the dedicated map screens this pattern is borrowed
+                // from, this is a small preview on an otherwise heavy screen
+                // (SVG stat rings, feasibility calc), so re-rendering it on
+                // every frame of a pan would be a real perf hit. The provider
+                // dot "snapping" into place after a gesture instead of
+                // gliding during it is an acceptable trade for that — it
+                // mainly moves from GPS updates, not from panning this map.
+                onRegionChangeComplete={setMapRegion}
               >
                 {/* Dotted Line between Provider and Customer */}
                 {userLocation && (
@@ -707,19 +749,23 @@ export default function JobDetailsScreen() {
                   </>
                 )}
 
-                {/* Provider Live Location (Skofy Icon) */}
-                {userLocation && (
-                  <Marker coordinate={userLocation} title="Your Location">
-                    <View style={styles.skofyMarkerContainer}>
-                      <Image
-                        source={require('@/assets/images/icon-mark.png')}
-                        style={styles.skofyMarkerIcon}
-                        contentFit="contain"
-                      />
-                    </View>
-                  </Marker>
-                )}
               </MapView>
+
+              {/* Provider Live Location (Skofy Icon) — a plain overlay view
+                  projected from userLocation, not Marker children (see the
+                  note on mapRegion above for why). */}
+              {userLocation && mapRegion && mapSize.width > 0 && (() => {
+                const pos = projectToScreen(userLocation.latitude, userLocation.longitude, mapRegion, mapSize.width, mapSize.height);
+                return (
+                  <View pointerEvents="none" style={[styles.skofyMarkerContainer, { position: 'absolute', left: pos.x - 20, top: pos.y - 20 }]}>
+                    <Image
+                      source={require('@/assets/images/icon-mark.png')}
+                      style={styles.skofyMarkerIcon}
+                      contentFit="contain"
+                    />
+                  </View>
+                );
+              })()}
 
               {/* Distance Overlay on Map */}
               {userLocation && (

@@ -29,8 +29,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // until opened, with a search above.
 
 const NO_RATES: ProviderRate[] = [];
-// Above this many priced skills, a search box helps find one.
-const SEARCH_FROM = 6;
 
 export default function RatesAndHostingScreen() {
   const bottomInset = useBottomInset();
@@ -69,8 +67,7 @@ export default function RatesAndHostingScreen() {
     for (const r of hosting.data?.rates ?? []) (map[r.skill_id] ??= []).push(r);
     return map;
   }, [hosting.data?.rates]);
-  // The search shows only with enough skills; without it, nothing is filtered.
-  const searching = priced.length > SEARCH_FROM ? query.trim() : '';
+  const searching = query.trim();
   const shown = useMemo(() => {
     const q = searching.toLowerCase();
     return q ? priced.filter((sk) => sk.name.toLowerCase().includes(q) || sk.profession?.toLowerCase().includes(q)) : priced;
@@ -108,7 +105,7 @@ export default function RatesAndHostingScreen() {
         </View>
       )}
 
-      {priced.length > SEARCH_FROM && (
+      {priced.length > 0 && (
         <View style={s.search}>
           <Search size={16} color="#6B7280" />
           <TextInput

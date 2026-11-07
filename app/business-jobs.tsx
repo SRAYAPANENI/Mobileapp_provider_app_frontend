@@ -8,8 +8,8 @@ import { BusinessBoard, SkoFyApi, Team, TeamActiveJob, TeamOpenJob } from '@/ser
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Briefcase, Check, ChevronLeft, Clock, Inbox, Map as MapIcon } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StatusBar, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
-import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
+import { ActivityIndicator, Modal, ScrollView, StatusBar, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { KeyboardAwareScrollView, KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Badge, Button, C, jobStage, Monogram, Row, Section, u } from '@/components/business/ui';
 import { usePullRefresh } from '@/hooks/use-pull-refresh';
 
@@ -40,7 +40,6 @@ export default function BusinessJobsScreen() {
   const [workerId, setWorkerId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const scroll = useRef<KeyboardAwareScrollViewRef>(null);
 
   const load = useCallback(async () => {
     try {
@@ -116,28 +115,8 @@ export default function BusinessJobsScreen() {
         <Button small kind="secondary" label="Map" icon={<MapIcon size={15} color={C.ink} />} onPress={() => router.push('/business-map' as any)} />
       </View>
       {!board || !team ? <ActivityIndicator style={{ marginTop: 40 }} color={C.ink} /> : (
-        <KeyboardAwareScrollView bottomOffset={24} ref={scroll} contentContainerStyle={padBottom([s.body, { paddingBottom: 40 }], bottomInset)} keyboardShouldPersistTaps="handled"
+        <KeyboardAwareScrollView bottomOffset={24} contentContainerStyle={padBottom([s.body, { paddingBottom: 40 }], bottomInset)} keyboardShouldPersistTaps="handled"
           refreshControl={refreshControl}>
-
-          {(applying || assigning) && (
-            <Section title={applying ? 'Apply as your business' : 'Give to someone else'}>
-              <View style={{ gap: 2 }}>
-                <ThemedText style={s.focusTitle}>{applying ? applying.title : assigning!.title}</ThemedText>
-                <ThemedText style={u.muted}>{applying ? 'Who would do it? The customer sees your business and them.' : "Only until someone sets off — then it's theirs to finish."}</ThemedText>
-              </View>
-              <MemberPicker members={team.members} selectedId={workerId} onSelect={(m) => setWorkerId(m.provider_id)}
-                preferredIds={applying?.reached_member_ids} excludeId={assigning?.worker_id}
-                workTime={workTimeOf(applying ?? assigning)} />
-              {applying && (
-                <TextInput style={[u.input, { minHeight: 72, textAlignVertical: 'top' }]} value={message} onChangeText={setMessage} multiline maxLength={1000}
-                  placeholder="A note for the customer (optional)" placeholderTextColor={C.faint} />
-              )}
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <Button kind="secondary" label="Cancel" onPress={close} disabled={busy} style={{ flex: 1 }} />
-                <Button label={applying ? 'Apply' : 'Give it to them'} onPress={submit} busy={busy} disabled={!workerId} style={{ flex: 1 }} />
-              </View>
-            </Section>
-          )}
 
           <Section title={`Open for your team · ${board.open.length}`} flush>
             {board.open.length === 0 && (
@@ -165,7 +144,7 @@ export default function BusinessJobsScreen() {
                   <Badge label="Withdrawn" tone="neutral" />
                 ) : (
                   <Button small label="Apply as the business" style={{ alignSelf: 'flex-start' }}
-                    onPress={() => { close(); setApplying(j); scroll.current?.scrollTo({ y: 0, animated: true }); }} />
+                    onPress={() => { close(); setApplying(j); }} />
                 )}
               </View>
             ))}
@@ -194,7 +173,7 @@ export default function BusinessJobsScreen() {
                   {canMove && (
                     <View style={{ paddingLeft: 50, paddingBottom: 12 }}>
                       <Button small kind="secondary" label="Give to someone else" style={{ alignSelf: 'flex-start' }}
-                        onPress={() => { close(); setAssigning(j); scroll.current?.scrollTo({ y: 0, animated: true }); }} />
+                        onPress={() => { close(); setAssigning(j); }} />
                     </View>
                   )}
                 </View>
@@ -203,6 +182,36 @@ export default function BusinessJobsScreen() {
           </Section>
         </KeyboardAwareScrollView>
       )}
+
+      {/* Apply / reassign — a popup from the bottom rather than an inline
+          form, so tapping "Apply as the business" (or "Give to someone
+          else") doesn't depend on the list having scrolled back to the top
+          to see it. */}
+      <Modal visible={!!(applying || assigning)} transparent animationType="slide" onRequestClose={close}>
+        <KeyboardAvoidingView style={s.sheetOverlay} behavior="padding">
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={close} />
+          <View style={s.sheet}>
+            <View style={s.sheetHandle} />
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={padBottom(s.sheetContent, bottomInset)}>
+              <ThemedText style={u.sectionTitle}>{applying ? 'Apply as your business' : 'Give to someone else'}</ThemedText>
+              <ThemedText style={s.focusTitle}>{applying ? applying.title : assigning?.title}</ThemedText>
+              <ThemedText style={u.muted}>{applying ? 'Who would do it? The customer sees your business and them.' : "Only until someone sets off — then it's theirs to finish."}</ThemedText>
+              <MemberPicker members={team?.members ?? []} selectedId={workerId} onSelect={(m) => setWorkerId(m.provider_id)}
+                preferredIds={applying?.reached_member_ids} excludeId={assigning?.worker_id}
+                workTime={workTimeOf(applying ?? assigning)} />
+              {applying && (
+                <TextInput style={[u.input, { minHeight: 72, textAlignVertical: 'top' }]} value={message} onChangeText={setMessage} multiline maxLength={1000}
+                  placeholder="A note for the customer (optional)" placeholderTextColor={C.faint} />
+              )}
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <Button kind="secondary" label="Cancel" onPress={close} disabled={busy} style={{ flex: 1 }} />
+                <Button label={applying ? 'Apply' : 'Give it to them'} onPress={submit} busy={busy} disabled={!workerId} style={{ flex: 1 }} />
+              </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {appAlert.element}
     </ThemedView>
   );
@@ -218,4 +227,8 @@ const s = StyleSheet.create({
   job: { paddingVertical: 14, gap: 10 },
   jobLine: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E2E8F0' },
   jobTitle: { fontSize: 15, lineHeight: 21, fontFamily: Fonts.poppinsBold, color: C.ink },
+  sheetOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' },
+  sheet: { backgroundColor: C.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%' },
+  sheetHandle: { width: 40, height: 5, borderRadius: 3, backgroundColor: C.line, alignSelf: 'center', marginTop: 10, marginBottom: 4 },
+  sheetContent: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 16, gap: 12 },
 });
