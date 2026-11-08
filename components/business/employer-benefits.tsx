@@ -3,8 +3,9 @@ import { Fonts } from '@/constants/theme';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { BadgeCheck, CalendarClock, ChevronRight, DoorOpen, GraduationCap, Star, Wrench, X } from 'lucide-react-native';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { C, Section, u } from './ui';
 
 // Why work with an employer (docs/EMPLOYER_PARTNERS_DESIGN.md) — told to
@@ -14,7 +15,7 @@ import { C, Section, u } from './ui';
 // rating, and leaving whenever they want. What they agree with the employer
 // (tools, training, pay) is between the two of them, and the copy says so.
 
-const BENEFITS: { icon: (c: string) => React.ReactNode; title: string; detail: string }[] = [
+export const BENEFITS: { icon: (c: string) => React.ReactNode; title: string; detail: string }[] = [
   { icon: (c) => <Wrench size={18} color={c} />, title: 'Tools and equipment',
     detail: 'Use their tools, van or materials — whatever you agree with them.' },
   { icon: (c) => <CalendarClock size={18} color={c} />, title: 'Steady jobs in your hours',
@@ -65,27 +66,62 @@ export function EmployerBenefits() {
   );
 }
 
-const DISMISS_KEY = 'employer_benefits_dismissed';
+// Stores *when* it was dismissed, not just whether — a flat "never again"
+// flag meant someone who dismissed this once, before a season where joining
+// a team would've genuinely helped them, never saw the pitch again for as
+// long as they used the app. A week later it's worth saying again.
+const DISMISS_KEY = 'employer_benefits_dismissed_at';
+const RESHOW_AFTER_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const ROTATE_MS = 4000;
 
-/** A slim, dismissible line on the home screen for someone working alone. */
+/** A rotating, dismissible banner on the home screen for someone working
+ * alone — cycles through the same benefits as the full explainer above (one
+ * list, two presentations) instead of repeating a single fixed line. */
 export function EmployerBenefitsLine() {
   const [shown, setShown] = useState(false);
+  const [index, setIndex] = useState(0);
+  const indexRef = useRef(0);
+
   useEffect(() => {
     let live = true;
-    SecureStore.getItemAsync(DISMISS_KEY).then((v) => { if (live) setShown(v !== '1'); }).catch(() => { if (live) setShown(true); });
+    SecureStore.getItemAsync(DISMISS_KEY)
+      .then((v) => {
+        if (!live) return;
+        const dismissedAt = v ? Number(v) : 0;
+        setShown(!dismissedAt || Date.now() - dismissedAt >= RESHOW_AFTER_MS);
+      })
+      .catch(() => { if (live) setShown(true); });
     return () => { live = false; };
   }, []);
+
+  useEffect(() => {
+    if (!shown) return;
+    const id = setInterval(() => {
+      indexRef.current = (indexRef.current + 1) % BENEFITS.length;
+      setIndex(indexRef.current);
+    }, ROTATE_MS);
+    return () => clearInterval(id);
+  }, [shown]);
+
   if (!shown) return null;
   const dismiss = () => {
     setShown(false);
-    SecureStore.setItemAsync(DISMISS_KEY, '1').catch(() => {});
+    SecureStore.setItemAsync(DISMISS_KEY, String(Date.now())).catch(() => {});
   };
+  const b = BENEFITS[index];
   return (
     <TouchableOpacity style={s.line} activeOpacity={0.8} onPress={() => router.push('/business' as any)}>
-      <View style={s.icon}><Wrench size={18} color={C.brandInk} /></View>
-      <View style={{ flex: 1, gap: 1 }}>
-        <ThemedText style={s.lineTitle} numberOfLines={1}>Work with an employer</ThemedText>
-        <ThemedText style={u.muted} numberOfLines={1}>Tools, steady jobs and training — your own time stays yours</ThemedText>
+      <Animated.View key={index} entering={FadeIn.duration(250)} exiting={FadeOut.duration(250)} style={s.icon}>
+        {b.icon(C.brandInk)}
+      </Animated.View>
+      <Animated.View key={`text-${index}`} entering={FadeIn.duration(250)} exiting={FadeOut.duration(250)} style={{ flex: 1, gap: 1 }}>
+        <ThemedText style={s.lineTitle} numberOfLines={1}>{b.title}</ThemedText>
+        <ThemedText style={u.muted} numberOfLines={1}>{b.detail}</ThemedText>
+      </Animated.View>
+      <View style={s.dots}>
+        {BENEFITS.map((_, i) => (
+          <View key={i} style={[s.dot, i === index && s.dotActive]} />
+        ))}
       </View>
       <ChevronRight size={18} color={C.faint} />
       <TouchableOpacity onPress={dismiss} hitSlop={10} accessibilityLabel="Hide">
@@ -108,4 +144,7 @@ const s = StyleSheet.create({
     borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.line,
   },
   lineTitle: { flexShrink: 1, fontSize: 14.5, lineHeight: 20, fontFamily: Fonts.poppinsBold, color: C.ink },
+  dots: { flexDirection: 'row', gap: 4 },
+  dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: C.line },
+  dotActive: { backgroundColor: C.brandInk, width: 10 },
 });
