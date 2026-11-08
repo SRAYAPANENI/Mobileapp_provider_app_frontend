@@ -18,4 +18,5 @@ export const qk = {
     history: ['jobs', 'history'] as const,
     pendingRatings: ['jobs', 'pending-ratings'] as const,
   },
+  appConfig: ['app-config', 'provider'] as const,
 };

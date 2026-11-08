@@ -24,6 +24,7 @@ import { TokenStore, setSessionExpiredHandler } from '@/services/api';
 import { clearDashboardCache } from '@/services/homeCache';
 import { NetworkStatusBanner } from '@/components/network-status-banner';
 import AppLockGate from '@/components/app-lock-gate';
+import MaintenanceGate from '@/components/maintenance-gate';
 import SessionExpiredModal from '@/components/session-expired-modal';
 import { AlertHost } from '@/components/alert-host';
 import { ConnectionBanner } from '@/components/connection-banner';
@@ -123,18 +124,20 @@ export default function RootLayout() {
       <KeyboardProvider>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <AppProvider>
-            <AppLockGate>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="index" />
-                <Stack.Screen name="login" options={{ animation: 'fade' }} />
-                <Stack.Screen name="register" options={{ animation: 'slide_from_right' }} />
-                <Stack.Screen name="forgot-password" options={{ animation: 'slide_from_right' }} />
-                <Stack.Screen name="(tabs)" options={{ animation: 'slide_from_right' }} />
-                <Stack.Screen name="job-details" options={{ animation: 'slide_from_right' }} />
-                <Stack.Screen name="navigate-to-site" options={{ animation: 'slide_from_bottom' }} />
-              </Stack>
-              <NetworkStatusBanner />
-            </AppLockGate>
+            <MaintenanceGate>
+              <AppLockGate>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="index" />
+                  <Stack.Screen name="login" options={{ animation: 'fade' }} />
+                  <Stack.Screen name="register" options={{ animation: 'slide_from_right' }} />
+                  <Stack.Screen name="forgot-password" options={{ animation: 'slide_from_right' }} />
+                  <Stack.Screen name="(tabs)" options={{ animation: 'slide_from_right' }} />
+                  <Stack.Screen name="job-details" options={{ animation: 'slide_from_right' }} />
+                  <Stack.Screen name="navigate-to-site" options={{ animation: 'slide_from_bottom' }} />
+                </Stack>
+                <NetworkStatusBanner />
+              </AppLockGate>
+            </MaintenanceGate>
             {/* The app's dialog for showAlert() calls (components/alert-host.tsx). */}
             <ConnectionBanner />
             <AlertHost />

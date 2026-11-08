@@ -12,6 +12,7 @@ import {
   Send,
 } from 'lucide-react-native';
 import { describeChatEvent, parseChatEvent } from '@/services/chat-events';
+import { useAppConfig } from '@/services/queries/app-config';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, FlatList, Keyboard, Linking, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, Vibration, View } from 'react-native';
 import { Text, TextInput } from '@/components/scaled-text';
@@ -165,6 +166,10 @@ export default function ChatScreen() {
   // the notification body sets it to 'false' — checking only for 'true' left
   // that path showing the plain chat UI until the real call_offer arrived.
   const [callState, setCallState] = useState<CallState>(autoAnswer !== undefined ? 'connecting' : 'idle');
+  const { data: appConfig } = useAppConfig();
+  // Admin portal's "calling" module toggle — defaults to allowed while
+  // config hasn't loaded yet, same fail-open as every other module gate.
+  const callingEnabled = appConfig?.modules.calling !== false;
   // The WS onmessage handler is set up in an effect keyed only on [jobId], so
   // it only ever sees callState as it was on that first render — never the
   // current value. Without this ref, a duplicate/stray call_offer arriving
@@ -1042,9 +1047,11 @@ export default function ChatScreen() {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.menuButton} onPress={handleStartCall} disabled={callState !== 'idle' || !contactOpen}>
-          <Phone size={20} color={callState === 'idle' && contactOpen ? '#000' : '#9CA3AF'} />
-        </TouchableOpacity>
+        {callingEnabled && (
+          <TouchableOpacity style={styles.menuButton} onPress={handleStartCall} disabled={callState !== 'idle' || !contactOpen}>
+            <Phone size={20} color={callState === 'idle' && contactOpen ? '#000' : '#9CA3AF'} />
+          </TouchableOpacity>
+        )}
       </View>
 
       <CallOverlay

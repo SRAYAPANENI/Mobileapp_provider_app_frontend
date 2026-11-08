@@ -7,10 +7,12 @@ import { qk } from './keys';
 
 const asList = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 
-/** `pollMs`: refresh every so often while the screen is in view (Home). */
-export function useActiveJobs<T = any>(pollMs: number | false = false) {
+/** `pollMs`: refresh every so often while the screen is in view (Home).
+ * `enabled`: false skips the fetch entirely — for a caller that mounts
+ * before it's known whether there's a session to fetch for (maintenance-gate.tsx). */
+export function useActiveJobs<T = any>(pollMs: number | false = false, enabled = true) {
   return useQuery({
-    queryKey: qk.jobs.active, queryFn: async () => asList<T>(await SkoFyApi.jobs.getActive()), refetchInterval: pollMs,
+    queryKey: qk.jobs.active, queryFn: async () => asList<T>(await SkoFyApi.jobs.getActive()), refetchInterval: pollMs, enabled,
   });
 }
 

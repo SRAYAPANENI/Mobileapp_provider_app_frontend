@@ -10,6 +10,7 @@ import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { usePullRefresh } from '@/hooks/use-pull-refresh';
 import { ProviderRate } from '@/services/api';
 import { MySkill, useHosting, useMySkills, useProviderProfile } from '@/services/queries/provider';
+import { useAppConfig } from '@/services/queries/app-config';
 import { router } from 'expo-router';
 import { ChevronLeft, Lock, Search, X } from 'lucide-react-native';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
@@ -35,6 +36,7 @@ export default function RatesAndHostingScreen() {
   const topInset = useSafeAreaInsets().top;
   const appAlert = useAppAlert();
   const hosting = useHosting();
+  const { data: appConfig } = useAppConfig();
   const skills = useMySkills();
   const profile = useProviderProfile();
   const [query, setQuery] = useState('');
@@ -151,7 +153,9 @@ export default function RatesAndHostingScreen() {
         </View>
       )}
 
-      <HostingCard hosting={hosting.data!} verified={verified} notify={notify} />
+      {appConfig?.modules.hosting !== false && (
+        <HostingCard hosting={hosting.data!} verified={verified} notify={notify} />
+      )}
     </View>
   ) : null;
 

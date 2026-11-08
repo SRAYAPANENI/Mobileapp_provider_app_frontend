@@ -15,6 +15,8 @@ import { useIsFocused } from '@react-navigation/native';
 import { useRefreshOnFocus } from '@/hooks/use-refresh-on-focus';
 import { useActiveJobs, useInboundJobs } from '@/services/queries/jobs';
 import { useJobAlerts, useMySkills, useProviderProfile } from '@/services/queries/provider';
+import { useAppConfig } from '@/services/queries/app-config';
+import TermsUpdatedBanner from '@/components/terms-updated-banner';
 import {
   Clock,
   MapPin,
@@ -377,6 +379,7 @@ export default function DashboardScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
 
+  const { data: appConfig } = useAppConfig();
   const [isAvailable, setIsAvailable] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showNotifNudge, setShowNotifNudge] = useState(false);
@@ -1801,6 +1804,8 @@ const filteredJobs = jobs.filter((job) => {
           </View>
         </View>
 
+        <TermsUpdatedBanner />
+
         {showNotifNudge && (
           <View style={styles.notifNudge}>
             <View style={styles.notifNudgeIconWrap}>
@@ -1829,7 +1834,9 @@ const filteredJobs = jobs.filter((job) => {
             chip, not bare text, so it still reads as a distinct control and
             not a stray label. Not a skill test — gated on identity
             verification (DL/govt ID, already checked at registration), same
-            as the toggle in Profile. */}
+            as the toggle in Profile. Hidden outright (not just disabled) when
+            the admin portal turns the whole module off platform-wide. */}
+        {appConfig?.modules.pickup_delivery !== false && (
         <View style={[styles.pickupDropoffRow, !isAvailable && { opacity: 0.5 }]}>
           <View style={styles.pickupDropoffIconWrap}>
             <Package size={15} color="#0369A1" />
@@ -1855,6 +1862,7 @@ const filteredJobs = jobs.filter((job) => {
             />
           )}
         </View>
+        )}
 
         <View style={styles.locationHeader}>
           <View style={styles.locationBadgeWrapper}>
