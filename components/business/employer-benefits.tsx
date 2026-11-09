@@ -5,7 +5,7 @@ import * as SecureStore from 'expo-secure-store';
 import { BadgeCheck, CalendarClock, ChevronRight, DoorOpen, GraduationCap, Star, Wrench, X } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import Animated, { BounceIn, FadeInDown, FadeOut, FadeOutUp } from 'react-native-reanimated';
 import { C, Section, u } from './ui';
 
 // Why work with an employer (docs/EMPLOYER_PARTNERS_DESIGN.md) — told to
@@ -28,6 +28,20 @@ export const BENEFITS: { icon: (c: string) => React.ReactNode; title: string; de
     detail: 'Every job builds your own rating, and it stays yours if you leave.' },
   { icon: (c) => <DoorOpen size={18} color={c} />, title: 'Leave whenever you want',
     detail: 'Give 7 days’ notice. Nobody can hold you.' },
+];
+
+// Short, complete one-liners for the compact home-screen strip below —
+// the full sentences above are for the Business screen's roomier
+// explainer. Forcing those into a single clamped line was exactly what
+// was cutting them off mid-sentence here; these are written short enough
+// to never need truncating, one punchy idea per rotation.
+const LINE_HOOKS: { icon: (c: string) => React.ReactNode; text: string }[] = [
+  { icon: (c) => <Wrench size={18} color={c} />, text: 'Free tools & gear from day one' },
+  { icon: (c) => <CalendarClock size={18} color={c} />, text: 'Steady jobs, in your own hours' },
+  { icon: (c) => <GraduationCap size={18} color={c} />, text: 'Learn & earn — fully insured' },
+  { icon: (c) => <BadgeCheck size={18} color={c} />, text: 'Keep your own clients outside' },
+  { icon: (c) => <Star size={18} color={c} />, text: 'Your rating stays yours, always' },
+  { icon: (c) => <DoorOpen size={18} color={c} />, text: "Leave anytime, 7 days' notice" },
 ];
 
 /** The full explainer, on the Business screen. */
@@ -75,8 +89,8 @@ const RESHOW_AFTER_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const ROTATE_MS = 4000;
 
 /** A rotating, dismissible banner on the home screen for someone working
- * alone — cycles through the same benefits as the full explainer above (one
- * list, two presentations) instead of repeating a single fixed line. */
+ * alone — cycles through short, complete one-liners (LINE_HOOKS) instead of
+ * truncating the full explainer's longer sentences into one clamped line. */
 export function EmployerBenefitsLine() {
   const [shown, setShown] = useState(false);
   const [index, setIndex] = useState(0);
@@ -97,7 +111,7 @@ export function EmployerBenefitsLine() {
   useEffect(() => {
     if (!shown) return;
     const id = setInterval(() => {
-      indexRef.current = (indexRef.current + 1) % BENEFITS.length;
+      indexRef.current = (indexRef.current + 1) % LINE_HOOKS.length;
       setIndex(indexRef.current);
     }, ROTATE_MS);
     return () => clearInterval(id);
@@ -108,24 +122,37 @@ export function EmployerBenefitsLine() {
     setShown(false);
     SecureStore.setItemAsync(DISMISS_KEY, String(Date.now())).catch(() => {});
   };
-  const b = BENEFITS[index];
+  const hook = LINE_HOOKS[index];
   return (
-    <TouchableOpacity style={s.line} activeOpacity={0.8} onPress={() => router.push('/business' as any)}>
-      <Animated.View key={index} entering={FadeIn.duration(250)} exiting={FadeOut.duration(250)} style={s.icon}>
-        {b.icon(C.brandInk)}
+    <TouchableOpacity style={s.line} activeOpacity={0.85} onPress={() => router.push('/business' as any)}>
+      <Animated.View key={index} entering={BounceIn.duration(450)} exiting={FadeOut.duration(150)} style={s.lineIcon}>
+        {hook.icon(C.brandInk)}
       </Animated.View>
-      <Animated.View key={`text-${index}`} entering={FadeIn.duration(250)} exiting={FadeOut.duration(250)} style={{ flex: 1, gap: 1 }}>
-        <ThemedText style={s.lineTitle} numberOfLines={1}>{b.title}</ThemedText>
-        <ThemedText style={u.muted} numberOfLines={1}>{b.detail}</ThemedText>
+      <Animated.View
+        key={`text-${index}`}
+        entering={FadeInDown.duration(280)}
+        exiting={FadeOutUp.duration(200)}
+        style={{ flex: 1 }}
+      >
+        {/* Wraps rather than clips — on a narrow phone, with the dots and
+            the Join pill both also competing for this row's width, even
+            these short lines can run past one line's worth of space.
+            Wrapping is what actually guarantees nothing gets cut off,
+            regardless of screen width or the reader's font-size setting;
+            picking a tighter character budget can't guarantee that. */}
+        <ThemedText style={s.lineText} numberOfLines={2}>{hook.text}</ThemedText>
       </Animated.View>
       <View style={s.dots}>
-        {BENEFITS.map((_, i) => (
+        {LINE_HOOKS.map((_, i) => (
           <View key={i} style={[s.dot, i === index && s.dotActive]} />
         ))}
       </View>
-      <ChevronRight size={18} color={C.faint} />
+      <View style={s.cta}>
+        <ThemedText style={s.ctaText}>Join</ThemedText>
+        <ChevronRight size={13} color={C.brandInk} />
+      </View>
       <TouchableOpacity onPress={dismiss} hitSlop={10} accessibilityLabel="Hide">
-        <X size={16} color={C.faint} />
+        <X size={16} color={C.brandInk} style={{ opacity: 0.5 }} />
       </TouchableOpacity>
     </TouchableOpacity>
   );
@@ -140,11 +167,17 @@ const s = StyleSheet.create({
   how: { gap: 6, padding: 12, borderRadius: 12, backgroundColor: C.bg },
   howTitle: { fontSize: 13.5, lineHeight: 18, fontFamily: Fonts.poppinsBold, color: C.ink },
   line: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12, paddingVertical: 10, paddingHorizontal: 12,
-    borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.line,
+    flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12, paddingVertical: 11, paddingHorizontal: 12,
+    borderRadius: 18, backgroundColor: C.brandSoft, borderWidth: 1.5, borderColor: '#FFE08A',
   },
-  lineTitle: { flexShrink: 1, fontSize: 14.5, lineHeight: 20, fontFamily: Fonts.poppinsBold, color: C.ink },
+  lineIcon: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: C.brand },
+  lineText: { fontSize: 14, lineHeight: 19, fontFamily: Fonts.poppinsBold, color: C.ink },
   dots: { flexDirection: 'row', gap: 4 },
-  dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: C.line },
+  dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#EBD28A' },
   dotActive: { backgroundColor: C.brandInk, width: 10 },
+  cta: {
+    flexDirection: 'row', alignItems: 'center', gap: 1, backgroundColor: C.brand,
+    borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4,
+  },
+  ctaText: { fontSize: 11.5, lineHeight: 14, fontFamily: Fonts.poppinsBold, color: C.brandInk },
 });
