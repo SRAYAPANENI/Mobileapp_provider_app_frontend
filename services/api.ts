@@ -719,8 +719,9 @@ export const SkoFyApi = {
   // attaches a bearer token whenever one exists.
   appConfig: {
     get: async (): Promise<AppConfig> => request('/app-config?app=provider'),
-    markTermsSeen: async (): Promise<{ seen_version: number }> =>
-      request('/app-config/provider/terms-seen', { method: 'POST' }),
+    /** Explicit consent — the checkbox + Accept button on /terms. */
+    acceptTerms: async (): Promise<{ accepted_version: number }> =>
+      request('/app-config/provider/terms-accept', { method: 'POST' }),
   },
 
   // ── Auth ──────────────────────────────────────────────────────────────────
