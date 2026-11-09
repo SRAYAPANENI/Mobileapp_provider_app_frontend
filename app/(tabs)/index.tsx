@@ -17,6 +17,7 @@ import { useActiveJobs, useInboundJobs } from '@/services/queries/jobs';
 import { useJobAlerts, useMySkills, useProviderProfile } from '@/services/queries/provider';
 import { useAppConfig } from '@/services/queries/app-config';
 import TermsUpdatedBanner from '@/components/terms-updated-banner';
+import ScheduledMaintenanceBanner from '@/components/scheduled-maintenance-banner';
 import {
   Clock,
   MapPin,
@@ -1804,6 +1805,7 @@ const filteredJobs = jobs.filter((job) => {
           </View>
         </View>
 
+        <ScheduledMaintenanceBanner />
         <TermsUpdatedBanner />
 
         {showNotifNudge && (
