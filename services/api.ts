@@ -541,6 +541,9 @@ export interface Business {
   logo_url?: string | null;
   review_note: string | null; connect_onboarding_status: string;
   documents: BusinessDocument[]; ready_for_on_site_work: boolean; missing: string[];
+  /** Owner-set badge on the provider-side "Businesses near you" list
+   *  (docs/BUSINESS_DISCOVERY_DESIGN.md) — never a gate on who can ask. */
+  open_to_join_requests: boolean;
 }
 /** Work hours with an employer (docs/EMPLOYER_PARTNERS_DESIGN.md): the same
  * hours on each day, in the member's time zone. Inside them, jobs come through
@@ -590,6 +593,9 @@ export interface TeamMember {
   /** Asked to leave: the day they go. */
   leave_at?: string | null;
   background_check_status: 'NOT_STARTED' | 'PENDING' | 'CLEAR' | 'CONSIDER' | 'FAILED' | null;
+  /** Who started this row — you inviting them, or them asking to join
+   *  (docs/BUSINESS_DISCOVERY_DESIGN.md). Only changes how it reads while INVITED. */
+  requested_by: 'BUSINESS' | 'MEMBER';
 }
 export interface CheckCharge {
   id: string; name: string; amount: number; free: boolean; status: 'PENDING' | 'DUE' | 'DEDUCTED' | 'WAIVED'; created_at: string;
@@ -605,6 +611,18 @@ export interface BusinessInvite {
   offer: HoursOffer | null;
   /** Whose turn: theirs, or the business's after they sent other hours back. */
   waiting_on: 'YOU' | 'BUSINESS';
+  /** MEMBER: this is their own request to join, not an invite from the
+   *  business — only changes the card's wording (docs/BUSINESS_DISCOVERY_DESIGN.md). */
+  requested_by: 'BUSINESS' | 'MEMBER';
+}
+/** A business found on "Businesses near you" (docs/BUSINESS_DISCOVERY_DESIGN.md §1). */
+export interface NearbyBusiness {
+  id: string; name: string; logo_url: string | null; open_to_join_requests: boolean; created_at: string;
+  distance_km: number; team_size: number;
+  /** Already tied to them — an invite, a request, or membership. Null: free to ask. */
+  my_status: 'INVITED' | 'ACTIVE' | null;
+  my_requested_by: 'BUSINESS' | 'MEMBER' | null;
+  my_member_id: string | null;
 }
 /** The business's jobs (docs/BUSINESS_PROVIDERS_DESIGN.md §3). */
 export interface TeamOpenJob {
@@ -1671,6 +1689,15 @@ export const SkoFyApi = {
     invites: async (): Promise<BusinessInvite[]> => request('/businesses/invites') as any,
     /** The states a business can be registered in (the list a save is checked against). */
     usStates: async (): Promise<{ code: string; name: string }[]> => request('/businesses/us-states') as any,
+    /** Owner: whether the business shows as "open to join requests" nearby. */
+    setDiscoverable: async (open: boolean): Promise<MyBusiness> =>
+      request('/businesses/me/discoverable', { method: 'PUT', body: JSON.stringify({ open }) }) as any,
+    /** Approved businesses nearby — every one, not only those hiring. */
+    nearby: async (radiusKm?: number): Promise<NearbyBusiness[]> =>
+      request(`/businesses/nearby${radiusKm ? `?radius_km=${radiusKm}` : ''}`) as any,
+    /** Asks to join one found nearby — the owner answers it like an invite. */
+    requestToJoin: async (businessId: string, hours?: WorkHours): Promise<{ message: string }> =>
+      request(`/businesses/${businessId}/requests`, { method: 'POST', body: JSON.stringify({ hours }) }) as any,
     /** Accept the hours offered, or — with other `hours` — send the invite back with those. */
     answerInvite: async (memberId: string, accept: boolean, acknowledgedNotice: boolean, authorizedCheck = false,
       hours?: WorkHours): Promise<{ message: string }> =>

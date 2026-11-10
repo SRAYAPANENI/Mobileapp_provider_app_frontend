@@ -43,6 +43,7 @@ function InviteCard({ invite, onAnswer }: { invite: BusinessInvite; onAnswer: Pr
   const [busy, setBusy] = useState<'accept' | 'send' | 'decline' | null>(null);
   const waiting = invite.waiting_on === 'BUSINESS';
   const changed = editing && (!offered || !sameHours(hours, offered));
+  const mine = invite.requested_by === 'MEMBER';
 
   const answer = async (kind: 'accept' | 'send' | 'decline') => {
     setBusy(kind);
@@ -54,7 +55,7 @@ function InviteCard({ invite, onAnswer }: { invite: BusinessInvite; onAnswer: Pr
   };
 
   return (
-    <Section title="Team invite">
+    <Section title={mine ? 'Your request to join' : 'Team invite'}>
       <View style={s.head}>
         <Monogram name={invite.business_name} size={48} />
         <View style={{ flex: 1, gap: 4 }}>

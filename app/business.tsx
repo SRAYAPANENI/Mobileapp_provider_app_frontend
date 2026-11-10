@@ -7,7 +7,7 @@ import { EmployerBenefits } from '@/components/business/employer-benefits';
 import { MyHours } from '@/components/business/my-hours';
 import { SetupChecklist } from '@/components/business/setup-checklist';
 import { TeamSection } from '@/components/business/team-section';
-import { Badge, Button, C, Monogram, Progress, Row, Section, Tone, u } from '@/components/business/ui';
+import { Badge, Button, C, Monogram, Progress, Row, Section, Toggle, Tone, u } from '@/components/business/ui';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
@@ -19,7 +19,7 @@ import {
 } from '@/services/api';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { AlertTriangle, BadgeCheck, Briefcase, Building2, ChevronLeft, FileText, Landmark, LogOut, Map as MapIcon, Pencil, Plus, ShieldCheck, Trash2, Users, Camera } from 'lucide-react-native';
+import { AlertTriangle, BadgeCheck, Briefcase, Building2, ChevronLeft, FileText, Landmark, LogOut, Map as MapIcon, Pencil, Plus, Radar, ShieldCheck, Trash2, Users, Camera } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Share, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Image } from 'expo-image';
@@ -206,12 +206,15 @@ export default function BusinessScreen() {
   };
 
   const teamAction = (key: string, action: () => Promise<Team>) => run(key, async () => { setTeam(await action()); });
-  const removeMember = (m: TeamMember) => appAlert.show('warning', m.status === 'INVITED' ? 'Cancel this invite?' : 'Remove from the team?',
-    m.name ?? m.phone ?? '', [
-      { text: 'Keep', variant: 'secondary' },
-      { text: m.status === 'INVITED' ? 'Cancel invite' : 'Remove', variant: 'destructive',
-        onPress: () => teamAction(m.id, () => SkoFyApi.business.removeMember(m.id)) },
-    ]);
+  const removeMember = (m: TeamMember) => {
+    const requested = m.status === 'INVITED' && m.requested_by === 'MEMBER';
+    appAlert.show('warning', m.status !== 'INVITED' ? 'Remove from the team?' : requested ? 'Decline this request?' : 'Cancel this invite?',
+      m.name ?? m.phone ?? '', [
+        { text: 'Keep', variant: 'secondary' },
+        { text: m.status !== 'INVITED' ? 'Remove' : requested ? 'Decline' : 'Cancel invite', variant: 'destructive',
+          onPress: () => teamAction(m.id, () => SkoFyApi.business.removeMember(m.id)) },
+      ]);
+  };
   // Leaving is on notice: they ask, and go a week later — sooner if the
   // owner releases them. The owner can't keep them.
   const leaveTeam = () => appAlert.show('warning', 'Ask to leave?',
@@ -316,6 +319,21 @@ export default function BusinessScreen() {
                 )}
               </View>
 
+              {/* Providers browsing "Businesses near you" see every approved
+                  business — this just badges yours as actively looking
+                  (docs/BUSINESS_DISCOVERY_DESIGN.md). It never stops anyone
+                  from asking either way. */}
+              {owner && approved && (
+                <Section flush>
+                  <Row last icon={<Radar size={18} color={C.ink} />} title="Open to join requests"
+                    detail={business.open_to_join_requests
+                      ? 'Nearby providers see you’re actively looking'
+                      : 'Nearby providers can still ask — this just isn’t flagged'}
+                    right={<Toggle value={business.open_to_join_requests} disabled={busy === 'discoverable'}
+                      onChange={(v) => run('discoverable', () => SkoFyApi.business.setDiscoverable(v))} />} />
+                </Section>
+              )}
+
               {editing && (
                 <Section title="Edit details">
                   {approved && <ThemedText style={[u.muted, { color: C.warn }]}>Changing the legal name, type or state sends it back for review.</ThemedText>}
@@ -402,11 +420,13 @@ export default function BusinessScreen() {
                   onOfferHours={(m, h) => teamAction(`hours-${m.id}`, () => SkoFyApi.business.offerMemberHours(m.id, h))}
                   onAnswerHours={(m, accept) => {
                     if (accept) { teamAction(`hours-${m.id}`, () => SkoFyApi.business.answerMemberHours(m.id, true)); return; }
-                    appAlert.show('warning', m.status === 'INVITED' ? 'Withdraw this invite?' : 'Decline their hours?',
-                      m.status === 'INVITED' ? 'Their invite comes off your team list. You can invite them again.'
-                        : 'Their hours stay as they are now.', [
+                    const requested = m.status === 'INVITED' && m.requested_by === 'MEMBER';
+                    appAlert.show('warning', m.status !== 'INVITED' ? 'Decline their hours?' : requested ? 'Decline this request?' : 'Withdraw this invite?',
+                      m.status !== 'INVITED' ? 'Their hours stay as they are now.'
+                        : requested ? 'Their request comes off your team list. They can ask again.'
+                        : 'Their invite comes off your team list. You can invite them again.', [
                         { text: 'Keep', variant: 'secondary' },
-                        { text: m.status === 'INVITED' ? 'Withdraw invite' : 'Decline', variant: 'destructive',
+                        { text: m.status !== 'INVITED' ? 'Decline' : requested ? 'Decline' : 'Withdraw invite', variant: 'destructive',
                           onPress: () => { teamAction(`hours-${m.id}`, () => SkoFyApi.business.answerMemberHours(m.id, false)); } },
                       ]);
                   }}

@@ -2,11 +2,11 @@ import { ThemedText } from '@/components/themed-text';
 import { Fonts } from '@/constants/theme';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { BadgeCheck, CalendarClock, ChevronRight, DoorOpen, GraduationCap, Star, Wrench, X } from 'lucide-react-native';
+import { BadgeCheck, CalendarClock, ChevronRight, DoorOpen, GraduationCap, Radar, Star, Wrench, X } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import Animated, { BounceIn, FadeInDown, FadeOut, FadeOutUp } from 'react-native-reanimated';
-import { C, Section, u } from './ui';
+import { Button, C, Section, u } from './ui';
 
 // Why work with an employer (docs/EMPLOYER_PARTNERS_DESIGN.md) — told to
 // providers who work alone today. An employer reaches and prepares people
@@ -36,6 +36,7 @@ export const BENEFITS: { icon: (c: string) => React.ReactNode; title: string; de
 // was cutting them off mid-sentence here; these are written short enough
 // to never need truncating, one punchy idea per rotation.
 const LINE_HOOKS: { icon: (c: string) => React.ReactNode; text: string }[] = [
+  { icon: (c) => <Radar size={18} color={c} />, text: 'Find a business hiring near you' },
   { icon: (c) => <Wrench size={18} color={c} />, text: 'Free tools & gear from day one' },
   { icon: (c) => <CalendarClock size={18} color={c} />, text: 'Steady jobs, in your own hours' },
   { icon: (c) => <GraduationCap size={18} color={c} />, text: 'Learn & earn — fully insured' },
@@ -69,12 +70,13 @@ export function EmployerBenefits() {
       <View style={s.how}>
         <ThemedText style={s.howTitle}>How to join</ThemedText>
         <ThemedText style={u.muted}>
-          An employer invites you by your phone number. The invite shows here and on your home screen, with the hours
-          they offer — accept them or suggest your own.
+          An employer can invite you by your phone number — or you can find one yourself. Either way you see the
+          hours offered first, and can accept them or suggest your own.
         </ThemedText>
         <ThemedText style={u.muted}>
           Agree your pay and anything they lend you before you join: that’s between you and them, not Dodorez.
         </ThemedText>
+        <Button kind="secondary" label="Find businesses near you" onPress={() => router.push('/business-nearby' as any)} />
       </View>
     </Section>
   );
@@ -124,7 +126,7 @@ export function EmployerBenefitsLine() {
   };
   const hook = LINE_HOOKS[index];
   return (
-    <TouchableOpacity style={s.line} activeOpacity={0.85} onPress={() => router.push('/business' as any)}>
+    <TouchableOpacity style={s.line} activeOpacity={0.85} onPress={() => router.push('/business-nearby' as any)}>
       <Animated.View key={index} entering={BounceIn.duration(450)} exiting={FadeOut.duration(150)} style={s.lineIcon}>
         {hook.icon(C.brandInk)}
       </Animated.View>

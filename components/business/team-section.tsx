@@ -66,9 +66,15 @@ export function TeamSection({ team, canManage, onInvite, onOfferHours, onAnswerH
                 title={
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <ThemedText style={u.label} numberOfLines={1}>{m.name ?? m.phone}</ThemedText>
-                    <Badge label={m.status === 'INVITED' ? 'Invited' : ROLE_LABEL[m.role]} tone={m.role === 'OWNER' ? 'brand' : 'neutral'} />
+                    <Badge
+                      label={m.status === 'INVITED' ? (m.requested_by === 'MEMBER' ? 'Wants to join' : 'Invited') : ROLE_LABEL[m.role]}
+                      tone={m.role === 'OWNER' ? 'brand' : m.status === 'INVITED' && m.requested_by === 'MEMBER' ? 'info' : 'neutral'} />
                     {m.leave_at && <Badge label={`Leaving ${shortDate(m.leave_at)}`} tone="warn" />}
-                    {theirOffer && <Badge label={m.status === 'INVITED' ? 'Sent other hours' : 'Asks for new hours'} tone="warn" />}
+                    {theirOffer && (
+                      <Badge label={m.status === 'INVITED'
+                        ? (m.requested_by === 'MEMBER' ? 'Hours they asked for' : 'Sent other hours')
+                        : 'Asks for new hours'} tone="warn" />
+                    )}
                     {offer?.from === 'BUSINESS' && m.status === 'ACTIVE' && <Badge label="Hours offered" tone="info" />}
                   </View>
                 }
@@ -101,7 +107,8 @@ export function TeamSection({ team, canManage, onInvite, onOfferHours, onAnswerH
                   <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                     <Button small label={m.status === 'INVITED' ? 'Accept and add them' : 'Accept'} onPress={() => onAnswerHours(m, true)} />
                     <Button small kind="secondary" label="Offer other hours" onPress={() => setEditingHours(m.id)} />
-                    <Button small kind="secondary" label={m.status === 'INVITED' ? 'Withdraw invite' : 'Decline'}
+                    <Button small kind="secondary"
+                      label={m.status === 'INVITED' ? (m.requested_by === 'MEMBER' ? 'Decline' : 'Withdraw invite') : 'Decline'}
                       onPress={() => onAnswerHours(m, false)} />
                   </View>
                 </View>
@@ -126,7 +133,8 @@ export function TeamSection({ team, canManage, onInvite, onOfferHours, onAnswerH
                   {m.status === 'INVITED' && !m.provider_id && m.phone && onResend && (
                     <Button small kind="secondary" label="Send invite" onPress={() => { setOpen(null); onResend(m); }} />
                   )}
-                  <Button small kind="danger" label={m.status === 'INVITED' ? 'Cancel invite' : 'Remove'}
+                  <Button small kind="danger"
+                    label={m.status !== 'INVITED' ? 'Remove' : m.requested_by === 'MEMBER' ? 'Decline' : 'Cancel invite'}
                     onPress={() => { setOpen(null); onRemove(m); }} />
                 </View>
               )}
