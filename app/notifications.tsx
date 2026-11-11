@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   DollarSign,
+  FileText,
   MessageSquare,
   Phone,
   Star,
@@ -67,6 +68,8 @@ function getTypeStyles(type: string) {
     case 'invoice_countered':
     case 'job_cost_paid':
       return { icon: DollarSign, color: '#10B981', bg: '#ECFDF5' };
+    case 'terms_updated':
+      return { icon: FileText, color: '#111827', bg: '#F3F4F6' };
     default:
       return { icon: Bell, color: '#FFCE48', bg: '#FFFBEB' };
   }
@@ -135,6 +138,10 @@ export default function NotificationsScreen() {
     }
     if (item.notif_type === 'business_update') {
       router.push('/business' as any);
+      return;
+    }
+    if (item.notif_type === 'terms_updated') {
+      router.push('/terms' as any);
       return;
     }
     // A skill-test reminder: the skills to test, each with its test.

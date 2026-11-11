@@ -699,6 +699,10 @@ const ROUTED_UPDATES: Record<string, string> = {
   // A skill they listed and never tested: straight into its test
   // (skofy-backend app/domain/skill_nudges.py; extraParams below).
   skill_test: '/(tabs)/profile',
+  // Admin published new Terms & Conditions (AppConfigService.admin_update) —
+  // straight to the Terms screen, which always reads the current server
+  // config live, never a stale cached version.
+  terms_updated: '/terms',
 };
 
 /** What a routed push carries that its screen needs, beyond the job — keyed

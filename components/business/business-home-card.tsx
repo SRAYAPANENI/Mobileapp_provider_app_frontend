@@ -2,7 +2,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Fonts } from '@/constants/theme';
 import { MyBusinessState } from '@/hooks/use-my-business';
 import { router } from 'expo-router';
-import { ChevronRight } from 'lucide-react-native';
+import { Building2, ChevronRight } from 'lucide-react-native';
 import React from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { EmployerBenefitsLine } from './employer-benefits';
@@ -19,7 +19,14 @@ export function BusinessHomeCard({ state }: { state: MyBusinessState }) {
   const business = data.business;
 
   if (!business) {
-    if (invites.length === 0) return <EmployerBenefitsLine />;
+    if (invites.length === 0) {
+      return (
+        <>
+          <EmployerBenefitsLine />
+          <StartBusinessLine />
+        </>
+      );
+    }
     return (
       <Line name={invites[0].business_name} title={invites[0].business_name} badge={{ label: 'Invite', tone: 'brand' }}
         detail={invites.length > 1 ? `Invited you to their team · ${invites.length - 1} more` : 'Invited you to their team — tap to answer'} />
@@ -62,10 +69,30 @@ function Line({ name, title, badge, detail }: { name: string; title: string; bad
   );
 }
 
+/** Working alone, with no invite waiting either: a small, low-key way to
+ * start a company account from the dashboard itself — today's only other
+ * way in is Profile → Business account (docs/BUSINESS_PROVIDERS_DESIGN.md).
+ * A pill, not a card, so it doesn't compete with the employer-benefits
+ * banner above it. */
+function StartBusinessLine() {
+  return (
+    <TouchableOpacity style={s.pill} activeOpacity={0.8} onPress={() => router.push('/business' as any)}>
+      <Building2 size={14} color={C.ink} />
+      <ThemedText style={s.pillText} numberOfLines={1}>Have a company? Start a business account</ThemedText>
+      <ChevronRight size={14} color={C.faint} />
+    </TouchableOpacity>
+  );
+}
+
 const s = StyleSheet.create({
   line: {
     flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12, paddingVertical: 10, paddingHorizontal: 12,
     borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.line,
   },
   title: { flexShrink: 1, fontSize: 14.5, lineHeight: 20, fontFamily: Fonts.poppinsBold, color: C.ink },
+  pill: {
+    alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12,
+    paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999, backgroundColor: C.card, borderWidth: 1, borderColor: C.line,
+  },
+  pillText: { fontSize: 12, lineHeight: 16, fontFamily: Fonts.poppinsBold, color: C.ink },
 });
