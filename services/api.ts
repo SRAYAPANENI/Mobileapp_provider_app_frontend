@@ -107,7 +107,7 @@ function getInstallMarkerFile(): File | null {
   return installMarkerFile;
 }
 
-export async function clearStaleSessionAfterReinstall(): Promise<void> {
+async function clearStaleSessionAfterReinstall(): Promise<void> {
   try {
     // A registration left unfinished last time (see TokenStore.markRegistering).
     if (await SecureStore.getItemAsync(REGISTERING_KEY)) await TokenStore.clear();
@@ -120,6 +120,17 @@ export async function clearStaleSessionAfterReinstall(): Promise<void> {
     // and gets caught by the normal "Signed Out" rejection instead.
   }
 }
+
+// Kicked off the instant this module is first evaluated — well before any
+// component mounts, let alone runs a useEffect — so every independent piece
+// of start-up code (the app-config socket, FCM registration, the splash
+// screen's own routing decision) can `await` the SAME promise instead of
+// each calling the function above on its own timing. They used to:
+// whichever one happened to read the stored token first raced this cleanup,
+// and on a reinstalled app with a dead pre-uninstall token still sitting in
+// Keychain, that race was sometimes lost, surfacing an unprompted
+// "Signed Out" right as someone opened Register.
+export const staleSessionCleared: Promise<void> = clearStaleSessionAfterReinstall();
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 export interface AuthUser {

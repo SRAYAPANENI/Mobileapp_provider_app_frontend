@@ -4,7 +4,7 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { TokenStore, clearStaleSessionAfterReinstall } from '@/services/api';
+import { TokenStore, staleSessionCleared } from '@/services/api';
 import { handleInitialCallAction, handleInitialNotification } from '@/services/callManager';
 import { prefetchDashboardEssentials } from '@/services/homeCache';
 import { Dimensions, StyleSheet, View } from 'react-native';
@@ -50,7 +50,7 @@ export default function SplashScreen() {
   useFocusEffect(useCallback(() => {
     focusedRef.current = true;
     if (leftRef.current || handledRef.current) {
-      clearStaleSessionAfterReinstall().then(() => TokenStore.getAccessToken()).then(token => {
+      staleSessionCleared.then(() => TokenStore.getAccessToken()).then(token => {
         router.replace((token ? '/(tabs)' : '/login') as any);
       });
     }
@@ -59,19 +59,7 @@ export default function SplashScreen() {
       leftRef.current = true;
     };
   }, []));
-  // Every token read below must wait on this — otherwise a reinstall that
-  // lands fast enough could read a stale pre-uninstall token for this one
-  // launch before clearStaleSessionAfterReinstall() gets to it. Set inside
-  // the effect below (not as this ref's initial value) — a function call
-  // passed directly as useRef's argument re-runs on every render, not just
-  // the first, since React has no lazy-initializer form for useRef the way
-  // useState(() => ...) does; only the assignment itself is skipped after
-  // mount, not the call that produces it.
-  const staleSessionClearedRef = React.useRef<Promise<void> | null>(null);
-
   useEffect(() => {
-    staleSessionClearedRef.current = clearStaleSessionAfterReinstall();
-
     // The app was cold-started by tapping the incoming-call notification, not
     // just reopened normally — that navigation already happened, so the splash's
     // own redirect below must not run too, or it'll stomp the call screen a few
@@ -89,7 +77,7 @@ export default function SplashScreen() {
     // profile prefetch, not the jobs list itself: loadJobs() does real
     // feasibility-scoring work against the provider's other bookings that
     // doesn't belong duplicated here.
-    Promise.resolve(staleSessionClearedRef.current).then(() => TokenStore.getAccessToken()).then(token => {
+    staleSessionCleared.then(() => TokenStore.getAccessToken()).then(token => {
       if (token) prefetchDashboardEssentials();
     });
 
@@ -112,7 +100,7 @@ export default function SplashScreen() {
     // even with a perfectly valid stored session — meaning killing the app and
     // reopening it (or tapping a notification, before the fix above) always
     // demanded a fresh login. Now it actually checks for one first.
-    Promise.resolve(staleSessionClearedRef.current).then(() => TokenStore.getAccessToken()).then(token => {
+    staleSessionCleared.then(() => TokenStore.getAccessToken()).then(token => {
       router.replace((token ? '/(tabs)' : '/login') as any);
     });
   };
