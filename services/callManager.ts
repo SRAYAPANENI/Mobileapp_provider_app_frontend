@@ -11,6 +11,7 @@ import { RTCAudioSession } from '@livekit/react-native-webrtc';
 import { SkoFyApi, TokenStore, getFreshAccessToken } from './api';
 import { isScreenInFront, openScreen } from './openScreens';
 import { AppLock } from './appLock';
+import { stopAppConfigSocket } from './app-config-socket';
 
 // Android-only native module (see CallStyleModule.kt/CallActionModule.kt) that
 // shows the incoming-call notification using NotificationCompat.CallStyle —
@@ -1552,6 +1553,7 @@ export async function clearPushForSignOut(): Promise<void> {
   await notifee.cancelAllNotifications().catch(() => {});
   await notifee.stopForegroundService().catch(() => {});
   await messaging().deleteToken().catch((err) => console.warn('FCM deleteToken failed', err));
+  stopAppConfigSocket();
 }
 
 /** Logout: the server drops this phone's tokens and the login, then the
