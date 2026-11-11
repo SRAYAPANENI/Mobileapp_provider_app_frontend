@@ -1,6 +1,7 @@
 import { BusinessBoard, BusinessInvite, MyBusiness, SkoFyApi, TeamOpenJob } from '@/services/api';
+import { onAppConfigChanged } from '@/services/app-config-socket';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export interface MyBusinessState {
   data: MyBusiness | null;
@@ -32,6 +33,11 @@ export function useMyBusiness(): MyBusinessState {
     }).catch(() => {});
   }, []);
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+  // The admin's "Business providers" module toggle (BusinessService.mine's
+  // module_on) only shows up here on the next screen focus otherwise — this
+  // hook predates the app-config WS push and never had a poll of its own,
+  // unlike useAppConfig. Same live reach now, not a second mechanism.
+  useEffect(() => onAppConfigChanged(refresh), [refresh]);
 
   return {
     data, invites, board,
