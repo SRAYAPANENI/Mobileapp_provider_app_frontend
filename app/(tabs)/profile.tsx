@@ -191,7 +191,6 @@ export default function ProfileScreen() {
     SkoFyApi.business.mine().then((r) => setBusinessEnabled(r.enabled)).catch(() => {});
   }, [isSettingsOpen]);
   const [isPasswordOpen, setIsPasswordOpen] = useState(false);
-  const [isTermsOpen, setIsTermsOpen] = useState(false);
   const [checkingFace, setCheckingFace] = useState(false);
   const [isJobHistoryOpen, setIsJobHistoryOpen] = useState(false);
   const [pushEnabled, setPushEnabled] = usePushPreference(message => showAlert('error', 'Not Saved', message));
@@ -634,12 +633,11 @@ export default function ProfileScreen() {
         if (isAssessmentOpen) { closeTest(); return true; }
         if (isSettingsOpen) { setIsSettingsOpen(false); return true; }
         if (isPasswordOpen) { setIsPasswordOpen(false); return true; }
-        if (isTermsOpen) { setIsTermsOpen(false); return true; }
         return false; // let system handle (exit)
       };
       const subscription = BackHandler.addEventListener('hardwareBackPress', onBack);
       return () => subscription.remove();
-    }, [showTagModal, isViewAllOpen, isViewerOpen, isJobHistoryOpen, isAssessmentOpen, isSettingsOpen, isPasswordOpen, isTermsOpen])
+    }, [showTagModal, isViewAllOpen, isViewerOpen, isJobHistoryOpen, isAssessmentOpen, isSettingsOpen, isPasswordOpen])
   );
 
   const getEligibilityMessage = eligibilityMessage;
@@ -664,7 +662,6 @@ export default function ProfileScreen() {
     profileScrollRef.current?.scrollTo({ y: 0, animated: false });
     setIsSettingsOpen(false);
     setIsPasswordOpen(false);
-    setIsTermsOpen(false);
     setIsJobHistoryOpen(false);
     setIsEditProfileOpen(false);
     setIsEarningsModalOpen(false);
@@ -2344,7 +2341,7 @@ export default function ProfileScreen() {
                 style={[styles.settingItem, { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }]}
                 onPress={() => {
                   setIsSettingsOpen(false);
-                  setTimeout(() => setIsTermsOpen(true), 500);
+                  router.push('/terms' as any);
                 }}
               >
                 <View style={styles.settingInfo}>
@@ -2570,41 +2567,6 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </ScrollView>
           </KeyboardAvoidingView>
-        </ThemedView>
-      </Modal>
-
-      {/* Terms & Conditions Modal */}
-      <Modal visible={isTermsOpen} animationType="slide" onRequestClose={() => setIsTermsOpen(false)}>
-        <ThemedView style={{ flex: 1 }}>
-          <View style={[styles.modalHeaderInner, { paddingTop: insets.top }]}>
-            <TouchableOpacity onPress={() => setIsTermsOpen(false)} style={styles.headerBackBtn}>
-              <XCircle size={28} color="#000" />
-            </TouchableOpacity>
-            <ThemedText style={styles.modalHeaderTitle}>Terms & Conditions</ThemedText>
-            <View style={{ width: 40 }} />
-          </View>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={padBottom(styles.termsContent, bottomInset)}>
-            <ThemedText style={styles.termsTitle}>1. Provider Agreement</ThemedText>
-            <ThemedText style={styles.termsText}>
-              As a Dodorez Pro, you agree to represent yourself accurately, maintain
-              high quality standards, and follow all safety protocols while serving customers.
-            </ThemedText>
-            <ThemedText style={styles.termsTitle}>2. Platform Usage</ThemedText>
-            <ThemedText style={styles.termsText}>
-              Dodorez provides the technology to connect you with clients. We do not employ you directly;
-              you are an independent professional utilizing our marketplace tools.
-            </ThemedText>
-            <ThemedText style={styles.termsTitle}>3. Payment Policy</ThemedText>
-            <ThemedText style={styles.termsText}>
-              Payments are processed according to the agreed-upon rates for each job. Platform fees are
-              deducted before the final payout to your verified account.
-            </ThemedText>
-            <ThemedText style={styles.termsTitle}>4. Scheduling & Conflicts</ThemedText>
-            <ThemedText style={styles.termsText}>
-              It is the provider's responsibility to manage their calendar. Frequent cancellations
-              may lead to platform suspension.
-            </ThemedText>
-          </ScrollView>
         </ThemedView>
       </Modal>
 
@@ -4549,24 +4511,6 @@ function makeStyles(t: typeof Colors.light) {
     width: 40,
     height: 40,
     justifyContent: 'center',
-  },
-  termsContent: {
-    padding: 24,
-  },
-  termsTitle: {
-    fontSize: 18,
-    lineHeight: 24,
-    fontFamily: Fonts.poppinsBold,
-    color: t.textPrimary,
-    marginBottom: 8,
-    marginTop: 16,
-  },
-  termsText: {
-    fontSize: 14,
-    fontFamily: Fonts.poppins,
-    color: t.textSecondary,
-    lineHeight: 22,
-    marginBottom: 16,
   },
   inputStack: {
     marginBottom: 24,
