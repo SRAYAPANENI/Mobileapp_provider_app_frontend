@@ -598,7 +598,7 @@ export default function RegisterScreen() {
       showAlert('error', 'Code Expired', 'That code has expired. Tap Resend for a new one.');
     } else {
       try {
-        const user = await SkoFyApi.auth.verifyOTP(`+${callingCode}${formData.mobileNumber}`, formData.otp);
+        const user = await SkoFyApi.auth.verifyOTP(`+${callingCode}${formData.mobileNumber}`, formData.otp, 'register');
         // Signing in removes this account's push tokens from its other phones
         // (and from this one), so this phone registers its own again at once.
         registerFcmToken();
@@ -633,6 +633,14 @@ export default function RegisterScreen() {
         setIsOtpSent(false);
         showAlert('success', 'Verified', 'Mobile number verified successfully! ✨');
       } catch (error: any) {
+        // Now enforced server-side too (not just the profile_complete check
+        // above, which this pre-empts) — this screen passes
+        // purpose:'register', so a number that already has a real Provider
+        // profile raises here instead of silently logging in.
+        if (error?.error_code === 'ALREADY_REGISTERED') {
+          showAlert('error', 'Already Registered', 'This mobile number already has an account. Please use "Login here" below instead.');
+          return;
+        }
         showAlert('error', 'Verification Failed', error?.message || 'The OTP you entered is incorrect. Please try again.');
       }
     }
