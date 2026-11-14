@@ -11,6 +11,7 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 
 import { Popup } from '@/components/popup';
+import { useButtonRowFit } from '@/hooks/use-button-row-fit';
 interface Props {
   jobId: string | null;
   visible: boolean;
@@ -21,6 +22,7 @@ interface Props {
 // Filing a dispute on a job — used from the Jobs tab and the job sheet. The
 // server decides when a job can be disputed (job_service.dispute_job).
 export function ReportIssueModal({ jobId, visible, onClose, onFiled }: Props) {
+  const fit = useButtonRowFit();
   const bottomInset = useBottomInset();
   const colorScheme = useColorScheme();
   const t = Colors[colorScheme === 'dark' ? 'dark' : 'light'];
@@ -73,14 +75,14 @@ export function ReportIssueModal({ jobId, visible, onClose, onFiled }: Props) {
               onChangeText={setReason}
               textAlignVertical="top"
             />
-            <View style={styles.actions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-                <ThemedText style={styles.cancelBtnText}>Cancel</ThemedText>
+            <View style={[styles.actions, fit.row]}>
+              <TouchableOpacity style={[styles.cancelBtn, fit.button]} onPress={onClose}>
+                <ThemedText onTextLayout={fit.onLabelLayout} style={styles.cancelBtnText}>Cancel</ThemedText>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.submitBtn, submitting && { opacity: 0.6 }]} onPress={submit} disabled={submitting}>
+              <TouchableOpacity style={[[styles.submitBtn, submitting && { opacity: 0.6 }], fit.button]} onPress={submit} disabled={submitting}>
                 {submitting
                   ? <ActivityIndicator size="small" color="#fff" />
-                  : <ThemedText style={styles.submitBtnText}>Submit Dispute</ThemedText>}
+                  : <ThemedText onTextLayout={fit.onLabelLayout} style={styles.submitBtnText}>Submit Dispute</ThemedText>}
               </TouchableOpacity>
             </View>
           </View>

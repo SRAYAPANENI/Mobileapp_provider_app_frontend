@@ -10,6 +10,7 @@ import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { Popup } from '@/components/popup';
+import { useButtonRowFit } from '@/hooks/use-button-row-fit';
 const DIMENSIONS = ['behaviour', 'negotiation', 'payment', 'environment'] as const;
 type Dimension = typeof DIMENSIONS[number];
 const EMPTY: Record<Dimension, number> = { behaviour: 0, negotiation: 0, payment: 0, environment: 0 };
@@ -30,6 +31,7 @@ export function CustomerRatingSheet({
   customerName?: string;
   onClose: (submitted: boolean) => void;
 }) {
+  const fit = useButtonRowFit();
   const bottomInset = useBottomInset();
   const [ratings, setRatings] = useState(EMPTY);
   const [comment, setComment] = useState('');
@@ -104,12 +106,12 @@ export function CustomerRatingSheet({
               numberOfLines={3}
             />
           </ScrollView>
-          <View style={styles.actions}>
-            <TouchableOpacity style={styles.skipBtn} onPress={skip} disabled={submitting}>
-              <Text style={styles.skipText}>Maybe later</Text>
+          <View style={[styles.actions, fit.row]}>
+            <TouchableOpacity style={[styles.skipBtn, fit.button]} onPress={skip} disabled={submitting}>
+              <Text onTextLayout={fit.onLabelLayout} style={styles.skipText}>Maybe later</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.submitBtn, submitting && { opacity: 0.6 }]} disabled={submitting} onPress={submit}>
-              <Text style={styles.submitText}>{submitting ? 'Submitting…' : 'Submit Rating'}</Text>
+            <TouchableOpacity style={[[styles.submitBtn, submitting && { opacity: 0.6 }], fit.button]} disabled={submitting} onPress={submit}>
+              <Text onTextLayout={fit.onLabelLayout} style={styles.submitText}>{submitting ? 'Submitting…' : 'Submit Rating'}</Text>
             </TouchableOpacity>
           </View>
         </View>

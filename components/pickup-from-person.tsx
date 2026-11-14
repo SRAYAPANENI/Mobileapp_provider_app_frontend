@@ -10,6 +10,7 @@ import { ActivityIndicator, Linking, StyleSheet, TouchableOpacity, View } from '
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { Popup } from '@/components/popup';
+import { useButtonRowFit } from '@/hooks/use-button-row-fit';
 interface Props {
   jobId: string;
   item: string | null | undefined;
@@ -38,6 +39,7 @@ const DEFAULT_REASONS: Reason[] = [
 // it, it matches, it isn't on the list. Or refuse it: the job is cancelled
 // and the trip is still paid (server: JobService.refuse_pickup).
 export function PickupFromPerson({ jobId, item, value, details, onCheckedChange, getCoords, onRefused, onError }: Props) {
+  const fit = useButtonRowFit();
   const [rules, setRules] = useState<{ banned: string; refusal_reasons: Reason[] }>({ banned: DEFAULT_BANNED, refusal_reasons: DEFAULT_REASONS });
   const [checks, setChecks] = useState([false, false, false]);
   const [refusing, setRefusing] = useState(false);
@@ -184,12 +186,12 @@ export function PickupFromPerson({ jobId, item, value, details, onCheckedChange,
               maxLength={300}
               multiline
             />
-            <View style={s.sheetButtons}>
-              <TouchableOpacity style={s.secondary} onPress={() => setRefusing(false)} disabled={sending}>
-                <Text style={s.secondaryText}>Go back</Text>
+            <View style={[s.sheetButtons, fit.row]}>
+              <TouchableOpacity style={[s.secondary, fit.button]} onPress={() => setRefusing(false)} disabled={sending}>
+                <Text onTextLayout={fit.onLabelLayout} style={s.secondaryText}>Go back</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[s.primary, !canSend && { opacity: 0.5 }]} onPress={refuse} disabled={!canSend}>
-                {sending ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryText}>Refuse item</Text>}
+              <TouchableOpacity style={[[s.primary, !canSend && { opacity: 0.5 }], fit.button]} onPress={refuse} disabled={!canSend}>
+                {sending ? <ActivityIndicator color="#fff" /> : <Text onTextLayout={fit.onLabelLayout} style={s.primaryText}>Refuse item</Text>}
               </TouchableOpacity>
             </View>
           </View>

@@ -446,7 +446,9 @@ export default function BusinessScreen() {
                         appAlert.show('success', 'Invite ready', "They're not on Dodorez yet. Send them the invite yourself — by WhatsApp, a text or anything else.", [
                           { text: 'Cancel', variant: 'secondary', onPress: () => { withdrawInvite(newId); } },
                           { text: 'Send invite', variant: 'primary', onPress: () => { sendInvite(phone, r, newId); } },
-                        ]);
+                          // Must be answered: a tap outside would leave an invite
+                          // that's neither sent nor withdrawn.
+                        ], undefined, { dismissable: false });
                       } else {
                         appAlert.show('success', 'Invite sent', 'They can answer it in the Dodorez Pro app, under Business.');
                       }

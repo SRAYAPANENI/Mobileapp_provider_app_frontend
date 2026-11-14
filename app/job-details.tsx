@@ -27,6 +27,7 @@ import { inHours } from '@/components/business/work-hours';
 import { usePullRefresh } from '@/hooks/use-pull-refresh';
 
 import { Popup } from '@/components/popup';
+import { useButtonRowFit } from '@/hooks/use-button-row-fit';
 const { width } = Dimensions.get('window');
 
 type MapRegion = { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
@@ -158,6 +159,7 @@ function TimeLeft({ deadline }: { deadline: number }) {
 }
 
 export default function JobDetailsScreen() {
+  const bidFit = useButtonRowFit();
   const bottomInset = useBottomInset();
   const topInset = useSafeAreaInsets().top;
   const { id, autoApply } = useLocalSearchParams<{ id: string; autoApply?: string }>();
@@ -1168,18 +1170,18 @@ export default function JobDetailsScreen() {
               textAlignVertical="top"
             />
 
-            <View style={styles.bidActions}>
-              <TouchableOpacity style={styles.bidCancelBtn} onPress={() => setShowBidModal(false)}>
-                <Text style={styles.bidCancelText}>Cancel</Text>
+            <View style={[styles.bidActions, bidFit.row]}>
+              <TouchableOpacity style={[styles.bidCancelBtn, bidFit.button]} onPress={() => setShowBidModal(false)}>
+                <Text onTextLayout={bidFit.onLabelLayout} style={styles.bidCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.bidSubmitBtn, (isSubmittingBid || (job?.upfront && !job.upfront.myPrice)) && { opacity: 0.5 }]}
+                style={[[styles.bidSubmitBtn, (isSubmittingBid || (job?.upfront && !job.upfront.myPrice)) && { opacity: 0.5 }], bidFit.button]}
                 onPress={handleSubmitBid}
                 disabled={isSubmittingBid || (job?.upfront && !job.upfront.myPrice)}
               >
                 {isSubmittingBid
                   ? <ActivityIndicator size="small" color="#111827" />
-                  : <Text style={styles.bidSubmitText}>Apply</Text>
+                  : <Text onTextLayout={bidFit.onLabelLayout} style={styles.bidSubmitText}>Apply</Text>
                 }
               </TouchableOpacity>
             </View>

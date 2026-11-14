@@ -81,6 +81,7 @@ import { fitBottom, padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { FeeCapCard } from '@/components/fee-cap-card';
 
 import { Popup, PopupCard } from '@/components/popup';
+import { useButtonRowFit } from '@/hooks/use-button-row-fit';
 // How long the timed-out question's feedback (Incorrect + explanation, or
 // the final score card) stays visible before the skill test auto-advances —
 // long enough to actually read it, short enough that a timeout doesn't feel
@@ -158,6 +159,7 @@ function TestCountdown({ from, running, onPause, onTimeout, style }: {
 const PROFILE_LOADER_MAX_MS = 6_000;
 
 export default function ProfileScreen() {
+  const passwordFit = useButtonRowFit();
   const queryClient = useQueryClient();
   const bottomInset = useBottomInset();
   const insets = useSafeAreaInsets();
@@ -2630,9 +2632,9 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               </View>
             </View>
-            <View style={styles.modalActions}>
+            <View style={[styles.modalActions, passwordFit.row]}>
               <TouchableOpacity
-                style={[styles.actionBtn, styles.cancelBtn]}
+                style={[[styles.actionBtn, styles.cancelBtn], passwordFit.button]}
                 onPress={() => {
                   setIsPasswordOpen(false);
                   setCurrentPassword('');
@@ -2643,14 +2645,14 @@ export default function ProfileScreen() {
                   setShowConfirmPassword(false);
                 }}
               >
-                <ThemedText style={styles.cancelBtnText}>Cancel</ThemedText>
+                <ThemedText onTextLayout={passwordFit.onLabelLayout} style={styles.cancelBtnText}>Cancel</ThemedText>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.actionBtn, styles.updateBtn, isSavingPassword && { opacity: 0.6 }]}
+                style={[[styles.actionBtn, styles.updateBtn, isSavingPassword && { opacity: 0.6 }], passwordFit.button]}
                 onPress={handleChangePassword}
                 disabled={isSavingPassword}
               >
-                <ThemedText style={styles.updateBtnText}>{isSavingPassword ? 'Saving…' : 'Update'}</ThemedText>
+                <ThemedText onTextLayout={passwordFit.onLabelLayout} style={styles.updateBtnText}>{isSavingPassword ? 'Saving…' : 'Update'}</ThemedText>
               </TouchableOpacity>
             </View>
           </View>
