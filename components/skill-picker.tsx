@@ -5,8 +5,9 @@ import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { SkoFyApi } from '@/services/api';
 import { CheckCircle2, Circle, Search, X } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, ScrollView, SectionList, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, SectionList, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 
+import { Popup, PopupCard } from '@/components/popup';
 /** A skill from the catalogue, with the profession and category it belongs to. */
 export interface PickedSkill {
   id: string;
@@ -127,9 +128,9 @@ export function SkillPicker({
 
   const s = styles(theme);
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
+    <Popup closeOn="outside" visible={visible} transparent animationType="slide" statusBarTranslucent navigationBarTranslucent onClose={onClose}>
       <View style={s.overlay}>
-        <View style={padBottom([s.sheet], bottomInset)}>
+        <PopupCard style={padBottom([s.sheet], bottomInset)}>
           <View style={s.header}>
             <ThemedText style={s.title}>{title}</ThemedText>
             <TouchableOpacity onPress={onClose} hitSlop={12}><X size={24} color={theme.icon} /></TouchableOpacity>
@@ -204,9 +205,9 @@ export function SkillPicker({
               {busy ? <ActivityIndicator color="#111" /> : <ThemedText style={s.doneText}>Done</ThemedText>}
             </TouchableOpacity>
           </View>
-        </View>
+        </PopupCard>
       </View>
-    </Modal>
+    </Popup>
   );
 }
 

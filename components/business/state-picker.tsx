@@ -3,10 +3,11 @@ import { Fonts } from '@/constants/theme';
 import { useUsStates } from '@/services/queries/business';
 import { Check, ChevronDown, Search, X } from 'lucide-react-native';
 import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Modal, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, u } from './ui';
 
+import { Popup, PopupCard } from '@/components/popup';
 interface Props {
   /** The two-letter code chosen, or '' for none yet. */
   value: string;
@@ -42,9 +43,9 @@ export function StatePicker({ value, onChange }: Props) {
         <ChevronDown size={18} color={C.muted} />
       </TouchableOpacity>
 
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)} statusBarTranslucent>
-        <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={() => setOpen(false)} />
-        <View style={[s.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+      <Popup closeOn="outside" visible={open} transparent animationType="slide" onClose={() => setOpen(false)} statusBarTranslucent>
+        <View style={s.backdrop} />
+        <PopupCard style={[s.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
           <View style={s.header}>
             <ThemedText style={s.title}>State registered in</ThemedText>
             <TouchableOpacity onPress={() => setOpen(false)} hitSlop={10}><X size={22} color={C.ink} /></TouchableOpacity>
@@ -77,8 +78,8 @@ export function StatePicker({ value, onChange }: Props) {
                 ListEmptyComponent={<ThemedText style={[u.muted, { padding: 20 }]}>No state matches “{query.trim()}”.</ThemedText>}
               />
             )}
-        </View>
-      </Modal>
+        </PopupCard>
+      </Popup>
     </>
   );
 }

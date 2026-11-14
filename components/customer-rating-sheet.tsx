@@ -4,11 +4,12 @@ import { SkoFyApi } from '@/services/api';
 import { markRatingSkipped, markRatingSubmitted } from '@/services/ratingReminders';
 import { Star } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, TextInput } from '@/components/scaled-text';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
+import { Popup } from '@/components/popup';
 const DIMENSIONS = ['behaviour', 'negotiation', 'payment', 'environment'] as const;
 type Dimension = typeof DIMENSIONS[number];
 const EMPTY: Record<Dimension, number> = { behaviour: 0, negotiation: 0, payment: 0, environment: 0 };
@@ -70,7 +71,7 @@ export function CustomerRatingSheet({
   };
 
   return (
-    <Modal statusBarTranslucent navigationBarTranslucent visible={!!jobId} transparent animationType="fade" onRequestClose={skip}>
+    <Popup closeOn={submitting ? 'none' : 'back'} statusBarTranslucent navigationBarTranslucent visible={!!jobId} transparent animationType="fade" onClose={skip}>
       <KeyboardAvoidingView style={styles.overlay} behavior="padding" automaticOffset>
         <View style={padBottom(styles.sheet, bottomInset)}>
           <Text style={styles.title}>{customerName ? `Rate ${customerName}` : 'Rate this customer'}</Text>
@@ -113,7 +114,7 @@ export function CustomerRatingSheet({
           </View>
         </View>
       </KeyboardAvoidingView>
-    </Modal>
+    </Popup>
   );
 }
 

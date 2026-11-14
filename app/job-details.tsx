@@ -3,7 +3,7 @@ import { AppAlert } from '@/components/app-alert';
 import { showDialog } from '@/components/alert-host';
 import { purchaseSummary } from '@/services/pickupDelivery';
 import React, { useCallback, useState, useEffect } from 'react';
-import { StyleSheet, View, ScrollView, TouchableOpacity, SafeAreaView, Platform, Dimensions, ActivityIndicator, Share, Modal, Pressable, LayoutChangeEvent } from 'react-native';
+import { StyleSheet, View, ScrollView, TouchableOpacity, SafeAreaView, Platform, Dimensions, ActivityIndicator, Share, Pressable, LayoutChangeEvent } from 'react-native';
 import { Text, TextInput } from '@/components/scaled-text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft, MapPin, Clock, Briefcase, Star, ShieldCheck, Play, Navigation, Share2, Lock, Zap, XCircle, X, CheckCircle2, User, Home, Users, Package } from 'lucide-react-native';
@@ -26,6 +26,7 @@ import { useMyBusiness } from '@/hooks/use-my-business';
 import { inHours } from '@/components/business/work-hours';
 import { usePullRefresh } from '@/hooks/use-pull-refresh';
 
+import { Popup } from '@/components/popup';
 const { width } = Dimensions.get('window');
 
 type MapRegion = { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
@@ -1076,11 +1077,11 @@ export default function JobDetailsScreen() {
       </View>
 
       {/* Media Viewer Modal */}
-      <Modal
+      <Popup closeOn={selectedMedia?.type === 'video' ? 'back' : 'outside'}
         visible={!!selectedMedia}
         transparent
         animationType="fade"
-        onRequestClose={() => setSelectedMedia(null)}
+        onClose={() => setSelectedMedia(null)}
       >
         <View style={styles.viewerOverlay}>
           <View style={styles.viewerContent}>
@@ -1121,14 +1122,14 @@ export default function JobDetailsScreen() {
             </View>
           </View>
         </View>
-      </Modal>
+      </Popup>
 
       {/* Bid Submission Modal */}
-      <Modal
+      <Popup closeOn={isSubmittingBid ? 'none' : 'back'}
         visible={showBidModal}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowBidModal(false)}
+        onClose={() => setShowBidModal(false)}
       >
         <KeyboardAvoidingView style={styles.viewerOverlay} behavior="padding" automaticOffset>
           <View style={[fitBottom(styles.bidSheet, bottomInset), { backgroundColor: themeColors.background }]}>
@@ -1184,7 +1185,7 @@ export default function JobDetailsScreen() {
             </View>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+      </Popup>
 
       {/* Applied or hired: the shared dialog. It closes itself and moves on
           (the timers in acceptDirect / submitBid); OK just closes it sooner. */}

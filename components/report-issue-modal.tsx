@@ -6,10 +6,11 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { SkoFyApi } from '@/services/api';
 import { AlertTriangle } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 
+import { Popup } from '@/components/popup';
 interface Props {
   jobId: string | null;
   visible: boolean;
@@ -51,7 +52,7 @@ export function ReportIssueModal({ jobId, visible, onClose, onFiled }: Props) {
 
   return (
     <>
-      <Modal statusBarTranslucent navigationBarTranslucent visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Popup closeOn={submitting ? 'none' : 'back'} statusBarTranslucent navigationBarTranslucent visible={visible} transparent animationType="slide" onClose={onClose}>
         <KeyboardAvoidingView style={styles.overlay} behavior="padding" automaticOffset>
           <View style={padBottom([styles.sheet, { backgroundColor: t.background }], bottomInset)}>
             <View style={styles.handle} />
@@ -84,7 +85,7 @@ export function ReportIssueModal({ jobId, visible, onClose, onFiled }: Props) {
             </View>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+      </Popup>
       {appAlert.element}
     </>
   );

@@ -8,11 +8,12 @@ import { BusinessBoard, SkoFyApi, Team, TeamActiveJob, TeamOpenJob } from '@/ser
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Briefcase, Check, ChevronLeft, Clock, Inbox, Map as MapIcon } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, ScrollView, StatusBar, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { KeyboardAwareScrollView, KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Badge, Button, C, jobStage, Monogram, Row, Section, u } from '@/components/business/ui';
 import { usePullRefresh } from '@/hooks/use-pull-refresh';
 
+import { Popup, PopupCard } from '@/components/popup';
 const when = (iso: string | null) => iso
   ? new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
   : 'As soon as possible';
@@ -187,10 +188,9 @@ export default function BusinessJobsScreen() {
           form, so tapping "Apply as the business" (or "Give to someone
           else") doesn't depend on the list having scrolled back to the top
           to see it. */}
-      <Modal visible={!!(applying || assigning)} transparent animationType="slide" onRequestClose={close}>
+      <Popup closeOn={busy ? 'none' : 'back'} visible={!!(applying || assigning)} transparent animationType="slide" onClose={close}>
         <KeyboardAvoidingView style={s.sheetOverlay} behavior="padding">
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={close} />
-          <View style={s.sheet}>
+          <PopupCard style={s.sheet}>
             <View style={s.sheetHandle} />
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={padBottom(s.sheetContent, bottomInset)}>
               <ThemedText style={u.sectionTitle}>{applying ? 'Apply as your business' : 'Give to someone else'}</ThemedText>
@@ -208,9 +208,9 @@ export default function BusinessJobsScreen() {
                 <Button label={applying ? 'Apply' : 'Give it to them'} onPress={submit} busy={busy} disabled={!workerId} style={{ flex: 1 }} />
               </View>
             </ScrollView>
-          </View>
+          </PopupCard>
         </KeyboardAvoidingView>
-      </Modal>
+      </Popup>
 
       {appAlert.element}
     </ThemedView>

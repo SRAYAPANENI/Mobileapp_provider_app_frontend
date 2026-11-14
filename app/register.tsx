@@ -45,7 +45,7 @@ import {
   X
 } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, TextInput } from '@/components/scaled-text';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { UsPhonePrefix, US_CALLING_CODE, US_PHONE_INPUT_MAX, formatUsPhone, isUsPhone, usPhoneDigits } from '@/components/us-phone-prefix';
@@ -60,6 +60,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 
+import { Popup, PopupCard } from '@/components/popup';
 // Runs the tasks at most `limit` at a time — uploads in parallel without
 // choking a phone's connection with six videos at once.
 async function runLimited(tasks: (() => Promise<void>)[], limit: number): Promise<void> {
@@ -1568,9 +1569,9 @@ export default function RegisterScreen() {
         excludeProfessions={['Personal Errands']}
       />
 
-      <Modal statusBarTranslucent navigationBarTranslucent visible={showShownAsModal} transparent animationType="slide" onRequestClose={() => setShowShownAsModal(false)}>
+      <Popup closeOn="outside" statusBarTranslucent navigationBarTranslucent visible={showShownAsModal} transparent animationType="slide" onClose={() => setShowShownAsModal(false)}>
         <View style={styles.modalOverlay}>
-          <View style={padBottom([styles.modalContent, { backgroundColor: themeColors.background }], bottomInset)}>
+          <PopupCard style={padBottom([styles.modalContent, { backgroundColor: themeColors.background }], bottomInset)}>
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Show me as</ThemedText>
               <TouchableOpacity onPress={() => setShowShownAsModal(false)}>
@@ -1592,12 +1593,12 @@ export default function RegisterScreen() {
               ))}
               <View style={{ height: 40 }} />
             </ScrollView>
-          </View>
+          </PopupCard>
         </View>
-      </Modal>
+      </Popup>
 
       {/* Skill Tag Modal */}
-      <Modal statusBarTranslucent navigationBarTranslucent visible={showTagModal} transparent animationType="slide">
+      <Popup closeOn="back" statusBarTranslucent navigationBarTranslucent visible={showTagModal} transparent animationType="slide" onClose={() => setShowTagModal(false)}>
         <KeyboardAvoidingView style={styles.modalOverlay} behavior="padding" automaticOffset>
           <View style={padBottom([styles.modalContent, { backgroundColor: themeColors.background, maxHeight: '90%', flex: 1, marginTop: 'auto', borderTopLeftRadius: 32, borderTopRightRadius: 32, minHeight: '0%' }], bottomInset)}>
             <View style={styles.modalHeader}>
@@ -1725,7 +1726,7 @@ export default function RegisterScreen() {
             </View>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+      </Popup>
 
       {/* This screen's own messages, in the shared dialog ("delete" says
           something was removed, as asked — a success). */}

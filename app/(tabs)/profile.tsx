@@ -19,7 +19,7 @@ import { useServerReachable } from '@/services/server-status';
 import { stopBackgroundLocation } from '@/services/background-location';
 import { disconnectLocationSocket } from '@/services/location-socket';
 import { clearDashboardCache } from '@/services/homeCache';
-import { StyleSheet, View, TouchableOpacity, ScrollView, Platform, Dimensions, Modal, Switch, RefreshControl, SafeAreaView, Pressable, BackHandler, PanResponder, Animated as RNAnimated, ActivityIndicator, Linking } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, ScrollView, Platform, Dimensions, Switch, RefreshControl, SafeAreaView, Pressable, BackHandler, PanResponder, Animated as RNAnimated, ActivityIndicator, Linking } from 'react-native';
 import { TextInput } from '@/components/scaled-text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -80,6 +80,7 @@ import { SkillPicker, type PickedSkill } from '@/components/skill-picker';
 import { fitBottom, padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { FeeCapCard } from '@/components/fee-cap-card';
 
+import { Popup, PopupCard } from '@/components/popup';
 // How long the timed-out question's feedback (Incorrect + explanation, or
 // the final score card) stays visible before the skill test auto-advances —
 // long enough to actually read it, short enough that a timeout doesn't feel
@@ -2253,17 +2254,17 @@ export default function ProfileScreen() {
       </ScrollView>
 
       {/* Settings Modal - Mirrored from Customer App */}
-      <Modal statusBarTranslucent navigationBarTranslucent
+      <Popup closeOn="outside" statusBarTranslucent navigationBarTranslucent
         visible={isSettingsOpen}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setIsSettingsOpen(false)}
+        onClose={() => setIsSettingsOpen(false)}
       >
         <View style={[styles.modalOverlay, { paddingTop: insets.top + 12 }]}>
           {/* maxHeight + a scrolling list: with every row shown the sheet is
               taller than the screen, and a bottom-anchored sheet then grows up
               under the status bar. Now it stops below it and the list scrolls. */}
-          <View style={[fitBottom(styles.modalContent, bottomInset), { maxHeight: '100%' }]}>
+          <PopupCard style={[fitBottom(styles.modalContent, bottomInset), { maxHeight: '100%' }]}>
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Settings</ThemedText>
               <TouchableOpacity onPress={() => setIsSettingsOpen(false)}>
@@ -2465,12 +2466,12 @@ export default function ProfileScreen() {
             >
               <ThemedText style={styles.closeModalButtonText}>Close</ThemedText>
             </TouchableOpacity>
-          </View>
+          </PopupCard>
         </View>
-      </Modal>
+      </Popup>
 
       {/* Edit Profile Modal */}
-      <Modal visible={isEditProfileOpen} animationType="slide" onRequestClose={() => setIsEditProfileOpen(false)}>
+      <Popup closeOn={isSavingProfile ? 'none' : 'back'} visible={isEditProfileOpen} animationType="slide" onClose={() => setIsEditProfileOpen(false)}>
         <ThemedView style={{ flex: 1 }}>
           <View style={[styles.modalHeaderInner, { paddingTop: insets.top }]}>
             <TouchableOpacity onPress={() => setIsEditProfileOpen(false)} style={styles.headerBackBtn}>
@@ -2568,10 +2569,10 @@ export default function ProfileScreen() {
           </ScrollView>
           </KeyboardAvoidingView>
         </ThemedView>
-      </Modal>
+      </Popup>
 
       {/* Change Password Modal */}
-      <Modal visible={isPasswordOpen} animationType="fade" transparent onRequestClose={() => setIsPasswordOpen(false)}>
+      <Popup closeOn={isSavingPassword ? 'none' : 'back'} visible={isPasswordOpen} animationType="fade" transparent onClose={() => setIsPasswordOpen(false)}>
         <KeyboardAvoidingView
           style={[styles.modalOverlay, { justifyContent: 'center', padding: 20 }]}
           behavior="padding"
@@ -2654,7 +2655,7 @@ export default function ProfileScreen() {
             </View>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+      </Popup>
 
       {/* AI Skill Assessment Modal -> Floating Widget */}
       {isAssessmentOpen && (
@@ -2833,7 +2834,7 @@ export default function ProfileScreen() {
       )}
 
       {/* Media Viewer Modal */}
-      <Modal visible={isViewerOpen} transparent animationType="fade" onRequestClose={() => setIsViewerOpen(false)}>
+      <Popup closeOn={selectedMedia?.type === 'video' ? 'back' : 'outside'} visible={isViewerOpen} transparent animationType="fade" onClose={() => setIsViewerOpen(false)}>
         <View style={styles.viewerOverlay}>
           <View style={[styles.viewerContainer, { flex: 1 }]}>
             <View style={[styles.viewerHeader, { paddingTop: insets.top + 10 }]}>
@@ -2872,10 +2873,10 @@ export default function ProfileScreen() {
             )}
           </View>
         </View>
-      </Modal>
+      </Popup>
 
       {/* View All Portfolio Modal */}
-      <Modal visible={isViewAllOpen} animationType="slide" onRequestClose={() => setIsViewAllOpen(false)}>
+      <Popup closeOn="back" visible={isViewAllOpen} animationType="slide" onClose={() => setIsViewAllOpen(false)}>
         <View style={styles.viewAllContainer}>
           <View style={[styles.viewAllHeader, { paddingTop: insets.top, height: 60 + insets.top }]}>
             <TouchableOpacity onPress={() => setIsViewAllOpen(false)} style={styles.viewAllBack}>
@@ -2917,10 +2918,10 @@ export default function ProfileScreen() {
             </View>
           </ScrollView>
         </View>
-      </Modal>
+      </Popup>
 
       {/* Skill Tagging Modal */}
-      <Modal statusBarTranslucent navigationBarTranslucent visible={showTagModal} transparent animationType="slide" onRequestClose={() => setShowTagModal(false)}>
+      <Popup closeOn={isUploadingProof ? 'none' : 'back'} statusBarTranslucent navigationBarTranslucent visible={showTagModal} transparent animationType="slide" onClose={() => setShowTagModal(false)}>
         <KeyboardAvoidingView style={styles.modalOverlay} behavior="padding" automaticOffset>
           <View style={padBottom(styles.tagModalContent, bottomInset)}>
             {/* Header */}
@@ -3033,10 +3034,10 @@ export default function ProfileScreen() {
             </View>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+      </Popup>
 
       {/* Full Job History Modal */}
-      <Modal visible={isJobHistoryOpen} animationType="slide" onRequestClose={() => setIsJobHistoryOpen(false)}>
+      <Popup closeOn="back" visible={isJobHistoryOpen} animationType="slide" onClose={() => setIsJobHistoryOpen(false)}>
         <View style={styles.viewAllContainer}>
           <View style={[styles.viewAllHeader, { paddingTop: insets.top, height: 60 + insets.top }]}>
             <TouchableOpacity onPress={() => setIsJobHistoryOpen(false)} style={styles.viewAllBack}>
@@ -3066,7 +3067,7 @@ export default function ProfileScreen() {
             setRatingJob(null);
           }}
         />
-      </Modal>
+      </Popup>
       <CustomerRatingSheet
         jobId={isJobHistoryOpen ? null : ratingJob?.id ?? null}
         customerName={ratingJob?.customerName}
@@ -3080,7 +3081,7 @@ export default function ProfileScreen() {
       />
 
       {/* Available Slots Management Modal */}
-      <Modal visible={isSlotModalOpen} animationType="slide" onRequestClose={() => setIsSlotModalOpen(false)}>
+      <Popup closeOn="back" visible={isSlotModalOpen} animationType="slide" onClose={() => setIsSlotModalOpen(false)}>
         <View style={styles.viewAllContainer}>
           <View style={[styles.viewAllHeader, { paddingTop: insets.top, height: 60 + insets.top }]}>
             <TouchableOpacity onPress={() => setIsSlotModalOpen(false)} style={styles.viewAllBack}>
@@ -3159,15 +3160,15 @@ export default function ProfileScreen() {
             ))}
           </ScrollView>
         </View>
-      </Modal >
+      </Popup>
 
       {/* Web Custom Picker Modal */}
       {/* Custom Picker Modal (Universal) */}
       {
         pickerMode !== null && (
-          <Modal visible={true} transparent animationType="fade" onRequestClose={() => setPickerMode(null)}>
+          <Popup closeOn="outside" visible={true} transparent animationType="fade" onClose={() => setPickerMode(null)}>
             <Pressable style={[styles.modalOverlay, { justifyContent: 'center', alignItems: 'center' }]} onPress={() => setPickerMode(null)}>
-              <Animated.View entering={ZoomIn.duration(200)} style={styles.webPickerCard}>
+              <Animated.View onStartShouldSetResponder={() => true} entering={ZoomIn.duration(200)} style={styles.webPickerCard}>
                 <View style={styles.webPickerHeader}>
                   <ThemedText style={styles.webPickerTitle}>
                     {pickerMode === 'date' ? 'Select Date' : pickerMode === 'start' ? 'Start Time' : 'End Time'}
@@ -3286,13 +3287,13 @@ export default function ProfileScreen() {
                 )}
               </Animated.View>
             </Pressable>
-          </Modal>
+          </Popup>
         )
       }
 
       {/* Earnings Modal — real totals + payout history, Stripe manages the
           actual bank account and payout schedule on its own hosted dashboard */}
-      <Modal visible={isEarningsModalOpen} animationType="slide" transparent={false} onRequestClose={() => setIsEarningsModalOpen(false)}>
+      <Popup closeOn="back" visible={isEarningsModalOpen} animationType="slide" transparent={false} onClose={() => setIsEarningsModalOpen(false)}>
         <View style={styles.walletModalContainer}>
           <View style={[styles.walletHeaderLarge, { paddingTop: insets.top + 8, paddingBottom: 12 }]}>
             <TouchableOpacity onPress={() => setIsEarningsModalOpen(false)} style={styles.headerBackBtn}>
@@ -3370,7 +3371,7 @@ export default function ProfileScreen() {
             )}
           </ScrollView>
         </View>
-      </Modal>
+      </Popup>
 
       {/* Add skills: the same picker as sign-up, any profession. "Personal
           Errands" stays out — it's switched on by identity verification

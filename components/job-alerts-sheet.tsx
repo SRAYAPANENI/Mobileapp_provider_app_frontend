@@ -1,11 +1,12 @@
 import { Fonts } from '@/constants/theme';
 import { Check, X } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Modal, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@/components/scaled-text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { MySkill } from './skill-filter-bar';
 
+import { Popup, PopupCard } from '@/components/popup';
 interface Props {
   visible: boolean;
   mySkills: MySkill[];
@@ -47,9 +48,9 @@ export function JobAlertsSheet({ visible, mySkills, chosen, onClose, onSave }: P
   };
 
   return (
-    <Modal statusBarTranslucent navigationBarTranslucent visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={onClose} />
-      <View style={[s.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
+    <Popup closeOn="outside" statusBarTranslucent navigationBarTranslucent visible={visible} transparent animationType="slide" onClose={onClose}>
+      <View style={s.backdrop} />
+      <PopupCard style={[s.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
         <View style={s.header}>
           <Text style={s.title}>Job alerts</Text>
           <TouchableOpacity onPress={onClose} hitSlop={10}><X size={22} color="#111827" /></TouchableOpacity>
@@ -104,8 +105,8 @@ export function JobAlertsSheet({ visible, mySkills, chosen, onClose, onSave }: P
             </Text>
           )}
         </TouchableOpacity>
-      </View>
-    </Modal>
+      </PopupCard>
+    </Popup>
   );
 }
 

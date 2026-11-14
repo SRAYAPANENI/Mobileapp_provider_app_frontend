@@ -1,7 +1,7 @@
 import { LabourHelper } from '@/components/labour-helper';
 import AnimatedBrandMark from '@/components/animated-brand-mark';
 import React, { useState, useEffect, useRef } from 'react';
-import { AppState, BackHandler, StyleSheet, View, ScrollView, TouchableOpacity, Switch, Platform, SafeAreaView, ActivityIndicator, Modal, PanResponder, Animated as RNAnimated, useWindowDimensions, Linking, RefreshControl, Pressable } from 'react-native';
+import { AppState, BackHandler, StyleSheet, View, ScrollView, TouchableOpacity, Switch, Platform, SafeAreaView, ActivityIndicator, PanResponder, Animated as RNAnimated, useWindowDimensions, Linking, RefreshControl, Pressable } from 'react-native';
 import { Text, TextInput as RNTextInput } from '@/components/scaled-text';
 import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -87,6 +87,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { fitBottom, padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
+import { Popup } from '@/components/popup';
 const formatTime = (deadline: number, now: number) => {
   const diff = Math.max(0, deadline - now);
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -2055,14 +2056,14 @@ const filteredJobs = jobs.filter((job) => {
       </Animated.View>
 
       {/* Service Room Modal */}
-      <Modal
+      <Popup closeOn="outside"
         visible={showManageModal}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowManageModal(false)}
+        onClose={() => setShowManageModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <RNAnimated.View
+          <RNAnimated.View onStartShouldSetResponder={() => true}
             style={[styles.manageSheet, { paddingTop: insets.top + 24, transform: [{ translateY: panY }] }]}
           >
             {/* panHandlers scoped to just this handle, not the whole sheet —
@@ -2792,7 +2793,7 @@ const filteredJobs = jobs.filter((job) => {
             )}
           </RNAnimated.View>
         </View>
-      </Modal>
+      </Popup>
 
       {/* Cancel Job Reason Modal */}
       <ReportIssueModal
@@ -2809,11 +2810,11 @@ const filteredJobs = jobs.filter((job) => {
           }
         }}
       />
-      <Modal
+      <Popup closeOn={cancellingJob ? 'none' : 'back'}
         visible={showCancelJobModal}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowCancelJobModal(false)}
+        onClose={() => setShowCancelJobModal(false)}
       >
         <View style={styles.cancelJobOverlay}>
           <View style={styles.cancelJobModalCard}>
@@ -2875,7 +2876,7 @@ const filteredJobs = jobs.filter((job) => {
             </View>
           </View>
         </View>
-      </Modal>
+      </Popup>
 
       {/* Exit App Modal — double-back-press to exit, matching the customer
           app's Home/Login screens */}
@@ -2908,11 +2909,11 @@ const filteredJobs = jobs.filter((job) => {
       />
 
       {/* Rating Modal */}
-      <Modal statusBarTranslucent navigationBarTranslucent
+      <Popup closeOn={isSubmittingRating ? 'none' : 'back'} statusBarTranslucent navigationBarTranslucent
         visible={showRatingModal}
         transparent
         animationType="slide"
-        onRequestClose={skipRating}
+        onClose={skipRating}
       >
         <KeyboardAvoidingView style={styles.modalOverlay} behavior="padding" automaticOffset>
           <View style={fitBottom(styles.ratingSheet, bottomInset)}>
@@ -2970,7 +2971,7 @@ const filteredJobs = jobs.filter((job) => {
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+      </Popup>
 
       <AppAlert
         visible={showFinalSuccess}

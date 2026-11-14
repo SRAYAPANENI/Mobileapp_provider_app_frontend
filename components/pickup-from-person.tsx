@@ -6,9 +6,10 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { Ban, Camera, CheckSquare, Home, Phone, Square } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, Modal, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Linking, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
+import { Popup } from '@/components/popup';
 interface Props {
   jobId: string;
   item: string | null | undefined;
@@ -154,7 +155,7 @@ export function PickupFromPerson({ jobId, item, value, details, onCheckedChange,
         <Text style={s.refuseText}>Can't take it</Text>
       </TouchableOpacity>
 
-      <Modal visible={refusing} transparent animationType="fade" onRequestClose={() => setRefusing(false)}>
+      <Popup closeOn={sending ? 'none' : 'back'} visible={refusing} transparent animationType="fade" onClose={() => setRefusing(false)}>
         <KeyboardAvoidingView behavior="padding" style={s.overlay}>
           <View style={s.sheet}>
             <Text style={s.sheetTitle}>Not taking the item</Text>
@@ -193,7 +194,7 @@ export function PickupFromPerson({ jobId, item, value, details, onCheckedChange,
             </View>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+      </Popup>
     </View>
   );
 }
