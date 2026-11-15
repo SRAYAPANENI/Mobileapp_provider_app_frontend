@@ -764,6 +764,11 @@ export default function DashboardScreen() {
   // From a person (any address): the item must be checked before it's taken (PickupFromPerson).
   const pickupFromPerson = manageJobDetail?.pickup_source === 'PERSON';
   const [personItemChecked, setPersonItemChecked] = useState(false);
+  // Which wording of those checks was shown (kept word for word with the job).
+  const [personChecksVersion, setPersonChecksVersion] = useState<string | undefined>(undefined);
+  // Bumped when the server says the checks' wording changed: the card remounts,
+  // fetches the new wording and starts unticked.
+  const [personChecksRound, setPersonChecksRound] = useState(0);
   // Checks belong to one job: another job starts unchecked (its panel remounts too).
   useEffect(() => { setPersonItemChecked(false); }, [selectedJob?.id]);
   const [showReportIssue, setShowReportIssue] = useState(false);
@@ -914,6 +919,7 @@ export default function DashboardScreen() {
         selectedJob.id, pickupPhoto.uri, pickupPhoto.mimeType, coords.latitude, coords.longitude,
         buyingForCustomer ? parseGoodsAmount(goodsAmountText) : undefined,
         pickupFromPerson && personItemChecked,
+        pickupFromPerson ? personChecksVersion : undefined,
       );
       const detail = await SkoFyApi.jobs.get(selectedJob.id);
       setManageJobDetail(detail);
@@ -923,6 +929,10 @@ export default function DashboardScreen() {
     } catch (err: any) {
       if (err?.error_code === 'NOT_AT_LOCATION') {
         appAlert.show('warning', 'Too Far From Pickup Location', err.message ?? 'You need to be at the pickup location.');
+      } else if (err?.error_code === 'DECLARATION_CHANGED') {
+        setPersonItemChecked(false);
+        setPersonChecksRound((n) => n + 1);
+        appAlert.show('warning', 'Check the Item Again', err.message ?? 'The checks have been updated — tick them again.');
       } else {
         appAlert.show('error', 'Could Not Confirm Pickup', err?.message ?? 'Please try again.');
       }
@@ -2264,9 +2274,12 @@ const filteredJobs = jobs.filter((job) => {
                       onError={(title, message) => appAlert.show('error', title, message)}
                     />
                     <DeliveryHandover
+                      key={selectedJob.id}
                       jobId={selectedJob.id}
                       onDelivered={() => { setManageJobDetail((prev: any) => ({ ...prev, delivered_at: new Date().toISOString() })); refreshManageDetail(); }}
                       recipientName={manageJobDetail?.pickup_details?.recipient_name}
+                      photoUrl={manageJobDetail?.dropoff_photo_url}
+                      onPhotoSaved={refreshManageDetail}
                     />
                   </>
                 ) : selectedJob.status === 'IN_PROGRESS' ? (
@@ -2471,12 +2484,12 @@ const filteredJobs = jobs.filter((job) => {
                     />
                     {pickupFromPerson ? (
                       <PickupFromPerson
-                        key={selectedJob.id}
+                        key={`${selectedJob.id}-${personChecksRound}`}
                         jobId={selectedJob.id}
                         item={manageJobDetail?.pickup_item}
                         value={manageJobDetail?.item_value}
                         details={manageJobDetail?.pickup_details}
-                        onCheckedChange={setPersonItemChecked}
+                        onCheckedChange={(checked, version) => { setPersonItemChecked(checked); setPersonChecksVersion(version); }}
                         getCoords={currentCoords}
                         onRefused={handlePickupRefused}
                         onError={(title, message) => appAlert.show('error', title, message)}
@@ -2494,7 +2507,7 @@ const filteredJobs = jobs.filter((job) => {
                         ? 'Once you have the items, enter the receipt total and take a photo of the items with the receipt.'
                         : pickupFromPerson
                           ? 'Once you\'ve checked it, take a photo of the item to confirm pickup.'
-                          : "Once you've got everything, take a photo to confirm pickup."}
+                          : "Once you've got everything, take a photo of the order to confirm pickup."}
                     </ThemedText>
                     {buyingForCustomer && (
                       <>

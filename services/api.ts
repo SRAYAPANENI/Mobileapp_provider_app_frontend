@@ -1298,6 +1298,15 @@ export const SkoFyApi = {
     /** "I'm here" at a delivery's drop-off — starts the waiting clock there. */
     arrivedAtDropoff: async (jobId: string, lat: number, lng: number): Promise<{ dropoff_arrived_at: string; free_until: string | null }> =>
       request(`/jobs/${jobId}/delivery/arrived`, { method: 'POST', body: JSON.stringify({ lat, lng }) }) as any,
+    /** A delivery's photo of the order at the drop-off — needed before the code. */
+    uploadDropoffPhoto: async (jobId: string, photo: { uri: string; mimeType: string }, lat: number, lng: number) => {
+      const form = new FormData();
+      const ext = photo.mimeType.split('/')[1] || 'jpg';
+      form.append('photo', { uri: photo.uri, name: `dropoff.${ext}`, type: photo.mimeType } as any);
+      form.append('lat', String(lat));
+      form.append('lng', String(lng));
+      return requestMultipart(`/jobs/${jobId}/delivery/photo`, form);
+    },
     requestDeliveryCode: async (jobId: string) =>
       request(`/jobs/${jobId}/delivery/request-code`, { method: 'POST' }),
 
@@ -1408,7 +1417,7 @@ export const SkoFyApi = {
      */
     confirmPickup: async (
       jobId: string, photoUri: string, mimeType: string, lat: number, lng: number, goodsAmount?: number,
-      itemChecked = false,
+      itemChecked = false, checksVersion?: string,
     ) => {
       const form = new FormData();
       const ext = mimeType.split('/')[1] || 'jpg';
@@ -1419,6 +1428,8 @@ export const SkoFyApi = {
       if (goodsAmount != null) form.append('goods_amount', String(goodsAmount));
       // From a person: the item has been seen and checked.
       if (itemChecked) form.append('item_checked', 'true');
+      // Which wording of the checks was shown — kept word for word with the job.
+      if (itemChecked && checksVersion) form.append('checks_version', checksVersion);
       return requestMultipart(`/jobs/${jobId}/pickup/confirm`, form);
     },
 
@@ -1444,6 +1455,7 @@ export const SkoFyApi = {
     /** A pickup from a person: the value cap, what's never carried, why an item can be refused. */
     getPersonPickupRules: async (): Promise<{
       max_value: number; banned: string; refusal_reasons: { key: string; label: string; photo?: boolean }[];
+      declaration_version?: string;
     }> => request('/jobs/pickup-from-person'),
 
     respondToCounter: async (jobId: string, accept: boolean) =>

@@ -16,8 +16,9 @@ interface Props {
   item: string | null | undefined;
   value: number | null | undefined;
   details: PickupDetails | null | undefined;
-  /** All three checks are ticked: the item may be taken (Confirm Pickup). */
-  onCheckedChange: (checked: boolean) => void;
+  /** All three checks are ticked: the item may be taken (Confirm Pickup) —
+   * with the version of their wording, which the server keeps word for word. */
+  onCheckedChange: (checked: boolean, version?: string) => void;
   /** Where the provider is — the refusal is only accepted at the pickup. */
   getCoords: () => Promise<{ latitude: number; longitude: number } | null>;
   onRefused: () => void;
@@ -40,7 +41,7 @@ const DEFAULT_REASONS: Reason[] = [
 // and the trip is still paid (server: JobService.refuse_pickup).
 export function PickupFromPerson({ jobId, item, value, details, onCheckedChange, getCoords, onRefused, onError }: Props) {
   const fit = useButtonRowFit();
-  const [rules, setRules] = useState<{ banned: string; refusal_reasons: Reason[] }>({ banned: DEFAULT_BANNED, refusal_reasons: DEFAULT_REASONS });
+  const [rules, setRules] = useState<{ banned: string; refusal_reasons: Reason[]; version?: string }>({ banned: DEFAULT_BANNED, refusal_reasons: DEFAULT_REASONS });
   const [checks, setChecks] = useState([false, false, false]);
   const [refusing, setRefusing] = useState(false);
   const [reason, setReason] = useState<string | null>(null);
@@ -58,7 +59,15 @@ export function PickupFromPerson({ jobId, item, value, details, onCheckedChange,
 
   useEffect(() => {
     SkoFyApi.jobs.getPersonPickupRules()
-      .then((r) => setRules({ banned: r.banned, refusal_reasons: r.refusal_reasons }))
+      .then((r) => {
+        setRules({ banned: r.banned, refusal_reasons: r.refusal_reasons, version: r.declaration_version });
+        // Boxes ticked on the built-in wording before the server's arrived,
+        // and it differs: they're ticked again on what's shown now.
+        if (r.banned !== DEFAULT_BANNED) {
+          setChecks([false, false, false]);
+          onCheckedChange(false);
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -71,7 +80,7 @@ export function PickupFromPerson({ jobId, item, value, details, onCheckedChange,
   const toggle = (i: number) => {
     const next = checks.map((c, j) => (j === i ? !c : c));
     setChecks(next);
-    onCheckedChange(next.every(Boolean));
+    onCheckedChange(next.every(Boolean), rules.version);
   };
 
   const needsPhoto = !!rules.refusal_reasons.find((r) => r.key === reason)?.photo;
