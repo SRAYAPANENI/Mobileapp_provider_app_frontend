@@ -514,7 +514,7 @@ export interface GuaranteeClaim {
 /** Your prices per hour / day / night, and hosting at your place
  * (docs/JOB_SHAPE_DESIGN.md phase 4). */
 /** TRIP_BASE / TRIP_MILE: a Pickup & Delivery fare — base + per mile × the trip's miles. */
-export interface ProviderRate { skill_id: string; skill_name: string; unit: 'HOUR' | 'DAY' | 'NIGHT' | 'WEEK' | 'MONTH' | 'VISIT' | 'FIXED' | 'TRIP_BASE' | 'TRIP_MILE' | 'TRIP_BOX' | 'TRIP_TRUNK' | 'TRIP_VAN' | 'TRIP_WAIT'; amount: number }
+export interface ProviderRate { skill_id: string; skill_name: string; unit: 'HOUR' | 'DAY' | 'NIGHT' | 'WEEK' | 'MONTH' | 'VISIT' | 'FIXED' | 'TRIP_BASE' | 'TRIP_MILE' | 'TRIP_BOX' | 'TRIP_TRUNK' | 'TRIP_VAN' | 'TRIP_WAIT' | 'TRIP_BUY'; amount: number }
 export type PetKind = 'DOG' | 'CAT' | 'BIRD' | 'SMALL_PET' | 'REPTILE' | 'FISH' | 'OTHER';
 export type DogSize = 'SMALL' | 'MEDIUM' | 'LARGE' | 'GIANT';
 export type ItemSize = 'SMALL' | 'MEDIUM' | 'LARGE' | 'BULKY';
@@ -532,6 +532,8 @@ export interface Hosting {
   hosting_prefs: HostingPrefs;
   /** Waiting on a delivery, as the server sets it (skofy-backend app/domain/trip_wait.py). */
   trip_wait?: WaitRules;
+  /** What a provider may buy for customers up to (skofy-backend app/domain/pickup.py). */
+  trip_buy?: { min: number; max: number };
 }
 export interface WaitRules { free_minutes: number; max_minutes: number }
 
@@ -1080,6 +1082,8 @@ export const SkoFyApi = {
       recent_payouts: Array<{
         job_id: string; job_title: string; amount: number; paid_at: string | null;
         purpose?: string | null; recovered?: number; arrives_by?: string | null;
+        /** Shopping: the receipt paid back — not earnings. */
+        paid_back?: number;
       }>;
       /** Still owed toward a chargeback, taken from the next payouts (§12). */
       recovery_owed?: number;
@@ -1417,7 +1421,7 @@ export const SkoFyApi = {
      */
     confirmPickup: async (
       jobId: string, photoUri: string, mimeType: string, lat: number, lng: number, goodsAmount?: number,
-      itemChecked = false, checksVersion?: string,
+      itemChecked = false, checksVersion?: string, paidWith?: 'OWN' | 'COMPANY',
     ) => {
       const form = new FormData();
       const ext = mimeType.split('/')[1] || 'jpg';
@@ -1430,6 +1434,8 @@ export const SkoFyApi = {
       if (itemChecked) form.append('item_checked', 'true');
       // Which wording of the checks was shown — kept word for word with the job.
       if (itemChecked && checksVersion) form.append('checks_version', checksVersion);
+      // A business's job: whose money paid the store — it's paid back to them.
+      if (paidWith) form.append('paid_with', paidWith);
       return requestMultipart(`/jobs/${jobId}/pickup/confirm`, form);
     },
 

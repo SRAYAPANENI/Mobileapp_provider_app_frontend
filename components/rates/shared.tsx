@@ -10,7 +10,7 @@ import { StyleSheet, Switch, TouchableOpacity, View } from 'react-native';
 // What Rates & hosting's cards share: units, choices, small controls, styles.
 
 export type Unit = Extract<ProviderRate['unit'], 'HOUR' | 'VISIT' | 'DAY' | 'NIGHT' | 'WEEK' | 'MONTH'
-  | 'TRIP_BASE' | 'TRIP_MILE' | 'TRIP_BOX' | 'TRIP_TRUNK' | 'TRIP_VAN' | 'TRIP_WAIT'>;
+  | 'TRIP_BASE' | 'TRIP_MILE' | 'TRIP_BOX' | 'TRIP_TRUNK' | 'TRIP_VAN' | 'TRIP_WAIT' | 'TRIP_BUY'>;
 export type Notify = (type: 'success' | 'error', title: string, message: string) => void;
 
 // The prices a job can be booked at up front (docs/JOB_SHAPE_DESIGN.md) — in
@@ -37,7 +37,14 @@ export const UNITS: { unit: Unit; label: string; hint: string }[] = [
   // Waiting at the pickup (skofy-backend app/domain/trip_wait.py): after the
   // free minutes, up to a cap the customer pays with the fare.
   { unit: 'TRIP_WAIT', label: 'Waiting, per minute', hint: 'At the pickup and drop-off, after the free minutes. Empty: waiting is free. Typical: $0.30–$0.50' },
+  // Not a price: buying for customers is the provider's choice, since they
+  // pay the store first (skofy-backend app/domain/pickup.py buys_for). Only
+  // "Buy it for me" jobs within it reach them.
+  { unit: 'TRIP_BUY', label: 'Buy for customers, up to', hint: "Set it to get “Buy it for me” jobs within it. You pay at the store with your own money — the customer's card is held first — and get it back when the delivery is done, plus a 5% shopping fee ($1.99–$9.99) that's all yours. Empty: only orders that are already paid" },
 ];
+
+/** Not a price: the most they'll pay at a store for a customer. */
+export const BUY_CAP: Unit = 'TRIP_BUY';
 
 /** Size extras: $0 is a real price (room, no extra), unlike every other box. */
 export const TRIP_EXTRAS: Unit[] = ['TRIP_BOX', 'TRIP_TRUNK', 'TRIP_VAN'];
@@ -66,9 +73,9 @@ const UNITS_BY_PRICING: Record<string, Unit[]> = {
   VISIT: ['VISIT'],
   NIGHT: ['NIGHT', 'WEEK', 'MONTH'],
   DAY: ['DAY', 'WEEK', 'MONTH'],
-  TRIP: ['TRIP_BASE', 'TRIP_MILE', 'TRIP_BOX', 'TRIP_TRUNK', 'TRIP_VAN', 'TRIP_WAIT'],
+  TRIP: ['TRIP_BASE', 'TRIP_MILE', 'TRIP_BOX', 'TRIP_TRUNK', 'TRIP_VAN', 'TRIP_WAIT', 'TRIP_BUY'],
 };
-const TRIP_PARTS: Unit[] = ['TRIP_BASE', 'TRIP_MILE', 'TRIP_BOX', 'TRIP_TRUNK', 'TRIP_VAN', 'TRIP_WAIT'];
+const TRIP_PARTS: Unit[] = ['TRIP_BASE', 'TRIP_MILE', 'TRIP_BOX', 'TRIP_TRUNK', 'TRIP_VAN', 'TRIP_WAIT', 'TRIP_BUY'];
 export const unitsFor = (sk: MySkill) => {
   const allowed = sk.pricing ? UNITS_BY_PRICING[sk.pricing] : null;
   return allowed ? UNITS.filter((u) => allowed.includes(u.unit))
@@ -130,6 +137,8 @@ export const rs = StyleSheet.create({
   suggest: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: '#FFF7D6' },
   suggestText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.poppinsBold, color: '#111827' },
   rateRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  // Buying for customers: apart from the fare above it — it's not a price.
+  buyRow: { paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
   money: { flexDirection: 'row', alignItems: 'center', width: 96, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 10, backgroundColor: '#F9FAFB' },
   dollar: { fontSize: 15, fontFamily: Fonts.poppinsSemiBold, color: '#6B7280' },
   moneyInput: { flex: 1, paddingVertical: 9, paddingLeft: 4, fontSize: 15, fontFamily: Fonts.poppinsSemiBold, color: '#111827' },

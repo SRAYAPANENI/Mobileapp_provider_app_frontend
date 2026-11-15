@@ -60,7 +60,7 @@ export function purchaseSummary(detail: DetailLike): string | null {
   if (!detail?.pickup_purchase) return null;
   if (detail.pickup_purchase === 'BUY_FOR_ME') {
     return detail.purchase_limit != null
-      ? `Buy it for the customer — up to $${Number(detail.purchase_limit).toFixed(2)} on items`
+      ? `Buy it for the customer: you pay up to $${Number(detail.purchase_limit).toFixed(2)} at the store — paid back with a 5% shopping fee when it's delivered`
       : 'Buy it for the customer';
   }
   return 'Already paid — just collect it';

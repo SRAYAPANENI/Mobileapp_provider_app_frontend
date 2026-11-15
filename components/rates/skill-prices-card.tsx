@@ -6,7 +6,7 @@ import { MySkill, PriceChange, useSaveSkillPrices } from '@/services/queries/pro
 import React, { useEffect, useState } from 'react';
 import { ChevronDown, ChevronUp, Sparkles } from 'lucide-react-native';
 import { ActivityIndicator, TextInput, TouchableOpacity, View } from 'react-native';
-import { Notify, TRIP_EXTRAS, Unit, priceText, rs, tripExample, unitsFor } from './shared';
+import { BUY_CAP, Notify, TRIP_EXTRAS, Unit, priceText, rs, tripExample, unitsFor } from './shared';
 
 type Prices = Partial<Record<Unit, string>>;
 const asPrices = (rates: ProviderRate[]): Prices =>
@@ -19,10 +19,11 @@ const samePrices = (a: Prices, b: Prices, units: { unit: Unit }[]) => units.ever
   return x === y || (x !== '' && y !== '' && Number(x) === Number(y));
 });
 const PER: Record<Unit, string> = { HOUR: 'hour', VISIT: 'visit', DAY: 'day', NIGHT: 'night', WEEK: 'week', MONTH: 'month',
-  TRIP_BASE: 'trip', TRIP_MILE: 'mile', TRIP_BOX: 'box', TRIP_TRUNK: 'car trunk', TRIP_VAN: 'van', TRIP_WAIT: 'min' };
+  TRIP_BASE: 'trip', TRIP_MILE: 'mile', TRIP_BOX: 'box', TRIP_TRUNK: 'car trunk', TRIP_VAN: 'van', TRIP_WAIT: 'min', TRIP_BUY: 'shop' };
 /** How a price on file reads: "$6 base", "$1.5/mile", "$40/night". */
 const onFileLabel = (unit: Unit, amount: string) => (unit === 'TRIP_BASE' ? `$${amount} base`
   : unit === 'TRIP_WAIT' ? `waiting $${amount}/min`
+  : unit === BUY_CAP ? `buys up to $${amount}`
   : TRIP_EXTRAS.includes(unit) ? `${PER[unit]} +$${amount}` : `$${amount}/${PER[unit]}`);
 
 interface Props {
@@ -109,9 +110,11 @@ export const SkillPricesCard = React.memo(function SkillPricesCard({ sk, rates, 
     });
   };
 
-  const onFileText = units.filter(({ unit }) => onFile[unit] != null)
-    .map(({ unit }) => onFileLabel(unit, onFile[unit]!)).join(units.some((u) => u.unit === 'TRIP_BASE') ? ' + ' : ' · ')
+  // Buying isn't part of the fare: said after it ("$6 base + $1.5/mile · buys up to $80").
+  const priced = units.filter(({ unit }) => onFile[unit] != null && unit !== BUY_CAP)
+    .map(({ unit }) => onFileLabel(unit, onFile[unit]!)).join(isTrip ? ' + ' : ' · ')
     || (units.some((u) => u.unit === 'HOUR') && hourlyHint ? `Uses your usual $${hourlyHint}/hour` : 'No prices set');
+  const onFileText = onFile[BUY_CAP] != null ? `${priced} · ${onFileLabel(BUY_CAP, onFile[BUY_CAP]!)}` : priced;
 
   return (
     <View style={rs.card}>
@@ -133,13 +136,14 @@ export const SkillPricesCard = React.memo(function SkillPricesCard({ sk, rates, 
         </View>
       )}
       {units.map(({ unit, label, hint }) => (
-        <View key={unit} style={rs.rateRow}>
+        <View key={unit} style={[rs.rateRow, unit === BUY_CAP && rs.buyRow]}>
           <View style={{ flex: 1 }}>
             <ThemedText style={rs.item}>{label}</ThemedText>
             <ThemedText style={rs.hint}>{unit === 'TRIP_WAIT' && waitRules
               ? `${waitRules.free_minutes} min free at the pickup and at the drop-off, then up to ${waitRules.max_minutes} min in all. Empty: waiting is free. Typical: $0.30–$0.50`
               : hint}</ThemedText>
-            {typing === unit && <YouKeep amount={draft[unit] ?? ''} />}
+            {/* Shopping paid back isn't earnings: no fee on it, nothing to keep. */}
+            {typing === unit && unit !== BUY_CAP && <YouKeep amount={draft[unit] ?? ''} />}
           </View>
           <View style={rs.money}>
             <ThemedText style={rs.dollar}>$</ThemedText>
@@ -147,7 +151,7 @@ export const SkillPricesCard = React.memo(function SkillPricesCard({ sk, rates, 
               style={rs.moneyInput}
               keyboardType="decimal-pad"
               // Empty per hour uses the usual hourly rate (set above).
-              placeholder={unit === 'HOUR' && hourlyHint ? hourlyHint : '—'}
+              placeholder={unit === 'HOUR' && hourlyHint ? hourlyHint : unit === BUY_CAP ? 'Off' : '—'}
               placeholderTextColor="#9CA3AF"
               value={draft[unit] ?? ''}
               onChangeText={(t) => edit((p) => ({ ...p, [unit]: priceText(t) }))}

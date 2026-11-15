@@ -128,6 +128,7 @@ interface ApiJob {
 // What each payout was for (docs/MONEY_RULES_DESIGN.md §11–12).
 const PAYOUT_KIND: Record<string, string> = {
   INSPECTION_FEE: 'Visiting fee', JOB_COST: 'Job', EXTRA_WORK: 'Added work', TIP: 'Tip — all yours',
+  GOODS_ADVANCE: 'Shopping paid back',
 };
 
 /** A skill test's seconds left, ticking on its own: in Profile's state it
@@ -310,6 +311,8 @@ export default function ProfileScreen() {
   const [recentPayouts, setRecentPayouts] = useState<{
     jobId: string; jobTitle: string; amount: number; paidAt: string | null;
     purpose: string | null; recovered: number; arrivesBy: string | null;
+    /** Shopping: the receipt paid back — your own money, not earnings. */
+    paidBack: number;
   }[]>([]);
   const [payoutInfo, setPayoutInfo] = useState({ recoveryOwed: 0, payoutDays: 2 });
   const [isDashboardLinkLoading, setIsDashboardLinkLoading] = useState(false);
@@ -1184,6 +1187,7 @@ export default function ProfileScreen() {
       setRecentPayouts(data.recent_payouts.map(p => ({
         jobId: p.job_id, jobTitle: p.job_title, amount: p.amount, paidAt: p.paid_at,
         purpose: p.purpose ?? null, recovered: p.recovered ?? 0, arrivesBy: p.arrives_by ?? null,
+        paidBack: p.paid_back ?? 0,
       })));
       setPayoutInfo({ recoveryOwed: data.recovery_owed ?? 0, payoutDays: data.payout_days ?? 2 });
     } catch {
@@ -3363,6 +3367,7 @@ export default function ProfileScreen() {
                       {PAYOUT_KIND[p.purpose ?? ''] ?? 'Payout'}
                       {p.arrivesBy ? ` · in your bank by ${new Date(`${p.arrivesBy}T12:00:00`).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}` : ''}
                       {p.recovered > 0 ? ` · $${p.recovered.toFixed(2)} toward a chargeback` : ''}
+                      {p.paidBack > 0 ? ` · $${p.paidBack.toFixed(2)} receipt + $${Math.max(0, p.amount - p.paidBack).toFixed(2)} shopping fee` : ''}
                     </ThemedText>
                   </View>
                   <ThemedText style={{ fontSize: 15, lineHeight: 21, fontFamily: Fonts.poppinsBold, color: '#111827' }}>

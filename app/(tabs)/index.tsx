@@ -790,6 +790,10 @@ export default function DashboardScreen() {
     selectedJob?.id, buyingForCustomer && selectedJob?.status === 'ACCEPTED' && !manageJobDetail?.pickup_confirmed_at,
   );
   const goodsError = buyingForCustomer ? goodsAmountError(goodsAmountText, manageJobDetail?.purchase_limit) : null;
+  // A business's job: who paid the store is who's paid back — the member's
+  // own money comes back to them, the business's card to the business.
+  const businessShop = buyingForCustomer && !!(selectedJob as any)?.businessName;
+  const [paidWith, setPaidWith] = useState<'OWN' | 'COMPANY' | null>(null);
   const orderCollected = isOrderCollected({ jobKind: selectedJob?.jobKind, pickup_confirmed_at: manageJobDetail?.pickup_confirmed_at });
   // From a person (any address): the item must be checked before it's taken (PickupFromPerson).
   const pickupFromPerson = manageJobDetail?.pickup_source === 'PERSON';
@@ -816,10 +820,20 @@ export default function DashboardScreen() {
     const deliveryOnItsWay = selectedJob.status === 'IN_PROGRESS' && isDelivery(selectedJob);
     if (!['ACCEPTED', 'INSPECTING', 'INVOICE_PENDING'].includes(selectedJob.status) && !deliveryOnItsWay) return;
     let cancelled = false;
+    // Every 3 s: one request at a time (a slow network used to stack them),
+    // and no redraw when nothing changed — each one redrew all of Home, which
+    // is what made the Service Room stutter and feel stuck.
+    let inFlight = false;
+    let lastSeen = '';
     const poll = async () => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const detail = await SkoFyApi.jobs.get(selectedJob.id);
         if (cancelled) return;
+        const seen = JSON.stringify(detail);
+        if (seen === lastSeen) return;
+        lastSeen = seen;
         setManageJobDetail(detail);
         // The outer branch logic below keys off selectedJob.status, which
         // comes from the /jobs/active list — only refreshed on mount/tab-
@@ -844,6 +858,8 @@ export default function DashboardScreen() {
         }
       } catch {
         // transient — keep showing last known values
+      } finally {
+        inFlight = false;
       }
     };
     poll();
@@ -938,6 +954,10 @@ export default function DashboardScreen() {
       appAlert.show('warning', 'Check the Item First', 'Tick the three checks — or tap "Can\'t take it".');
       return;
     }
+    if (businessShop && !paidWith) {
+      appAlert.show('warning', 'How Did You Pay?', "Choose your own money or the business's card — it's paid back to whoever paid.");
+      return;
+    }
     const coords = await currentCoords();
     if (!coords) {
       appAlert.show('error', 'Location Required', 'Turn on location to confirm pickup.');
@@ -950,11 +970,13 @@ export default function DashboardScreen() {
         buyingForCustomer ? parseGoodsAmount(goodsAmountText) : undefined,
         pickupFromPerson && personItemChecked,
         pickupFromPerson ? personChecksVersion : undefined,
+        businessShop ? paidWith ?? undefined : undefined,
       );
       const detail = await SkoFyApi.jobs.get(selectedJob.id);
       setManageJobDetail(detail);
       setPickupPhoto(null);
       setGoodsAmountText('');
+      setPaidWith(null);
       setPersonItemChecked(false);
     } catch (err: any) {
       if (err?.error_code === 'NOT_AT_LOCATION') {
@@ -2553,6 +2575,26 @@ const filteredJobs = jobs.filter((job) => {
                         {!!goodsAmountText && !!goodsError && (
                           <ThemedText style={[styles.completeDisclaimer, { color: '#B45309' }]}>{goodsError}</ThemedText>
                         )}
+                        {businessShop && (
+                          <View style={styles.paidWithRow}>
+                            {([['OWN', 'My own money'], ['COMPANY', "The business's card"]] as const).map(([key, label]) => (
+                              <TouchableOpacity
+                                key={key}
+                                style={[styles.paidWithChip, paidWith === key && styles.paidWithChipOn]}
+                                onPress={() => setPaidWith(key)}
+                              >
+                                <ThemedText style={[styles.paidWithText, paidWith === key && styles.paidWithTextOn]}>{label}</ThemedText>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        )}
+                        {businessShop && paidWith && (
+                          <ThemedText style={styles.completeDisclaimer}>
+                            {paidWith === 'OWN'
+                              ? 'Paid back to you, with the shopping fee, when the delivery is done.'
+                              : `Paid back to ${(selectedJob as any).businessName}, with the shopping fee.`}
+                          </ThemedText>
+                        )}
                       </>
                     )}
                     {pickupPhoto ? (
@@ -3958,6 +4000,11 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.poppinsBold,
     color: '#EF4444',
   },
+  paidWithRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  paidWithChip: { flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center', backgroundColor: '#fff' },
+  paidWithChipOn: { backgroundColor: '#FFFBEB', borderColor: '#FFCE48' },
+  paidWithText: { fontSize: 13, lineHeight: 18, fontFamily: Fonts.poppins, color: '#374151' },
+  paidWithTextOn: { fontFamily: Fonts.poppinsBold, color: '#111827' },
   pickupPhotoBtn: {
     flexDirection: 'row',
     alignItems: 'center',

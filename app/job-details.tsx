@@ -9,7 +9,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft, MapPin, Clock, Briefcase, Star, ShieldCheck, Play, Navigation, Share2, Lock, Zap, XCircle, X, CheckCircle2, User, Home, Users, Package } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
-import Svg, { Circle, G, Text as SvgText, LinearGradient, Stop, Defs } from 'react-native-svg';
+import Svg, { Circle, LinearGradient, Stop, Defs } from 'react-native-svg';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import MapView, { Marker, PROVIDER_GOOGLE, Polyline } from 'react-native-maps';
@@ -92,30 +92,13 @@ const SkillMatchCircle = ({ percentage, styles }: { percentage: number; styles: 
           fill="none"
           transform={`rotate(-90, ${center}, ${center})`}
         />
-        <G>
-          <SvgText
-            x={center}
-            y={center - 5}
-            textAnchor="middle"
-            fontSize="10"
-            fontFamily={Fonts.poppins}
-            fill="#6B7280"
-          >
-            Skill Match:
-          </SvgText>
-          <SvgText
-            x={center}
-            y={center + 15}
-            textAnchor="middle"
-            fontSize="22"
-            fontWeight="bold"
-            fontFamily={Fonts.poppinsBold}
-            fill="#111827"
-          >
-            {percentage}%
-          </SvgText>
-        </G>
       </Svg>
+      {/* The label in the app's own text, centred on the ring: SVG text
+          ignores Poppins on Android and split "100" from "%". */}
+      <View style={[styles.skillMatchLabel, { width: size, height: size }]} pointerEvents="none">
+        <Text style={styles.skillMatchCaption}>Skill match</Text>
+        <Text style={styles.skillMatchValue} numberOfLines={1} adjustsFontSizeToFit>{`${Math.round(percentage)}%`}</Text>
+      </View>
       <Text style={styles.skillMeterText}>
         Recommended based on your Skill-O-Meter data
       </Text>
@@ -760,12 +743,16 @@ export default function JobDetailsScreen() {
               {userLocation && mapRegion && mapSize.width > 0 && (() => {
                 const pos = projectToScreen(userLocation.latitude, userLocation.longitude, mapRegion, mapSize.width, mapSize.height);
                 return (
-                  <View pointerEvents="none" style={[styles.skofyMarkerContainer, { position: 'absolute', left: pos.x - 20, top: pos.y - 20 }]}>
-                    <Image
-                      source={require('@/assets/images/icon-mark.png')}
-                      style={styles.skofyMarkerIcon}
-                      contentFit="contain"
-                    />
+                  // "You are here": the logo clipped to a round dot with a
+                  // white edge, in a soft halo — centred on the position.
+                  <View pointerEvents="none" style={[styles.skofyMarkerContainer, { position: 'absolute', left: pos.x - 22, top: pos.y - 22 }]}>
+                    <View style={styles.skofyMarkerDot}>
+                      <Image
+                        source={require('@/assets/images/icon-mark.png')}
+                        style={styles.skofyMarkerIcon}
+                        contentFit="cover"
+                      />
+                    </View>
                   </View>
                 );
               })()}
@@ -795,7 +782,7 @@ export default function JobDetailsScreen() {
               <Briefcase size={20} color="#FFCE48" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.employerName}>Budget Range</Text>
+              <Text style={styles.employerName}>{job.upfront ? 'Your price' : 'Budget Range'}</Text>
               <Text style={styles.statText}>{job.rate} · {job.employer.jobsCompleted} applicants</Text>
             </View>
           </View>
@@ -812,15 +799,25 @@ export default function JobDetailsScreen() {
           </View>
 
           <View style={styles.bulletsContainerDetailed}>
-            {job.requirements.map((req: string, index: number) => (
-              <View key={index} style={styles.bulletRow}>
-                <View style={styles.bulletDot} />
-                <Text style={styles.bulletText}>{req}</Text>
+            {/* What to do or collect — the item, its worth, what to buy —
+                stands out: it's what the job is. */}
+            {job.requirements.length > 0 && (
+              <View style={styles.keyFacts}>
+                {job.requirements.map((req: string, index: number) => (
+                  <View key={index} style={styles.keyFactRow}>
+                    <Package size={16} color="#1D4ED8" style={{ marginTop: 2 }} />
+                    <Text style={styles.keyFactText}>{req}</Text>
+                  </View>
+                ))}
               </View>
-            ))}
-            <Text style={[styles.jobDescriptionText, { marginTop: 12 }]}>
-              {job.description}
-            </Text>
+            )}
+            {/* The customer's own words, labelled as theirs. */}
+            {!!job.description?.trim() && (
+              <View style={styles.customerNote}>
+                <Text style={styles.customerNoteLabel}>From the customer</Text>
+                <Text style={styles.customerNoteText}>{job.description}</Text>
+              </View>
+            )}
           </View>
         </Animated.View>
 
@@ -1133,7 +1130,9 @@ export default function JobDetailsScreen() {
         animationType="slide"
         onClose={() => setShowBidModal(false)}
       >
-        <KeyboardAvoidingView style={styles.viewerOverlay} behavior="padding" automaticOffset>
+        {/* The sheet sits at the bottom in the normal layout (not absolute),
+            so the keyboard's padding lifts it above the keyboard. */}
+        <KeyboardAvoidingView style={styles.sheetOverlay} behavior="padding" automaticOffset>
           <View style={[fitBottom(styles.bidSheet, bottomInset), { backgroundColor: themeColors.background }]}>
             <View style={styles.bidSheetHandle} />
             <Text style={styles.bidSheetTitle}>Apply to This Job</Text>
@@ -1496,35 +1495,71 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     lineHeight: 16,
     fontFamily: Fonts.poppinsBold,
   },
-  bulletRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 6,
-  },
-  bulletDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: '#111827',
-    marginTop: 7,
-    marginRight: 8,
-  },
-  bulletText: {
-    fontSize: 13,
-    fontFamily: Fonts.poppins,
-    color: t.textSecondary,
-    lineHeight: 20,
-    flex: 1,
-  },
-  jobDescriptionText: {
-    fontSize: 13,
-    fontFamily: Fonts.poppins,
-    color: t.textSecondary,
-    lineHeight: 20,
-  },
   skillMatchContainer: {
     alignItems: 'center',
     width: 120,
+  },
+  // The job's key facts — same look as the service room's job box.
+  keyFacts: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 14,
+    padding: 14,
+    gap: 8,
+  },
+  keyFactRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  keyFactText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+    fontFamily: Fonts.poppinsSemiBold,
+    color: '#1E3A8A',
+  },
+  customerNote: {
+    marginTop: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#FFCE48',
+    backgroundColor: '#FFFBEB',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  customerNoteLabel: {
+    fontSize: 11,
+    lineHeight: 15,
+    fontFamily: Fonts.poppinsSemiBold,
+    color: '#92400E',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  customerNoteText: {
+    marginTop: 2,
+    fontSize: 14,
+    lineHeight: 20,
+    fontFamily: Fonts.poppins,
+    color: '#111827',
+  },
+  skillMatchLabel: {
+    position: 'absolute',
+    top: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  skillMatchCaption: {
+    fontSize: 10,
+    lineHeight: 14,
+    fontFamily: Fonts.poppins,
+    color: t.textSecondary,
+  },
+  skillMatchValue: {
+    fontSize: 22,
+    lineHeight: 28,
+    fontFamily: Fonts.poppinsBold,
+    color: t.textPrimary,
+    paddingHorizontal: 14,
   },
   skillMeterText: {
     fontSize: 9,
@@ -1756,6 +1791,12 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  // A bottom sheet's backdrop: dimmed, the sheet at the bottom.
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
   viewerContent: {
     width: '100%',
     height: '100%',
@@ -1853,24 +1894,32 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     alignItems: 'center',
   },
   gateActionText: { fontSize: 14, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
+  // The halo around "you are here".
   skofyMarkerContainer: {
-    width: 40,
-    height: 40,
-    backgroundColor: t.card,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 206, 72, 0.28)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  skofyMarkerDot: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    overflow: 'hidden',
+    borderWidth: 2.5,
+    borderColor: '#fff',
+    backgroundColor: '#FFCE48',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 5,
-    borderWidth: 2,
-    borderColor: '#FFCE48',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 4,
   },
   skofyMarkerIcon: {
-    width: 28,
-    height: 28,
+    width: '100%',
+    height: '100%',
   },
   customerMarkerContainer: {
     alignItems: 'center',
@@ -1960,10 +2009,7 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     borderTopRightRadius: 28,
     padding: 24,
     paddingBottom: 40,
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    width: '100%',
   },
   bidSheetHandle: {
     width: 40,
