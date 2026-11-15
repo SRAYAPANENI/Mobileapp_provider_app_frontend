@@ -1,10 +1,10 @@
 import { YouKeep } from '@/components/you-keep';
 import { ThemedText } from '@/components/themed-text';
 import { useDraft } from '@/hooks/use-draft';
-import { ProviderRate, WaitRules } from '@/services/api';
+import { ProviderRate, SkoFyApi, WaitRules } from '@/services/api';
 import { MySkill, PriceChange, useSaveSkillPrices } from '@/services/queries/provider';
 import React, { useEffect, useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, Sparkles } from 'lucide-react-native';
 import { ActivityIndicator, TextInput, TouchableOpacity, View } from 'react-native';
 import { Notify, TRIP_EXTRAS, Unit, priceText, rs, tripExample, unitsFor } from './shared';
 
@@ -56,6 +56,22 @@ export const SkillPricesCard = React.memo(function SkillPricesCard({ sk, rates, 
   }, [unsaved, draft, drafts, sk.skill_id]);
   const [typing, setTyping] = useState<Unit | null>(null);
   const save = useSaveSkillPrices();
+  const isTrip = units.some((u) => u.unit === 'TRIP_BASE');
+  // A trip fare to start from: what providers nearby charge, or a typical one.
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestion, setSuggestion] = useState<string | null>(null);
+  const suggestFare = async () => {
+    setSuggesting(true);
+    try {
+      const tip = await SkoFyApi.hosting.suggestTripFare();
+      edit((p) => ({ ...p, TRIP_BASE: String(tip.base), TRIP_MILE: String(tip.per_mile) }));
+      setSuggestion(`${tip.text}. It's your price — change it to anything you like, then save.`);
+    } catch (err: any) {
+      notify('error', 'Could not suggest', err?.message ?? 'Try again in a moment.');
+    } finally {
+      setSuggesting(false);
+    }
+  };
 
   const onSave = () => {
     // Checked first, so a bad box stops the save before anything is sent.
@@ -107,6 +123,15 @@ export const SkillPricesCard = React.memo(function SkillPricesCard({ sk, rates, 
         {expanded ? <ChevronUp size={20} color="#6B7280" /> : <ChevronDown size={20} color="#6B7280" />}
       </TouchableOpacity>
       {expanded && <>
+      {isTrip && (
+        <View style={[rs.row, { marginTop: 4 }]}>
+          <ThemedText style={[rs.hint, { flex: 1 }]}>{suggestion ?? 'Not sure what to charge? See what others nearby charge.'}</ThemedText>
+          <TouchableOpacity style={rs.suggest} onPress={suggestFare} disabled={suggesting}>
+            {suggesting ? <ActivityIndicator size="small" color="#111827" /> : <Sparkles size={13} color="#111827" />}
+            <ThemedText style={rs.suggestText}>{suggesting ? 'Suggesting…' : 'Suggest for me'}</ThemedText>
+          </TouchableOpacity>
+        </View>
+      )}
       {units.map(({ unit, label, hint }) => (
         <View key={unit} style={rs.rateRow}>
           <View style={{ flex: 1 }}>

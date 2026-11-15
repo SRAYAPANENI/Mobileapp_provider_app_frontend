@@ -1762,6 +1762,11 @@ export const SkoFyApi = {
       request('/hosting/me/rates', { method: 'PUT', body: JSON.stringify({ skill_id: skillId, unit, amount }) }) as any,
     removeRate: async (skillId: string, unit: ProviderRate['unit']): Promise<Hosting> =>
       request(`/hosting/me/rates?skill_id=${encodeURIComponent(skillId)}&unit=${unit}`, { method: 'DELETE' }) as any,
+    /** Setting a trip fare: a base and per mile to start from — what providers
+     * nearby charge, or a typical local fare. Only a hint: the price is theirs. */
+    suggestTripFare: async (): Promise<{
+      base: number; per_mile: number; providers: number; based_on: 'nearby' | 'typical'; text: string;
+    }> => request('/hosting/me/rates/trip-suggestion') as any,
   },
 
   // ── The Dodorez guarantee (docs/MONEY_RULES_DESIGN.md §12) ───────────────

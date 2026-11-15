@@ -127,6 +127,29 @@ interface JobFeedCardProps {
 
 /** One job in the Home feed. Its own memoised component: as an inline render
  * function every card redrew with any change on Home (docs/APP_DATA_ARCHITECTURE.md). */
+const UNIT_WORD: Record<string, string> = { HOUR: 'hour', DAY: 'day', NIGHT: 'night', VISIT: 'visit' };
+
+/** A feed card's price, for a job priced up front (a trip, hours, nights…):
+ * the total you applied with; else your own price from your rates, with how
+ * it's made up; else a nudge to set one. A quoted job keeps its budget. */
+function feedPrice(j: any): { fee: string; feeLabel?: string; feeDetail?: string; priceMissing?: boolean } {
+  if (!(j.steps ?? []).includes('PAY_UPFRONT')) {
+    return { fee: j.budget_min && j.budget_max ? `$${j.budget_min}–$${j.budget_max}` : j.budget_min ? `From $${j.budget_min}` : 'Negotiable' };
+  }
+  if (j.proposed_fee) return { fee: `$${Number(j.proposed_fee).toFixed(2)} total`, feeLabel: 'Your price' };
+  if (j.my_price) {
+    const fee = `$${Number(j.my_price.total).toFixed(2)}`;
+    // The breakdown only when it says more than the total itself.
+    const detail = j.my_price.text && j.my_price.text !== fee ? j.my_price.text : undefined;
+    return { fee, feeLabel: 'Your price', feeDetail: detail };
+  }
+  // `fee` is read elsewhere too (job details' rate): never left blank.
+  if (j.price_missing) return { fee: 'Set your price', feeLabel: 'Your price', priceMissing: true };
+  return {
+    fee: j.shape?.pricing_unit === 'TRIP' ? 'Your fare for this trip' : `Your price per ${UNIT_WORD[j.shape?.pricing_unit] ?? 'unit'}`,
+  };
+}
+
 const JobFeedCard = React.memo(function JobFeedCard({
   job, index, userCoords, activeJobId, hasSkills, verifiedSkillNames, themeColors,
   acceptButtonStyle, urgentBadgeStyle, isTeamJob, onManage, onApply,
@@ -322,8 +345,17 @@ const JobFeedCard = React.memo(function JobFeedCard({
 
       <View style={styles.cardFooter}>
         <View>
-          <ThemedText style={styles.feeLabel}>Service Fee</ThemedText>
-          <ThemedText style={styles.feeValue}>{job.fee}</ThemedText>
+          <ThemedText style={styles.feeLabel}>{job.feeLabel ?? 'Service Fee'}</ThemedText>
+          {job.priceMissing ? (
+            <TouchableOpacity onPress={() => router.push('/rates-and-hosting' as any)} accessibilityRole="link">
+              <ThemedText style={styles.feeSetPrice}>Set your price ›</ThemedText>
+            </TouchableOpacity>
+          ) : (
+            <ThemedText style={styles.feeValue}>{job.fee}</ThemedText>
+          )}
+          {!!job.feeDetail && (
+            <ThemedText style={styles.feeDetail} numberOfLines={2}>{job.feeDetail}</ThemedText>
+          )}
         </View>
         <View style={styles.cardActions}>
           <TouchableOpacity
@@ -460,12 +492,10 @@ export default function DashboardScreen() {
           : new Date(j.created_at).getTime() + 9 * 3600000,
         budgetMin: j.budget_min,
         budgetMax: j.budget_max,
-        // Priced up front: your total once you've applied, else your rate's unit.
-        fee: (j.steps ?? []).includes('PAY_UPFRONT')
-          ? (j.proposed_fee ? `$${Number(j.proposed_fee).toFixed(2)} total`
-            : j.shape?.pricing_unit === 'TRIP' ? 'Your fare for this trip'
-            : `Your price per ${({ HOUR: 'hour', DAY: 'day', NIGHT: 'night', VISIT: 'visit' } as Record<string, string>)[j.shape?.pricing_unit] ?? 'unit'}`)
-          : j.budget_min && j.budget_max ? `$${j.budget_min}–$${j.budget_max}` : j.budget_min ? `From $${j.budget_min}` : 'Negotiable',
+        // Priced up front: your total once you've applied; before that your
+        // own price from your rates (server: RateCardService.prices_for_feed),
+        // or "Set your price" when your rates don't cover it yet.
+        ...feedPrice(j),
         skills: j.skills ?? [],
         skillRefs: j.skill_refs ?? [],
         // Previously hardcoded false — ProviderJobView didn't carry images
@@ -3442,6 +3472,21 @@ const styles = StyleSheet.create({
     lineHeight: 23,
     fontFamily: Fonts.poppinsBold,
     color: '#111827',
+  },
+  // How their price is made up — "$15.00/hour × 5 hours = $75.00".
+  feeDetail: {
+    fontSize: 11,
+    lineHeight: 16,
+    fontFamily: Fonts.poppins,
+    color: '#6B7280',
+    maxWidth: 190,
+  },
+  // Their rates don't cover this job yet: one tap to Rates & hosting.
+  feeSetPrice: {
+    fontSize: 15,
+    lineHeight: 23,
+    fontFamily: Fonts.poppinsSemiBold,
+    color: '#B45309',
   },
   cardActions: {
     flexDirection: 'row',
