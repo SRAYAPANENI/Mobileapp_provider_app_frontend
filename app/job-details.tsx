@@ -5,7 +5,7 @@ import { showDialog } from '@/components/alert-host';
 import { purchaseSummary } from '@/services/pickupDelivery';
 import React, { useCallback, useState, useEffect } from 'react';
 import { StyleSheet, View, ScrollView, TouchableOpacity, SafeAreaView, Platform, Dimensions, ActivityIndicator, Share, Pressable, LayoutChangeEvent } from 'react-native';
-import { Text, TextInput } from '@/components/scaled-text';
+import { Text } from '@/components/scaled-text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft, MapPin, Clock, Briefcase, Star, ShieldCheck, Play, Navigation, Share2, Lock, Zap, XCircle, X, CheckCircle2, User, Home, Users, Package } from 'lucide-react-native';
 import { Image } from 'expo-image';
@@ -19,16 +19,14 @@ import { checkFeasibility, FeasibilityResult, calculateDistance, kmToMiles, esti
 import { resolveApplyGate } from '@/services/applyErrorGate';
 import { SkoFyApi } from '@/services/api';
 import Animated, { FadeInUp, FadeInRight } from 'react-native-reanimated';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { getJobById, JOBS_LIST } from '@/data/jobsData';
-import { fitBottom, useBottomInset } from '@/hooks/use-bottom-inset';
+import { useBottomInset } from '@/hooks/use-bottom-inset';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMyBusiness } from '@/hooks/use-my-business';
 import { inHours } from '@/components/business/work-hours';
 import { usePullRefresh } from '@/hooks/use-pull-refresh';
 
 import { Popup } from '@/components/popup';
-import { useButtonRowFit } from '@/hooks/use-button-row-fit';
 const { width } = Dimensions.get('window');
 
 type MapRegion = { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
@@ -143,7 +141,6 @@ function TimeLeft({ deadline }: { deadline: number }) {
 }
 
 export default function JobDetailsScreen() {
-  const bidFit = useButtonRowFit();
   const bottomInset = useBottomInset();
   const topInset = useSafeAreaInsets().top;
   const { id, autoApply } = useLocalSearchParams<{ id: string; autoApply?: string }>();
@@ -187,11 +184,8 @@ export default function JobDetailsScreen() {
   } | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [hiredSuccess, setHiredSuccess] = useState(false);
-  // Bidding is retired — applying no longer proposes a fee. This modal now
-  // just confirms + collects an optional message before submitting.
-  const [showBidModal, setShowBidModal] = useState(false);
-  const [bidMessage, setBidMessage] = useState('');
-  const [isSubmittingBid, setIsSubmittingBid] = useState(false);
+  // Applying is one tap — nothing to fill in (submitApplication).
+  const [isApplying, setIsApplying] = useState(false);
   // App-styled replacement for the two gate Alert.alert()s below (skill test
   // / identity verification required) — a plain OS dialog looked completely
   // out of place next to the rest of this screen's branded modals.
@@ -477,7 +471,23 @@ export default function JobDetailsScreen() {
       handleDirectAccept();
       return;
     }
-    setShowBidModal(true);
+    // A job priced up front needs their own price for it first: that's what
+    // the customer sees and pays (the server refuses without one).
+    if (job?.upfront && !job.upfront.myPrice) {
+      setGateModal({
+        title: 'Set your price first',
+        message: job.upfront.unitWord === 'trip'
+          ? 'Add your base fare and price per mile for Pickup & Delivery in Rates & hosting, then apply.'
+          : `Add your price per ${job.upfront.unitWord} for this skill in Rates & hosting, then apply.`,
+        actionLabel: 'Set my price',
+        onAction: () => { setGateModal(null); router.push('/rates-and-hosting' as any); },
+      });
+      return;
+    }
+    // Applying sends straight away, as Apply Job on the feed card does:
+    // nothing to fill in (no fee to propose, no message — the customer
+    // chooses from the profile, price and rating).
+    submitApplication();
   };
 
   const [isAcceptingDirect, setIsAcceptingDirect] = useState(false);
@@ -527,11 +537,11 @@ export default function JobDetailsScreen() {
     }
   }, [autoApply, isLoading, job]);
 
-  const handleSubmitBid = async () => {
-    setIsSubmittingBid(true);
+  const submitApplication = async () => {
+    if (isApplying || !job) return;
+    setIsApplying(true);
     try {
-      await SkoFyApi.jobs.bid(job.id, bidMessage.trim() || undefined);
-      setShowBidModal(false);
+      await SkoFyApi.jobs.bid(job.id);
       setShowSuccessModal(true);
       setTimeout(() => {
         setShowSuccessModal(false);
@@ -540,13 +550,11 @@ export default function JobDetailsScreen() {
     } catch (err: any) {
       const msg = err?.message ?? '';
       if (msg.toLowerCase().includes('already') || err?.error_code === 'ALREADY_BID') {
-        setShowBidModal(false);
         showDialog('Already Applied', 'You have already applied for this job.');
         return;
       }
       const gate = resolveApplyGate(err);
       if (gate) {
-        setShowBidModal(false);
         setGateModal({
           title: gate.title,
           message: gate.message,
@@ -557,7 +565,7 @@ export default function JobDetailsScreen() {
         showDialog('Failed', msg || 'Could not apply for this job. Please try again.');
       }
     } finally {
-      setIsSubmittingBid(false);
+      setIsApplying(false);
     }
   };
 
@@ -967,7 +975,8 @@ export default function JobDetailsScreen() {
           const isApplied = !job.isOngoing && !job.isClosed && !job.isLockedByOther && !!job.myApplicationId;
           const isLocked = !job.isOngoing && !job.isClosed && job.isLockedByOther;
           const isConflictLocked = !job.isOngoing && !job.isClosed && !job.isLockedByOther && !job.myApplicationId && feasibility?.status === 'NOT_FEASIBLE';
-          const disabled = job.isOngoing ? false : (isApplied || isLocked || isConflictLocked || job.isClosed || isAcceptingDirect);
+          const busy = isAcceptingDirect || isApplying;
+          const disabled = job.isOngoing ? false : (isApplied || isLocked || isConflictLocked || job.isClosed || busy);
           return (
             <View style={[styles.footerRow, teamJob && styles.footerItem]}>
               {/* Applied and waiting: they can take it back (for example before
@@ -1048,7 +1057,7 @@ export default function JobDetailsScreen() {
                 }}
                 disabled={disabled}
               >
-                {isAcceptingDirect ? (
+                {busy ? (
                   <ActivityIndicator size="small" color="#111827" />
                 ) : job.isOngoing ? (
                   <ShieldCheck size={20} color="#111827" />
@@ -1066,6 +1075,7 @@ export default function JobDetailsScreen() {
                   (isLocked || isConflictLocked || job.isClosed) && styles.conflictButtonText,
                 ]}>
                   {isAcceptingDirect ? 'Accepting…' :
+                    isApplying ? 'Applying…' :
                     job.isOngoing ? 'Enter Service Room' :
                     isApplied ? 'Applied ✓' :
                     job.isClosed ? 'No Longer Available' :
@@ -1128,73 +1138,8 @@ export default function JobDetailsScreen() {
         </View>
       </Popup>
 
-      {/* Bid Submission Modal */}
-      <Popup closeOn={isSubmittingBid ? 'none' : 'back'}
-        visible={showBidModal}
-        transparent
-        animationType="slide"
-        onClose={() => setShowBidModal(false)}
-      >
-        {/* The sheet sits at the bottom in the normal layout (not absolute),
-            so the keyboard's padding lifts it above the keyboard. */}
-        <KeyboardAvoidingView style={styles.sheetOverlay} behavior="padding" automaticOffset>
-          <View style={[fitBottom(styles.bidSheet, bottomInset), { backgroundColor: themeColors.background }]}>
-            <View style={styles.bidSheetHandle} />
-            <Text style={styles.bidSheetTitle}>Apply to This Job</Text>
-            <Text style={styles.bidSheetJob} numberOfLines={2}>{job?.title}</Text>
-            {job?.upfront ? (
-              job.upfront.myPrice ? (
-                <Text style={styles.bidFieldLabel}>
-                  Your price: {job.upfront.myPrice.text}. The customer sees it and pays when they book you.
-                </Text>
-              ) : (
-                <TouchableOpacity onPress={() => { setShowBidModal(false); router.push('/rates-and-hosting' as any); }}>
-                  <Text style={styles.bidFieldLabel}>
-                    {job.upfront.unitWord === 'trip'
-                      ? 'Add your base fare and price per mile for Pickup & Delivery in Rates & hosting to apply — tap to set them.'
-                      : `Add your price per ${job.upfront.unitWord} for this skill in Rates & hosting to apply — tap to set it.`}
-                  </Text>
-                </TouchableOpacity>
-              )
-            ) : (
-              <Text style={styles.bidFieldLabel}>
-                No price to set yet — you'll inspect the job in person and send an invoice once you're hired.
-              </Text>
-            )}
-
-            <Text style={styles.bidFieldLabel}>Message to Customer (optional)</Text>
-            <TextInput
-              style={[styles.bidMsgInput, { color: themeColors.text, borderColor: '#E5E7EB' }]}
-              placeholder="Briefly describe your experience and why you're a good fit..."
-              placeholderTextColor="#9CA3AF"
-              multiline
-              numberOfLines={3}
-              value={bidMessage}
-              onChangeText={setBidMessage}
-              textAlignVertical="top"
-            />
-
-            <View style={[styles.bidActions, bidFit.row]}>
-              <TouchableOpacity style={[styles.bidCancelBtn, bidFit.button]} onPress={() => setShowBidModal(false)}>
-                <Text onTextLayout={bidFit.onLabelLayout} style={styles.bidCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[[styles.bidSubmitBtn, (isSubmittingBid || (job?.upfront && !job.upfront.myPrice)) && { opacity: 0.5 }], bidFit.button]}
-                onPress={handleSubmitBid}
-                disabled={isSubmittingBid || (job?.upfront && !job.upfront.myPrice)}
-              >
-                {isSubmittingBid
-                  ? <ActivityIndicator size="small" color="#111827" />
-                  : <Text onTextLayout={bidFit.onLabelLayout} style={styles.bidSubmitText}>Apply</Text>
-                }
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Popup>
-
       {/* Applied or hired: the shared dialog. It closes itself and moves on
-          (the timers in acceptDirect / submitBid); OK just closes it sooner. */}
+          (the timers in handleDirectAccept / submitApplication); OK just closes it sooner. */}
       <AppAlert
         visible={showSuccessModal}
         type="success"
@@ -2009,76 +1954,4 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     fontFamily: Fonts.poppinsSemiBold,
     flex: 1,
   },
-  bidSheet: {
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: 24,
-    paddingBottom: 40,
-    width: '100%',
-  },
-  bidSheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: t.border,
-    alignSelf: 'center',
-    marginBottom: 20,
-  },
-  bidSheetTitle: {
-    fontSize: 20,
-    lineHeight: 26,
-    fontFamily: Fonts.poppinsBold,
-    color: t.textPrimary,
-    marginBottom: 4,
-  },
-  bidSheetJob: {
-    fontSize: 13,
-    lineHeight: 19,
-    fontFamily: Fonts.poppins,
-    color: t.textSecondary,
-    marginBottom: 20,
-  },
-  bidFieldLabel: {
-    fontSize: 13,
-    lineHeight: 19,
-    fontFamily: Fonts.poppinsSemiBold,
-    color: t.textPrimary,
-    marginBottom: 8,
-  },
-  bidFeeInput: {
-    borderWidth: 1.5,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontFamily: Fonts.poppinsSemiBold,
-    fontSize: 18,
-    marginBottom: 16,
-  },
-  bidMsgInput: {
-    borderWidth: 1.5,
-    borderRadius: 14,
-    padding: 14,
-    minHeight: 90,
-    fontFamily: Fonts.poppins,
-    fontSize: 14,
-    marginBottom: 20,
-  },
-  bidActions: { flexDirection: 'row', gap: 12 },
-  bidCancelBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: t.border,
-    alignItems: 'center',
-  },
-  bidCancelText: { fontSize: 14, fontFamily: Fonts.poppinsSemiBold, color: t.textSecondary },
-  bidSubmitBtn: {
-    flex: 2,
-    paddingVertical: 14,
-    borderRadius: 14,
-    backgroundColor: '#FFCE48',
-    alignItems: 'center',
-  },
-  bidSubmitText: { fontSize: 14, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
 }); }
