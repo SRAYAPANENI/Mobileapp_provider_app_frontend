@@ -18,6 +18,7 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { reportReachable, setHealthCheck } from '@/services/server-status';
 import { queryClient } from '@/services/query-client';
+import { isOnlineNow } from '@/services/connection';
 import { afterWrite } from '@/services/queries/invalidate';
 import { File, Paths } from 'expo-file-system';
 import { API_BASE_URL } from './api-config';
@@ -256,7 +257,8 @@ async function timedFetch(url: string, init: RequestInit, ms = REQUEST_TIMEOUT_M
     reportReachable(!tunnelDown && (fromApi || !GATEWAY_DOWN.has(response.status)));
     return response;
   } catch {
-    reportReachable(false);
+    // Offline: the phone's fault, not the server's — the banner says offline.
+    if (isOnlineNow()) reportReachable(false);
     throw {
       success: false,
       error_code: controller.signal.aborted ? 'TIMEOUT' : 'NETWORK_ERROR',

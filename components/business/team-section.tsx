@@ -2,7 +2,8 @@ import { ThemedText } from '@/components/themed-text';
 import { MemberRole, Team, TeamMember, WorkHours } from '@/services/api';
 import { Clock, MoreHorizontal, UserPlus } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { TextInput, TouchableOpacity, View } from 'react-native';
+import { TouchableOpacity, View } from 'react-native';
+import { TextInput } from '@/components/scaled-text';
 import { Badge, Button, C, Field, Monogram, Row, Section, Tone, u } from './ui';
 import { defaultHours, sameHours, WorkHoursEditor } from './work-hours';
 

@@ -5,7 +5,8 @@ import { ProviderRate, SkoFyApi, WaitRules } from '@/services/api';
 import { MySkill, PriceChange, useSaveSkillPrices } from '@/services/queries/provider';
 import React, { useEffect, useState } from 'react';
 import { ChevronDown, ChevronUp, Sparkles } from 'lucide-react-native';
-import { ActivityIndicator, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, TouchableOpacity, View } from 'react-native';
+import { TextInput } from '@/components/scaled-text';
 import { BUY_CAP, Notify, TRIP_EXTRAS, Unit, priceText, rs, tripExample, unitsFor } from './shared';
 
 type Prices = Partial<Record<Unit, string>>;

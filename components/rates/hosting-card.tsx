@@ -5,7 +5,8 @@ import { MySkill, useSaveHosting } from '@/services/queries/provider';
 import * as Location from 'expo-location';
 import { Box, Home, LocateFixed, Moon, PawPrint } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { ActivityIndicator, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, TouchableOpacity, View } from 'react-native';
+import { TextInput } from '@/components/scaled-text';
 import { DOG_SIZES, ITEM_SIZES, NO_HOSTING, Notify, PET_KINDS, Stepper, Toggle, rs } from './shared';
 
 interface HostDraft { prefs: HostingPrefs; address: string; lat: number | null; lng: number | null }

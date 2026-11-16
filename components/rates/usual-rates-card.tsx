@@ -7,7 +7,8 @@ import { MIN_VISITING_FEE } from '@/services/fees';
 import { useSaveUsualRates } from '@/services/queries/provider';
 import { Sparkles } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { ActivityIndicator, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, TouchableOpacity, View } from 'react-native';
+import { TextInput } from '@/components/scaled-text';
 import { Notify, USUAL, priceText, rs } from './shared';
 
 type Usual = { fee: string; hourly: string };

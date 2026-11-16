@@ -2,7 +2,8 @@ import { ThemedText } from '@/components/themed-text';
 import { SkoFyApi } from '@/services/api';
 import { AlertTriangle, Archive, DoorClosed, Users } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { TextInput, View } from 'react-native';
+import { View } from 'react-native';
+import { TextInput } from '@/components/scaled-text';
 import { Button, C, Field, Row, Section, u } from './ui';
 
 interface Props {

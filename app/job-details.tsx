@@ -1,4 +1,5 @@
 import { CareSheetCard } from '@/components/care-sheet-card';
+import { OfflineScreen, useOfflinePage } from '@/components/offline-gate';
 import { AppAlert } from '@/components/app-alert';
 import { showDialog } from '@/components/alert-host';
 import { purchaseSummary } from '@/services/pickupDelivery';
@@ -244,7 +245,7 @@ export default function JobDetailsScreen() {
 
   // Quiet: a pull-down reload keeps the job on screen while it reloads.
   const fetchJobAndLocation = useCallback(async (quiet = false) => {
-      if (!quiet) setIsLoading(true);
+      if (!quiet) { setIsLoading(true); setLoadError(null); }   // a reload starts clean
       try {
         // Getting a GPS fix can take many seconds (cold start, indoors, etc.)
         // — it's only needed for the map/distance, not the job details
@@ -569,6 +570,10 @@ export default function JobDetailsScreen() {
       default: return '#9CA3AF';
     }
   };
+
+  // Offline with nothing loaded: the shared page; reloads when back online.
+  const offline = useOfflinePage(!!job, () => { void fetchJobAndLocation(); });
+  if (offline) return <OfflineScreen onRetry={() => { void fetchJobAndLocation(); }} />;
 
   if (loadError) {
     return (

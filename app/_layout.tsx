@@ -30,7 +30,6 @@ import UpdateRequiredGate from '@/components/update-required-gate';
 import UpdateAvailableCheck from '@/components/update-available-check';
 import SessionExpiredModal from '@/components/session-expired-modal';
 import { AlertHost } from '@/components/alert-host';
-import { ConnectionBanner } from '@/components/connection-banner';
 import '@/services/background-location'; // registers background GPS task at startup
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
@@ -160,7 +159,6 @@ export default function RootLayout() {
               </MaintenanceGate>
             </UpdateRequiredGate>
             {/* The app's dialog for showAlert() calls (components/alert-host.tsx). */}
-            <ConnectionBanner />
             <AlertHost />
             <UpdateAvailableCheck />
             <SessionExpiredModal

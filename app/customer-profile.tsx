@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { OfflineScreen, useOfflinePage } from '@/components/offline-gate';
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@/components/scaled-text';
 import { Image } from 'expo-image';
@@ -118,6 +119,7 @@ export default function CustomerProfileScreen() {
       return;
     }
     {
+      if (!quiet) setLoadError(false);   // a reload after a failed load starts clean
       try {
         const customerId = customerIdParam || (await SkoFyApi.jobs.get(jobId as string) as any).customer_id;
 
@@ -159,6 +161,10 @@ export default function CustomerProfileScreen() {
   }, [jobId, customerIdParam]);
   useEffect(() => { load(); }, [load]);
   const refreshControl = usePullRefresh(() => load(true));
+
+  // Offline with nothing loaded: the shared page; reloads when back online.
+  const offline = useOfflinePage(!!profile, () => { void load(); });
+  if (offline) return <OfflineScreen onRetry={() => { void load(); }} />;
 
   if (loading) {
     return (

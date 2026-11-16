@@ -3,7 +3,8 @@ import { Fonts } from '@/constants/theme';
 import { useUsStates } from '@/services/queries/business';
 import { Check, ChevronDown, Search, X } from 'lucide-react-native';
 import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { TextInput } from '@/components/scaled-text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, u } from './ui';
 

@@ -1,4 +1,6 @@
 import { ThemedText } from '@/components/themed-text';
+import { useOfflinePage } from '@/components/offline-gate';
+import { NoInternetState } from '@/components/no-internet-state';
 import { ThemedView } from '@/components/themed-view';
 import { TextInput } from '@/components/scaled-text';
 import { useAppAlert } from '@/components/app-alert';
@@ -24,6 +26,8 @@ export default function AccountStandingScreen() {
   const bottomInset = useBottomInset();
   const appAlert = useAppAlert();
   const [loading, setLoading] = useState(true);
+  // Loaded for real: a failed load otherwise reads as "no strikes".
+  const [loaded, setLoaded] = useState(false);
   const [strikes, setStrikes] = useState<StrikeView[]>([]);
   const [appealing, setAppealing] = useState<StrikeView | null>(null);
   const [reason, setReason] = useState('');
@@ -33,11 +37,13 @@ export default function AccountStandingScreen() {
   const load = useCallback((quiet = false) => {
     if (!quiet) setLoading(true);
     return SkoFyApi.strikes.mine()
-      .then((s) => setStrikes(s.strikes))
+      .then((s) => { setStrikes(s.strikes); setLoaded(true); })
       .catch(() => setStrikes((prev) => prev ?? []))
       .finally(() => setLoading(false));
   }, []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
+  // Offline with nothing loaded: the shared page; reloads when back online.
+  const offline = useOfflinePage(loaded, () => { void load(); });
   const refreshControl = usePullRefresh(() => load(true));
 
   const sendAppeal = async () => {
@@ -67,7 +73,9 @@ export default function AccountStandingScreen() {
         <ThemedText style={s.headerTitle}>Account standing</ThemedText>
       </View>
 
-      {loading ? (
+      {offline ? (
+        <NoInternetState onRetry={() => { void load(); }} />
+      ) : loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color="#111827" />
       ) : (
         <ScrollView refreshControl={refreshControl} contentContainerStyle={padBottom([s.body, { paddingBottom: 24 }], bottomInset)}>

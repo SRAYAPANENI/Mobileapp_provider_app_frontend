@@ -14,6 +14,8 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 import { useRefreshOnFocus } from '@/hooks/use-refresh-on-focus';
 import { useActiveJobs, useInboundJobs } from '@/services/queries/jobs';
+import { NoInternetState } from '@/components/no-internet-state';
+import { useOfflinePage } from '@/components/offline-gate';
 import { useJobAlerts, useMySkills, useProviderProfile } from '@/services/queries/provider';
 import { useAppConfig } from '@/services/queries/app-config';
 import TermsUpdatedBanner from '@/components/terms-updated-banner';
@@ -761,6 +763,9 @@ export default function DashboardScreen() {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [jobs, setJobs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Opened offline with nothing cached: the shared page. (The feed's queries
+  // also reload by themselves when back online.)
+  const offline = useOfflinePage(!isLoading, () => { void onRefresh(); });
   const [isSubmittingRating, setIsSubmittingRating] = useState(false);
 
   const selectedJob = jobs.find(j => j.id === (selectedJobId || activeJobId));
@@ -2043,6 +2048,13 @@ const filteredJobs = jobs.filter((job) => {
       >
         {teamMode ? (
           <TeamPanel state={myBusiness} />
+        ) : offline ? (
+          // Opened offline with nothing cached: the shared full page (the
+          // banner hides). The feed's queries reload by themselves when the
+          // connection returns (services/query-client.ts).
+          <View style={{ minHeight: 420 }}>
+            <NoInternetState onRetry={() => { void onRefresh(); }} />
+          </View>
         ) : isLoading ? (
           // Only reachable on a genuine first-ever open (or an unreadable
           // cache) — the mount effect above primes `jobs` from cache

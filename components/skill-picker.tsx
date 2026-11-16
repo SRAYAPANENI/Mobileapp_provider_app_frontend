@@ -5,7 +5,8 @@ import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { SkoFyApi } from '@/services/api';
 import { CheckCircle2, Circle, Search, X } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, SectionList, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, SectionList, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { TextInput } from '@/components/scaled-text';
 
 import { Popup, PopupCard } from '@/components/popup';
 /** A skill from the catalogue, with the profession and category it belongs to. */

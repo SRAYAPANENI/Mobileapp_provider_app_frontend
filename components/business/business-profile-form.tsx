@@ -1,7 +1,8 @@
 import { ThemedText } from '@/components/themed-text';
 import { Business, BusinessProfileInput } from '@/services/api';
 import React, { useState } from 'react';
-import { TextInput, TouchableOpacity, View } from 'react-native';
+import { TouchableOpacity, View } from 'react-native';
+import { TextInput } from '@/components/scaled-text';
 import { StatePicker } from './state-picker';
 import { Button, C, Field, u } from './ui';
 

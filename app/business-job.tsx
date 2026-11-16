@@ -10,7 +10,8 @@ import { setWatchedBusinessJob } from '@/services/callManager';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Calendar, Check, ChevronLeft, Eye, Map as MapIcon, MapPin, Send, User } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { TextInput } from '@/components/scaled-text';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { usePullRefresh } from '@/hooks/use-pull-refresh';
 

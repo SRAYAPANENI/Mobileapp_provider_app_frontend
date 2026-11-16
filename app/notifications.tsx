@@ -1,4 +1,6 @@
 import { Image } from 'expo-image';
+import { useOfflinePage } from '@/components/offline-gate';
+import { NoInternetState } from '@/components/no-internet-state';
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
@@ -106,6 +108,8 @@ export default function NotificationsScreen() {
   const appAlert = useAppAlert();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Offline with nothing loaded: the shared page; reloads when back online.
+  const offline = useOfflinePage(notifications.length > 0, () => { void load(); });
 
   const load = useCallback(async () => {
     try {
@@ -223,7 +227,9 @@ export default function NotificationsScreen() {
         </TouchableOpacity>
       </View>
 
-      {loading ? (
+      {offline ? (
+        <NoInternetState onRetry={() => { void load(); }} />
+      ) : loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FFCE48" />
         </View>

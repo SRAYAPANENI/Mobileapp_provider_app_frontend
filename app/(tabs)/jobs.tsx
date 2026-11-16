@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { OfflineScreen, useOfflinePage } from '@/components/offline-gate';
 import { View, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { usePullRefresh } from '@/hooks/use-pull-refresh';
@@ -323,6 +324,11 @@ export default function JobsScreen() {
   }, []);
 
   const displayJobs = tab === 'active' ? activeJobs : historyJobs;
+
+  // Offline with nothing loaded: the shared page; reloads when back online.
+  const reloadJobs = () => { active.refetch(); history.refetch(); ratings.refetch(); };
+  const offline = useOfflinePage(!!active.data, reloadJobs);
+  if (offline) return <OfflineScreen onRetry={reloadJobs} />;
 
   if (active.isPending) {
     return (

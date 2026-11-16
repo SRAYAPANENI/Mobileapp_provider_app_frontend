@@ -4,7 +4,8 @@ import { BusinessDocumentInput, BusinessDocumentKind } from '@/services/api';
 import * as DocumentPicker from 'expo-document-picker';
 import { FileCheck2, Upload } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { TextInput } from '@/components/scaled-text';
 import { Button, C, Field, u } from './ui';
 
 const KINDS: { value: BusinessDocumentKind; label: string }[] = [

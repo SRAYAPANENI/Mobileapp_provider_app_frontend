@@ -1,4 +1,6 @@
 import { NAME_PART_MAX, NameParts, fullName, hasFullName, namePayload } from '@/services/name';
+import { useOfflinePage } from '@/components/offline-gate';
+import { NoInternetState } from '@/components/no-internet-state';
 import { AppAlert } from '@/components/app-alert';
 import { showDialog } from '@/components/alert-host';
 import { isValidPassword } from '@/services/password';
@@ -267,6 +269,8 @@ export default function ProfileScreen() {
   const [skillScore, setSkillScore] = useState(0);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
   const [providerName, setProviderName] = useState('');
+  // Offline with the profile never loaded: the shared page; reloads when back online.
+  const offline = useOfflinePage(!!providerName, () => { void loadProfile(); });
   const [providerPhone, setProviderPhone] = useState('');
   const [providerBio, setProviderBio] = useState('');
   const [yearsExperience, setYearsExperience] = useState(0);
@@ -1597,7 +1601,11 @@ export default function ProfileScreen() {
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: '#F9FAFB' }]}>
-      {isProfileLoading && (
+      {offline ? (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#F9FAFB', zIndex: 999 }}>
+          <NoInternetState onRetry={() => { void loadProfile(); }} />
+        </View>
+      ) : isProfileLoading && (
         <View style={{
           position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
           backgroundColor: '#F9FAFB', zIndex: 999,

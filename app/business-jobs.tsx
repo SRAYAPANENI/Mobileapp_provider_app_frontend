@@ -8,7 +8,9 @@ import { BusinessBoard, SkoFyApi, Team, TeamActiveJob, TeamOpenJob } from '@/ser
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Briefcase, Check, ChevronLeft, Clock, Inbox, Map as MapIcon } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { TextInput } from '@/components/scaled-text';
+import { isOnlineNow } from '@/services/connection';
 import { KeyboardAwareScrollView, KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Badge, Button, C, jobStage, Monogram, Row, Section, u } from '@/components/business/ui';
 import { usePullRefresh } from '@/hooks/use-pull-refresh';
@@ -48,7 +50,8 @@ export default function BusinessJobsScreen() {
       setBoard(b);
       setTeam(t);
     } catch (err: any) {
-      appAlert.show('error', 'Could not load', err?.message ?? 'Please try again.');
+      // Offline: the banner already says so — no alert on top of it.
+      if (isOnlineNow()) appAlert.show('error', 'Could not load', err?.message ?? 'Please try again.');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
