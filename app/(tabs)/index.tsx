@@ -466,12 +466,36 @@ export default function DashboardScreen() {
   // poll with nothing new no longer redraws Home, and a failed poll keeps the
   // jobs shown instead of emptying the feed.
   const homeInView = useIsFocused();
-  const inboundQuery = useInboundJobs(homeInView ? 15_000 : false);
-  const activeQuery = useActiveJobs(homeInView ? 15_000 : false);
+  // The Service Room sheet. While it's open the feed behind it isn't seen,
+  // so its polling pauses: each poll that changed something redrew all of
+  // Home — the sheet included — mid-scroll, and the sheet stuck. It has its
+  // own 3-second poll of its job; the lists refresh when it closes.
+  const [showManageModal, setShowManageModal] = useState(false);
+  const feedPolling = homeInView && !showManageModal ? 15_000 : false;
+  const inboundQuery = useInboundJobs(feedPolling);
+  const activeQuery = useActiveJobs(feedPolling);
   const loadJobs = React.useCallback(async () => {
     await Promise.all([inboundQuery.refetch(), activeQuery.refetch()]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // While the sheet is open, a GPS move updates the ref (actions read it) but
+  // not the screen — it would redraw all of Home under the sheet every few
+  // seconds while driving. On closing: the latest position, and fresh lists.
+  const sheetOpenRef = useRef(false);
+  // A move went unshown while the sheet was open.
+  const movedUnderSheetRef = useRef(false);
+  useEffect(() => {
+    const wasOpen = sheetOpenRef.current;
+    sheetOpenRef.current = showManageModal;
+    if (wasOpen && !showManageModal) {
+      // The live position (the ref has every fix), not an older held one.
+      if (movedUnderSheetRef.current && userCoordsRef.current) setUserCoords(userCoordsRef.current);
+      movedUnderSheetRef.current = false;
+      void loadJobs();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showManageModal]);
 
   const applyJobs = React.useCallback((inbound: any[], active: any[]) => {
     try {
@@ -758,7 +782,6 @@ export default function DashboardScreen() {
     push();
   }, [activeJobId]);
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
-  const [showManageModal, setShowManageModal] = useState(false);
   const [showChatNotification, setShowChatNotification] = useState(false);
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [showFinalSuccess, setShowFinalSuccess] = useState(false);
@@ -918,7 +941,8 @@ export default function DashboardScreen() {
 
   const handleVerifyInspectionOtp = async () => {
     if (!selectedJob || otpInput.length !== 4) return;
-    let coords = userCoords;
+    // The live position (updated every GPS fix), not the shown one.
+    let coords = userCoordsRef.current ?? userCoords;
     if (!coords) {
       try {
         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
@@ -959,7 +983,10 @@ export default function DashboardScreen() {
   };
 
   const currentCoords = async (): Promise<{ latitude: number; longitude: number } | null> => {
-    if (userCoords) return userCoords;
+    // The live position (every GPS fix), not the shown one — that lags, and
+    // is held back entirely while the Service Room is open.
+    const live = userCoordsRef.current ?? userCoords;
+    if (live) return live;
     try {
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const coords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
@@ -1477,7 +1504,7 @@ const filteredJobs = jobs.filter((job) => {
   const handleStartJob = async () => {
     if (!activeJobId) return;
 
-    let coords = userCoords;
+    let coords = userCoordsRef.current ?? userCoords;
     if (!coords) {
       // userCoords being null here used to be a dead end — a plain native
       // alert with just "OK" that did nothing useful. It could mean the
@@ -1741,9 +1768,13 @@ const filteredJobs = jobs.filter((job) => {
             // the address — a lookup over the network — only every 150 m or 2 min.
             if (!shownCoords || calculateDistance(shownCoords, here) > 0.03) {
               shownCoords = here;
-              setUserCoords(here);
+              // Under the Service Room: held until it closes (see sheetOpenRef).
+              if (sheetOpenRef.current) movedUnderSheetRef.current = true;
+              else setUserCoords(here);
             }
-            if (!addressAt || calculateDistance(addressAt.coords, here) > 0.15 || Date.now() - addressAt.time > 120_000) {
+            // The address line isn't seen under the sheet either: looked up after.
+            if (!sheetOpenRef.current
+                && (!addressAt || calculateDistance(addressAt.coords, here) > 0.15 || Date.now() - addressAt.time > 120_000)) {
               addressAt = { coords: here, time: Date.now() };
               updateAddress(newLocation);
             }
