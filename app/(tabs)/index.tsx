@@ -45,6 +45,8 @@ import {
   Repeat as RepeatIcon,
   Lock,
 } from 'lucide-react-native';
+import { VehicleIcon } from '@/components/vehicles/vehicle-icon';
+import { PriceTag } from '@/components/price-tag';
 import * as SecureStore from 'expo-secure-store';
 import { SkillFilterBar, type MySkill, type SkillRef } from '@/components/skill-filter-bar';
 import { JobAlertsSheet } from '@/components/job-alerts-sheet';
@@ -55,7 +57,7 @@ import {
 } from '@/services/pickupDelivery';
 import { PickupAtStore } from '@/components/pickup-at-store';
 import { PickupFromPerson } from '@/components/pickup-from-person';
-import { ArrivalPanel } from '@/components/arrival-panel';
+import { ArrivalPanel, WaitResult } from '@/components/arrival-panel';
 import { CareJobPanel } from '@/components/care-job-panel';
 import { InspectionReportForm } from '@/components/inspection-report-form';
 import { InspectionStatus } from '@/components/inspection-status';
@@ -89,6 +91,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { fitBottom, padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
+import { FAB_CLEARANCE } from '@/components/rates/rates-fab';
 import { Popup } from '@/components/popup';
 const formatTime = (deadline: number, now: number) => {
   const diff = Math.max(0, deadline - now);
@@ -150,6 +153,14 @@ function feedPrice(j: any): { fee: string; feeLabel?: string; feeDetail?: string
   return {
     fee: j.shape?.pricing_unit === 'TRIP' ? 'Your fare for this trip' : `Your price per ${UNIT_WORD[j.shape?.pricing_unit] ?? 'unit'}`,
   };
+}
+
+/** A price in an amount and what it's for — "$30.00 total" → "$30.00", "total";
+ * "From $40", "$40–$60" as they are. Null for words with no amount
+ * ("Negotiable", "Your fare for this trip"): those stay plain text. */
+function priceParts(fee: string): { amount: string; unit?: string } | null {
+  const m = fee.match(/^((?:From )?\$[\d.,]+(?:–\$[\d.,]+)?)(?:\s+(.+))?$/);
+  return m ? { amount: m[1], unit: m[2] } : null;
 }
 
 const JobFeedCard = React.memo(function JobFeedCard({
@@ -352,6 +363,9 @@ const JobFeedCard = React.memo(function JobFeedCard({
             <TouchableOpacity onPress={() => router.push('/rates-and-hosting' as any)} accessibilityRole="link">
               <ThemedText style={styles.feeSetPrice}>Set your price ›</ThemedText>
             </TouchableOpacity>
+          ) : priceParts(job.fee) ? (
+            // A real amount: the tag, so the price is the first thing seen.
+            <PriceTag amount={priceParts(job.fee)!.amount} unit={priceParts(job.fee)!.unit} style={{ marginTop: 2 }} />
           ) : (
             <ThemedText style={styles.feeValue}>{job.fee}</ThemedText>
           )}
@@ -774,6 +788,13 @@ export default function DashboardScreen() {
   // set after inspecting the job in person. /jobs/active doesn't carry this
   // detail, so the full job is fetched separately while the modal is open.
   const [manageJobDetail, setManageJobDetail] = useState<any>(null);
+  // The job's status as of the last reload of its detail — the list's copy
+  // only catches up on the next poll, so deciding the panel from it showed
+  // the previous step for a moment (a trip's invoice form right after
+  // "Confirm pickup", before IN_PROGRESS arrived).
+  const liveStatus: string | undefined =
+    selectedJob && manageJobDetail?.id === selectedJob.id && manageJobDetail?.status
+      ? manageJobDetail.status : selectedJob?.status;
   const [otpInput, setOtpInput] = useState('');
   const [requestingOtp, setRequestingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
@@ -979,6 +1000,8 @@ export default function DashboardScreen() {
       );
       const detail = await SkoFyApi.jobs.get(selectedJob.id);
       setManageJobDetail(detail);
+      // A trip goes IN_PROGRESS here — the list's copy too, now, not on the next poll.
+      if (detail?.status) setJobs(prev => prev.map(j => j.id === detail.id ? { ...j, status: detail.status } : j));
       setPickupPhoto(null);
       setGoodsAmountText('');
       setPaidWith(null);
@@ -2035,7 +2058,7 @@ const filteredJobs = jobs.filter((job) => {
 
       <ScrollView keyboardShouldPersistTaps="handled"
         style={styles.jobsList}
-        contentContainerStyle={padBottom(styles.jobsListContent, bottomInset)}
+        contentContainerStyle={padBottom(styles.jobsListContent, bottomInset + FAB_CLEARANCE)}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -2304,7 +2327,7 @@ const filteredJobs = jobs.filter((job) => {
                     passed) — until then this is a Start Job button instead,
                     so completing a job you never actually started/reached is
                     no longer possible from this screen. */}
-                {selectedJob.status === 'DISPUTED' ? (
+                {liveStatus === 'DISPUTED' ? (
                   // Either side can now dispute before the work starts (a
                   // collected delivery) — without this the sheet fell through
                   // to the last branch and offered "Start Job".
@@ -2322,7 +2345,7 @@ const filteredJobs = jobs.filter((job) => {
                     onCustomerAbsent={handleCustomerAbsent}
                     onMessage={(kind, title, message) => appAlert.show(kind, title, message)}
                   />
-                ) : selectedJob.status === 'IN_PROGRESS' && isDelivery(selectedJob) && !isDelivered(manageJobDetail) ? (
+                ) : liveStatus === 'IN_PROGRESS' && isDelivery(selectedJob) && !isDelivered(manageJobDetail) ? (
                   <>
                     {/* "I'm at the drop-off": tells the customer, and starts the
                         waiting clock there when waiting was agreed (trip_wait.py). */}
@@ -2346,8 +2369,10 @@ const filteredJobs = jobs.filter((job) => {
                       onPhotoSaved={refreshManageDetail}
                     />
                   </>
-                ) : selectedJob.status === 'IN_PROGRESS' ? (
+                ) : liveStatus === 'IN_PROGRESS' ? (
                   <>
+                    {/* A delivered trip: what waiting paid, now no clock is running. */}
+                    <WaitResult wait={manageJobDetail?.trip_wait} />
                     <ExtraWorkPanel jobId={selectedJob.id} onMessage={(kind, title, message) => appAlert.show(kind, title, message)} />
                     <ThemedText style={styles.completeDisclaimer}>
                       Please ensure you have finished all tasks before marking as completed.
@@ -2357,7 +2382,7 @@ const filteredJobs = jobs.filter((job) => {
                       <ThemedText style={styles.completeJobText}>Mark as Completed</ThemedText>
                     </TouchableOpacity>
                   </>
-                ) : selectedJob.status === 'ACCEPTED' && selectedJob.serviceMode === 'REMOTE' ? (
+                ) : liveStatus === 'ACCEPTED' && selectedJob.serviceMode === 'REMOTE' ? (
                   // A remote job has no physical presence to verify — skip
                   // the OTP/inspection step entirely and go straight to the
                   // same materials+invoice form ON_SITE jobs reach after
@@ -2440,7 +2465,9 @@ const filteredJobs = jobs.filter((job) => {
                       <ThemedText style={styles.cancelJobBtnText}>Cancel This Job</ThemedText>
                     </TouchableOpacity>
                   </>
-                ) : selectedJob.status === 'ACCEPTED' && selectedJob.jobKind === 'PICKUP_DROPOFF' && manageJobDetail?.pickup_confirmed_at ? (
+                ) : liveStatus === 'ACCEPTED' && selectedJob.jobKind === 'PICKUP_DROPOFF' && manageJobDetail?.pickup_confirmed_at
+                    // Only a quoted pickup is invoiced — a trip's fare was paid at booking.
+                    && !manageJobDetail?.steps?.includes('PAY_UPFRONT') ? (
                   // Pickup already confirmed with a photo — same materials+
                   // invoice form as the REMOTE case above, just a different
                   // disclaimer. Matches raise_invoice()'s PICKUP_DROPOFF
@@ -2528,12 +2555,22 @@ const filteredJobs = jobs.filter((job) => {
                       <ThemedText style={styles.cancelJobBtnText}>{orderCollected ? 'Report an Issue' : 'Cancel This Job'}</ThemedText>
                     </TouchableOpacity>
                   </>
-                ) : selectedJob.status === 'ACCEPTED' && selectedJob.jobKind === 'PICKUP_DROPOFF' ? (
+                ) : liveStatus === 'ACCEPTED' && selectedJob.jobKind === 'PICKUP_DROPOFF' ? (
                   // The customer isn't physically at the pickup point (it's a
                   // store), so the OTP-gated flow below can't apply — a
                   // geofence-checked photo of what was picked up substitutes
                   // for it instead.
                   <>
+                    {/* A car-trunk or van load: the vehicle the customer was told is coming. */}
+                    {manageJobDetail?.vehicle && !manageJobDetail?.arrived_at && (
+                      <View style={styles.vehicleNote}>
+                        <VehicleIcon type={manageJobDetail.vehicle.vehicle_type} size={16} color="#1D4ED8" />
+                        <ThemedText style={styles.vehicleNoteText}>
+                          Come in your {manageJobDetail.vehicle.description}
+                          {manageJobDetail.vehicle.plate ? ` (${manageJobDetail.vehicle.plate})` : ''} — the customer was told it's the one coming.
+                        </ThemedText>
+                      </View>
+                    )}
                     {/* "I'm here" at the pickup tells the customer, and starts
                         the waiting clock when waiting was agreed (trip_wait.py). */}
                     <ArrivalPanel
@@ -2641,7 +2678,7 @@ const filteredJobs = jobs.filter((job) => {
                       <ThemedText style={styles.cancelJobBtnText}>Cancel This Job</ThemedText>
                     </TouchableOpacity>
                   </>
-                ) : selectedJob.status === 'ACCEPTED' ? (
+                ) : liveStatus === 'ACCEPTED' ? (
                   <>
                     <ArrivalPanel
                       jobId={selectedJob.id}
@@ -2717,7 +2754,7 @@ const filteredJobs = jobs.filter((job) => {
                       <ThemedText style={styles.cancelJobBtnText}>Cancel This Job</ThemedText>
                     </TouchableOpacity>
                   </>
-                ) : selectedJob.status === 'INSPECTING' && !manageJobDetail?.inspection_completed_at ? (
+                ) : liveStatus === 'INSPECTING' && !manageJobDetail?.inspection_completed_at ? (
                   <>
                     <InspectionReportForm
                       jobId={selectedJob.id}
@@ -2733,7 +2770,7 @@ const filteredJobs = jobs.filter((job) => {
                       <ThemedText style={styles.cancelJobBtnText}>Cancel This Job</ThemedText>
                     </TouchableOpacity>
                   </>
-                ) : selectedJob.status === 'INSPECTING' && manageJobDetail?.inspection_completed_at ? (
+                ) : liveStatus === 'INSPECTING' && manageJobDetail?.inspection_completed_at ? (
                   <>
                     <InspectionStatus
                       jobId={selectedJob.id}
@@ -2818,7 +2855,7 @@ const filteredJobs = jobs.filter((job) => {
                       <ThemedText style={styles.cancelJobBtnText}>Cancel This Job</ThemedText>
                     </TouchableOpacity>
                   </>
-                ) : selectedJob.status === 'INVOICE_PENDING' ? (
+                ) : liveStatus === 'INVOICE_PENDING' ? (
                   <>
                     {manageJobDetail?.inspection_completed_at && manageJobDetail?.inspection_confidence !== 'CONFIRMED' && (
                       <InspectionStatus
@@ -3521,11 +3558,12 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.poppins,
     color: '#9CA3AF',
   },
+  // A price in words ("Negotiable"): an amount goes in a PriceTag instead.
   feeValue: {
-    fontSize: 17,
-    lineHeight: 23,
-    fontFamily: Fonts.poppinsBold,
-    color: '#111827',
+    fontSize: 14,
+    lineHeight: 21,
+    fontFamily: Fonts.poppinsSemiBold,
+    color: '#6B7280',
   },
   // How their price is made up — "$15.00/hour × 5 hours = $75.00".
   feeDetail: {
@@ -3978,6 +4016,11 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     lineHeight: 18,
   },
+  vehicleNote: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 12, marginBottom: 10,
+    borderRadius: 14, backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE',
+  },
+  vehicleNoteText: { flex: 1, fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: '#1E3A8A' },
   completeJobBtn: {
     flexDirection: 'row',
     alignItems: 'center',

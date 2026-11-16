@@ -63,6 +63,7 @@ import {
   Eye,
   EyeOff,
   BadgeDollarSign,
+  Truck,
   Building2,
 } from 'lucide-react-native';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
@@ -80,6 +81,7 @@ import { Camera, Image as ImageIcon, Trash2, Edit2, Layers, Zap, Clock, Trophy }
 import { usePushPreference } from '@/hooks/use-push-preference';
 import { SkillPicker, type PickedSkill } from '@/components/skill-picker';
 import { fitBottom, padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
+import { FAB_CLEARANCE } from '@/components/rates/rates-fab';
 import { FeeCapCard } from '@/components/fee-cap-card';
 
 import { Popup, PopupCard } from '@/components/popup';
@@ -1677,7 +1679,7 @@ export default function ProfileScreen() {
       <ScrollView keyboardShouldPersistTaps="handled"
         ref={profileScrollRef}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={padBottom(styles.scrollContent, bottomInset)}
+        contentContainerStyle={padBottom(styles.scrollContent, bottomInset + FAB_CLEARANCE)}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -2404,6 +2406,21 @@ export default function ProfileScreen() {
                 <View style={styles.settingInfo}>
                   <BadgeDollarSign size={20} color="#6B7280" />
                   <ThemedText style={styles.settingLabel}>Rates & hosting</ThemedText>
+                </View>
+                <ChevronRight size={20} color="#D1D5DB" />
+              </TouchableOpacity>
+
+              {/* Car-trunk and van-size trips need a checked vehicle (docs/VEHICLES_DESIGN.md). */}
+              <TouchableOpacity
+                style={[styles.settingItem, { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }]}
+                onPress={() => {
+                  setIsSettingsOpen(false);
+                  router.push('/vehicles' as any);
+                }}
+              >
+                <View style={styles.settingInfo}>
+                  <Truck size={20} color="#6B7280" />
+                  <ThemedText style={styles.settingLabel}>My vehicles</ThemedText>
                 </View>
                 <ChevronRight size={20} color="#D1D5DB" />
               </TouchableOpacity>

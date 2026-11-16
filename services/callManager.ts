@@ -697,6 +697,9 @@ const ROUTED_UPDATES: Record<string, string> = {
   // Your business approved, needing changes, or a certificate ending —
   // not about a job: its business_id stands in as the notification key.
   business_update: '/business',
+  // Your vehicle approved or not, or its registration/insurance ending
+  // (skofy-backend app/services/vehicle_service.py) — keyed by its type.
+  vehicle_update: '/vehicles',
   // Something happened on one of your business's jobs (hired, cancelled, done…).
   business_job: '/business-job',
   // A new job reached your team — apply as the business and choose who does it.
@@ -719,9 +722,10 @@ function extraParams(data: Record<string, unknown>): Record<string, string> | un
   return undefined;
 }
 
-/** A routed push's key: its job, business or skill. */
+/** A routed push's key: its job, business, vehicle or skill — so one about a
+ * different vehicle doesn't replace another on the phone. */
 function routedKey(data: Record<string, unknown>): string {
-  return String(data.job_id ?? data.business_id ?? data.skill_id ?? data.type);
+  return String(data.job_id ?? data.business_id ?? data.vehicle_id ?? data.skill_id ?? data.type);
 }
 
 /** Where a job-update push opens, or null if it isn't one of these — the

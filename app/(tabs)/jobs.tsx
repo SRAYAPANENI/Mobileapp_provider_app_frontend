@@ -26,6 +26,7 @@ import {
   AlertTriangle,
 } from 'lucide-react-native';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
+import { FAB_CLEARANCE } from '@/components/rates/rates-fab';
 
 interface ProviderJob {
   // Pickup & Drop: a collected order is disputed, not cancelled (isOrderCollected).
@@ -390,7 +391,7 @@ export default function JobsScreen() {
             onRate={tab === 'history' && unrated[item.job_id] !== undefined ? openRating : undefined}
           />
         )}
-        contentContainerStyle={padBottom(styles.listContent, bottomInset)}
+        contentContainerStyle={padBottom(styles.listContent, bottomInset + FAB_CLEARANCE)}
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}
         ListEmptyComponent={<EmptyState tab={tab} />}

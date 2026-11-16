@@ -18,17 +18,28 @@ export interface TripWait {
   /** Its clock stopped early: the customer's "It's handed over", or leaving the stop. */
   stopped_at?: string | null;
   stopped_by?: 'CUSTOMER' | 'LEFT' | null;
+  /** This stop's clock is running: the server leaves its minutes and money
+   *  out until it stops (trip_wait.py as_provider_sees) — no meter to watch. */
+  counting?: boolean;
 }
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-/** What waiting so far is worth, counted on the phone between refreshes —
- *  the server's count (whole minutes after the free ones) is what's charged. */
-function waitedSoFar(wait: TripWait, arrivedAt: string, now: number) {
-  const whole = Math.floor((now - new Date(arrivedAt).getTime()) / 60000);
-  const here = Math.min(Math.max(whole - wait.free_minutes, 0), Math.max(wait.max_minutes - wait.used_before, 0));
-  const minutes = wait.used_before + here;
-  return { here, minutes, charge: Math.round(minutes * wait.per_minute * 100) / 100 };
+/** What waiting paid, once no clock is running: after the pickup (on the way)
+ *  and after the drop-off (delivered). The result, never a meter. */
+export function WaitResult({ wait }: { wait?: TripWait | null }) {
+  if (!wait || wait.counting || wait.minutes <= 0 || (wait.stage !== 'ON_THE_WAY' && wait.stage !== 'DONE')) return null;
+  return (
+    <View style={s.card}>
+      <View style={s.row}>
+        <Timer size={15} color="#92400E" />
+        <Text style={s.title}>{`Waiting paid · ${wait.minutes} min · $${wait.charge.toFixed(2)}`}</Text>
+      </View>
+      <Text style={s.body}>
+        {wait.stage === 'ON_THE_WAY' ? 'For waiting at the pickup — added to your pay for this trip.' : 'Added to your pay for this trip.'}
+      </Text>
+    </View>
+  );
 }
 
 interface Props {
@@ -79,6 +90,8 @@ export function ArrivalPanel({ jobId, arrivedAt, customerExpected, getCoords, on
 
   if (!arrivedAt) {
     return (
+      <View style={s.stack}>
+      {stop === 'dropoff' && <WaitResult wait={wait} />}
       <TouchableOpacity
         style={[s.arrive, busy && { opacity: 0.6 }]}
         disabled={busy}
@@ -89,6 +102,7 @@ export function ArrivalPanel({ jobId, arrivedAt, customerExpected, getCoords, on
         {busy ? <ActivityIndicator color="#111827" /> : <MapPinCheck size={18} color="#111827" />}
         <Text style={s.arriveText}>{stop === 'dropoff' ? "I'm at the drop-off" : "I'm here"}</Text>
       </TouchableOpacity>
+      </View>
     );
   }
 
@@ -113,7 +127,9 @@ export function ArrivalPanel({ jobId, arrivedAt, customerExpected, getCoords, on
         <View style={s.card}>
           <View style={s.row}>
             <Timer size={15} color="#92400E" />
-            <Text style={s.title}>{`Waiting stopped · ${wait.minutes} min · $${wait.charge.toFixed(2)}`}</Text>
+            <Text style={s.title}>
+              {`Waiting stopped · ${wait.minutes} min · $${wait.charge.toFixed(2)}${wait.used_before > 0 ? ' in all' : ''}`}
+            </Text>
           </View>
           <Text style={s.body}>
             {wait.stopped_by === 'LEFT'
@@ -124,22 +140,27 @@ export function ArrivalPanel({ jobId, arrivedAt, customerExpected, getCoords, on
         </View>
       );
     }
-    const so = waitedSoFar(wait, arrivedAt, now);
+    // Running: no meter — the time is counted for them, the result shown once it stops.
+    const capUsed = wait.used_before >= wait.max_minutes;      // the pickup used all the paid waiting
+    const pickupLine = wait.used_before > 0
+      ? ` Already counted at the pickup: ${wait.used_before} min · $${wait.charge.toFixed(2)}.` : '';
     return (
       <View style={s.card}>
         <View style={s.row}>
           <Timer size={15} color="#92400E" />
           <Text style={s.title}>
-            {so.minutes > 0 ? `Waiting: ${so.minutes} min · $${so.charge.toFixed(2)}` : 'Waiting is free for now'}
+            {stop === 'dropoff' ? "You're at the drop-off — the customer's been told" : "You're here — the customer's been told"}
           </Text>
         </View>
         <Text style={s.body}>
-          {so.minutes >= wait.max_minutes
-            ? `That's the most waiting pays ($${wait.hold.toFixed(2)} in all). Message the customer if you're still waiting.`
-            : `Free until ${wait.free_until ? clock(wait.free_until) : 'the free minutes end'}, then $${wait.per_minute.toFixed(2)} a minute`
-              + (wait.used_before > 0 ? ` (${wait.max_minutes - wait.used_before} min left after the pickup's ${wait.used_before})` : `, up to $${wait.hold.toFixed(2)} in all`)
-              + (stop === 'dropoff' ? '. It stops when the drop-off code is entered' : '. It stops when you confirm pickup')
-              + ", when the customer taps \"It's handed over\", or if you leave."}
+          {capUsed
+            ? `Waiting at the pickup used all the paid waiting ($${wait.hold.toFixed(2)}), so waiting here isn't paid.${pickupLine}`
+            : (wait.free_minutes > 0
+                ? `If you're kept waiting past ${wait.free_minutes} free minutes, the time is counted for you and added to your pay. `
+                : "If you're kept waiting, the time is counted for you and added to your pay. ")
+              + (stop === 'dropoff' ? "You'll see it once the code is entered" : "You'll see it once you confirm the pickup")
+              + ", the customer taps \"It's handed over\", or you leave."
+              + pickupLine}
         </Text>
       </View>
     );
@@ -172,6 +193,7 @@ const s = StyleSheet.create({
     paddingVertical: 13, borderRadius: 14, backgroundColor: '#FFCE48',
   },
   arriveText: { fontSize: 15, lineHeight: 20, fontFamily: Fonts.poppinsBold, color: '#111827' },
+  stack: { alignSelf: 'stretch' },
   card: { marginBottom: 10, padding: 12, borderRadius: 14, backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A', gap: 6 },
   title: { fontSize: 13.5, lineHeight: 18, fontFamily: Fonts.poppinsBold, color: '#92400E' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6 },

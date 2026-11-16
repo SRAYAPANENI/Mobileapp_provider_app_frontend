@@ -7,6 +7,7 @@ export const qk = {
     skills: ['provider', 'skills'] as const,
     hosting: ['provider', 'hosting'] as const,
     jobAlerts: ['provider', 'job-alerts'] as const,
+    vehicles: ['provider', 'vehicles'] as const,
   },
   reference: {
     usStates: ['reference', 'us-states'] as const,

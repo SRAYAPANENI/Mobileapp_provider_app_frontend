@@ -1,7 +1,8 @@
 import { YouKeep } from '@/components/you-keep';
 import { ThemedText } from '@/components/themed-text';
 import { useDraft } from '@/hooks/use-draft';
-import { ProviderRate, SkoFyApi, WaitRules } from '@/services/api';
+import { ProviderRate, SkoFyApi, VehicleRoom, WaitRules } from '@/services/api';
+import { router } from 'expo-router';
 import { MySkill, PriceChange, useSaveSkillPrices } from '@/services/queries/provider';
 import React, { useEffect, useState } from 'react';
 import { ChevronDown, ChevronUp, Sparkles } from 'lucide-react-native';
@@ -27,6 +28,24 @@ const onFileLabel = (unit: Unit, amount: string) => (unit === 'TRIP_BASE' ? `$${
   : unit === BUY_CAP ? `buys up to $${amount}`
   : TRIP_EXTRAS.includes(unit) ? `${PER[unit]} +$${amount}` : `$${amount}/${PER[unit]}`);
 
+/** The size each vehicle-backed extra is for. */
+const ROOM_SIZE: Partial<Record<Unit, 'LARGE' | 'BULKY'>> = { TRIP_TRUNK: 'LARGE', TRIP_VAN: 'BULKY' };
+
+/** Under a car-trunk or van extra: whether a checked vehicle backs it. */
+function VehicleNeed({ room }: { room: VehicleRoom['LARGE'] }) {
+  const ready = room.status === 'READY';
+  const text = ready ? `✓ In ${room.vehicle}`
+    : room.status === 'PENDING' ? `${room.vehicle} is being checked — these reach you once it's approved`
+    : `Needs ${room.needs} we've checked`;
+  return (
+    <TouchableOpacity onPress={() => router.push('/vehicles' as any)} hitSlop={6} disabled={ready}>
+      <ThemedText style={[rs.hint, { color: ready ? '#047857' : '#B45309' }]}>
+        {text}{ready ? '' : ' · My vehicles ›'}
+      </ThemedText>
+    </TouchableOpacity>
+  );
+}
+
 interface Props {
   sk: MySkill;
   /** This skill's prices on file. */
@@ -35,6 +54,8 @@ interface Props {
   hourlyHint: string;
   /** Waiting's rules as the server sets them, for the waiting box's hint. */
   waitRules?: WaitRules;
+  /** Whether a checked vehicle backs the car-trunk and van extras. */
+  vehicleRoom?: VehicleRoom;
   notify: Notify;
   /** Open to edit; closed it's one line with the prices on file. */
   expanded: boolean;
@@ -47,7 +68,7 @@ interface Props {
 /** One skill's price boxes: its own drafts and save, so typing here redraws
  * only this card (docs/APP_DATA_ARCHITECTURE.md §3). Closed until tapped: a
  * provider with every skill had thousands of boxes drawn at once. */
-export const SkillPricesCard = React.memo(function SkillPricesCard({ sk, rates, hourlyHint, notify, expanded, onToggle, drafts, waitRules }: Props) {
+export const SkillPricesCard = React.memo(function SkillPricesCard({ sk, rates, hourlyHint, notify, expanded, onToggle, drafts, waitRules, vehicleRoom }: Props) {
   const units = unitsFor(sk);
   const onFile = asPrices(rates);
   const { draft, edit, saved } = useDraft<Prices>(onFile, signature, drafts[sk.skill_id]);
@@ -143,6 +164,8 @@ export const SkillPricesCard = React.memo(function SkillPricesCard({ sk, rates, 
             <ThemedText style={rs.hint}>{unit === 'TRIP_WAIT' && waitRules
               ? `${waitRules.free_minutes} min free at a person's pickup and at the drop-off, then up to ${waitRules.max_minutes} min in all — never at a store. Empty: waiting is free. Typical: $0.30–$0.50`
               : hint}</ThemedText>
+            {/* A car trunk or a van: the price alone isn't enough — the vehicle, checked. */}
+            {vehicleRoom && ROOM_SIZE[unit] && <VehicleNeed room={vehicleRoom[ROOM_SIZE[unit]!]} />}
             {/* Shopping paid back isn't earnings: no fee on it, nothing to keep. */}
             {typing === unit && unit !== BUY_CAP && <YouKeep amount={draft[unit] ?? ''} />}
           </View>
@@ -176,4 +199,5 @@ export const SkillPricesCard = React.memo(function SkillPricesCard({ sk, rates, 
   );
 }, (a, b) => a.sk === b.sk && a.hourlyHint === b.hourlyHint && a.notify === b.notify
   && a.expanded === b.expanded && a.onToggle === b.onToggle && a.drafts === b.drafts
+  && a.vehicleRoom === b.vehicleRoom && a.waitRules === b.waitRules
   && signature(asPrices(a.rates)) === signature(asPrices(b.rates)));

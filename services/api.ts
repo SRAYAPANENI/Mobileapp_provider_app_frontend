@@ -536,8 +536,47 @@ export interface Hosting {
   trip_wait?: WaitRules;
   /** What a provider may buy for customers up to (skofy-backend app/domain/pickup.py). */
   trip_buy?: { min: number; max: number };
+  /** Car-trunk (LARGE) and van-size (BULKY) trips also need a checked vehicle. */
+  vehicle_room?: VehicleRoom;
 }
 export interface WaitRules { free_minutes: number; max_minutes: number }
+
+// ── Vehicles (skofy-backend app/domain/vehicles.py, docs/VEHICLES_DESIGN.md) ──
+export type VehicleType = 'CAR' | 'SUV' | 'MINIVAN' | 'PICKUP_TRUCK' | 'CARGO_VAN' | 'BOX_TRUCK';
+export type VehicleStatus = 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED';
+export type VehicleDocumentKind = 'REGISTRATION' | 'INSURANCE';
+export interface VehicleDocument {
+  id: string; kind: VehicleDocumentKind; status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
+  expires_on: string; issuer: string | null; number: string | null; review_note: string | null;
+  /** Approved and ending within the reminder window. */
+  ends_soon: boolean;
+}
+export interface Vehicle {
+  id: string; vehicle_type: VehicleType; type_label: string; make: string; model: string; year: number;
+  colour: string; plate: string | null; plate_state: string; front_photo_url: string | null;
+  cargo_photo_url: string | null; status: VehicleStatus; review_note: string | null;
+  /** "White Ford Transit · cargo van" */
+  description: string;
+  /** The sizes it carries once it counts: 'LARGE' (car trunk), 'BULKY' (van). */
+  carries: ('LARGE' | 'BULKY')[];
+  /** It counts right now — and if not, what's missing, in words. */
+  usable: boolean; missing: string[];
+  documents: VehicleDocument[];
+}
+/** Per size needing a vehicle: can they take it now, once one is approved, or not without one. */
+export type VehicleRoom = Record<'LARGE' | 'BULKY', { status: 'READY' | 'PENDING' | 'NONE'; vehicle: string | null; needs: string }>;
+export interface MyVehicles {
+  vehicles: Vehicle[]; max_vehicles: number; insurance_required: boolean; room: VehicleRoom;
+}
+export interface PickedFile { uri: string; name: string; mimeType: string }
+export interface NewVehicle {
+  vehicle_type: VehicleType; make: string; model: string; year: string; colour: string; plate: string;
+  plate_state: string; registration_expires_on: string;
+  front_photo: PickedFile; cargo_photo: PickedFile; registration: PickedFile;
+}
+export interface NewVehicleDocument {
+  kind: VehicleDocumentKind; expires_on: string; issuer?: string; number?: string; file: PickedFile;
+}
 
 /** The hand-over photos and every update, for a pet or home in your care. */
 export interface CareRecord {
@@ -1663,6 +1702,32 @@ export const SkoFyApi = {
       request(`/series/${seriesId}/respond`, { method: 'POST', body: JSON.stringify({ accept }) }),
     end: async (seriesId: string) =>
       request(`/series/${seriesId}/change`, { method: 'POST', body: JSON.stringify({ action: 'END' }) }),
+  },
+
+  // ── Vehicles: checked by Dodorez for car-trunk and van-size trips ─────────
+  vehicles: {
+    mine: async (): Promise<MyVehicles> => request('/vehicles/me') as any,
+    add: async (v: NewVehicle): Promise<MyVehicles> => {
+      const form = new FormData();
+      for (const key of ['vehicle_type', 'make', 'model', 'year', 'colour', 'plate', 'plate_state',
+        'registration_expires_on'] as const) form.append(key, v[key]);
+      for (const key of ['front_photo', 'cargo_photo', 'registration'] as const) {
+        form.append(key, { uri: v[key].uri, name: v[key].name, type: v[key].mimeType } as any);
+      }
+      return requestMultipart('/vehicles/me', form) as any;
+    },
+    /** A renewed registration, or proof of insurance. */
+    addDocument: async (vehicleId: string, d: NewVehicleDocument): Promise<MyVehicles> => {
+      const form = new FormData();
+      form.append('kind', d.kind);
+      form.append('expires_on', d.expires_on);
+      if (d.issuer) form.append('issuer', d.issuer);
+      if (d.number) form.append('number', d.number);
+      form.append('file', { uri: d.file.uri, name: d.file.name, type: d.file.mimeType } as any);
+      return requestMultipart(`/vehicles/me/${vehicleId}/documents`, form) as any;
+    },
+    remove: async (vehicleId: string): Promise<MyVehicles> =>
+      request(`/vehicles/me/${vehicleId}`, { method: 'DELETE' }) as any,
   },
 
   // ── Business account (docs/BUSINESS_PROVIDERS_DESIGN.md) ─────────────────

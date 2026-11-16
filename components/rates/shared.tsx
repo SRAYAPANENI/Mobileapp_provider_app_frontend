@@ -29,11 +29,11 @@ export const UNITS: { unit: Unit; label: string; hint: string }[] = [
   { unit: 'TRIP_BASE', label: 'Base fare', hint: 'Each trip: getting going and collecting it. Typical: $5–$8' },
   { unit: 'TRIP_MILE', label: 'Per mile', hint: 'Pickup to drop-off, measured when the job is posted. Typical: $1–$2' },
   // Size extras: a bag is always included. A box is included unless you set
-  // an extra. A car trunk or a van only reaches you once you set one (it can
-  // be $0) — that's how you say you can carry it.
+  // an extra. A car trunk or a van reaches you once you set one (it can be
+  // $0) and a vehicle that carries it is checked (My vehicles, app/vehicles.tsx).
   { unit: 'TRIP_BOX', label: 'Box extra', hint: 'Empty: boxes at no extra' },
-  { unit: 'TRIP_TRUNK', label: 'Car-trunk extra', hint: 'Set it (even $0) to take items that fill a car trunk' },
-  { unit: 'TRIP_VAN', label: 'Van extra', hint: 'Set it (even $0) to take items that need a van or pickup truck' },
+  { unit: 'TRIP_TRUNK', label: 'Car-trunk extra', hint: 'Set it (even $0) to take items that fill a car trunk — with a vehicle we’ve checked' },
+  { unit: 'TRIP_VAN', label: 'Van extra', hint: 'Set it (even $0) to take items that need a van or pickup truck — with a vehicle we’ve checked' },
   // Waiting at the pickup (skofy-backend app/domain/trip_wait.py): after the
   // free minutes, up to a cap the customer pays with the fare.
   { unit: 'TRIP_WAIT', label: 'Waiting, per minute', hint: "At a person's pickup and at the drop-off, after the free minutes — never at a store (the fare covers it). Empty: waiting is free. Typical: $0.30–$0.50" },
@@ -81,6 +81,29 @@ export const unitsFor = (sk: MySkill) => {
   return allowed ? UNITS.filter((u) => allowed.includes(u.unit))
     : UNITS.filter((u) => u.unit !== 'VISIT' && !TRIP_PARTS.includes(u.unit));
 };
+
+/** The page's sections, by how a skill is priced (one way per skill):
+ * by the hour or visit, a trip, or a stay / day of care. Quoted skills
+ * have no boxes and sit under "Your skills" as one line. */
+export type RateGroup = 'SKILLS' | 'TRIP' | 'STAYS';
+export const groupOf = (sk: MySkill): RateGroup =>
+  sk.pricing === 'TRIP' ? 'TRIP' : sk.pricing === 'NIGHT' || sk.pricing === 'DAY' ? 'STAYS' : 'SKILLS';
+
+/** A verified skill customers can't book yet for want of a price: a trip
+ * without its base fare and price per mile; a skill priced by the night, day,
+ * visit or hour without that price itself — week and month prices are only
+ * for long stays, so a 2-night stay can't be priced from them (by the hour,
+ * the usual hourly rate counts). An older skill without a pricing: any of its. */
+export function needsPrice(sk: MySkill, rates: { unit: string }[] | undefined, usualHourly: boolean): boolean {
+  if (!sk.is_verified) return false;
+  const units = new Set((rates ?? []).map((r) => r.unit));
+  const boxes = unitsFor(sk);
+  if (boxes.length === 0) return false;                       // priced by quote
+  if (sk.pricing === 'TRIP') return !(units.has('TRIP_BASE') && units.has('TRIP_MILE'));
+  if (sk.pricing === 'HOUR') return !units.has('HOUR') && !usualHourly;
+  if (sk.pricing && sk.pricing in UNITS_BY_PRICING) return !units.has(sk.pricing);
+  return !boxes.some((b) => units.has(b.unit));
+}
 
 // What a host takes in (skofy-backend/app/domain/care_sheet.py).
 export const PET_KINDS: { value: PetKind; label: string }[] = [

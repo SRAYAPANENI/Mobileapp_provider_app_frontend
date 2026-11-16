@@ -6,6 +6,7 @@ import { FileCheck2, Upload } from 'lucide-react-native';
 import React, { useState } from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { TextInput } from '@/components/scaled-text';
+import { asDate, isoDate } from '@/services/usDate';
 import { Button, C, Field, u } from './ui';
 
 const KINDS: { value: BusinessDocumentKind; label: string }[] = [
@@ -14,22 +15,6 @@ const KINDS: { value: BusinessDocumentKind; label: string }[] = [
   { value: 'LICENCE', label: 'Trade licence' },
 ];
 
-/** Typed digits shown as MM/DD/YYYY — the slashes go in by themselves,
- * and deleting works through them as if they weren't there. */
-function asDate(text: string): string {
-  const d = text.replace(/\D/g, '').slice(0, 8);
-  return [d.slice(0, 2), d.slice(2, 4), d.slice(4)].filter(Boolean).join('/');
-}
-
-/** "MM/DD/YYYY" → "YYYY-MM-DD", or null if it isn't a real date. */
-function isoDate(text: string): string | null {
-  const m = text.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (!m) return null;
-  const [month, day, year] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  const d = new Date(Date.UTC(year, month - 1, day));
-  if (d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return null;
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-}
 
 interface Props {
   minLiability: number;

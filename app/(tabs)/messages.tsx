@@ -6,6 +6,7 @@ import { MessageSquare } from 'lucide-react-native';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
+import { FAB_CLEARANCE } from '@/components/rates/rates-fab';
 
 export default function MessagesScreen() {
   const bottomInset = useBottomInset();
@@ -22,7 +23,7 @@ export default function MessagesScreen() {
   return (
     <ThemedView style={styles.container}>
       <ScrollView keyboardShouldPersistTaps="handled"
-        contentContainerStyle={padBottom(styles.scrollContent, bottomInset)}
+        contentContainerStyle={padBottom(styles.scrollContent, bottomInset + FAB_CLEARANCE)}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
