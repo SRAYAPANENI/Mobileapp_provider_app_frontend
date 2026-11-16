@@ -13,6 +13,11 @@ export interface TripWait {
   per_minute: number; free_minutes: number; max_minutes: number; hold: number; text: string;
   stage: 'PICKUP' | 'ON_THE_WAY' | 'DROPOFF' | 'DONE';
   free_until: string | null; used_before: number; minutes: number; charge: number; final: boolean;
+  /** This stop is charged at all — a store's pickup isn't (the fare covers it). */
+  counts?: boolean;
+  /** Its clock stopped early: the customer's "It's handed over", or leaving the stop. */
+  stopped_at?: string | null;
+  stopped_by?: 'CUSTOMER' | 'LEFT' | null;
 }
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -90,6 +95,35 @@ export function ArrivalPanel({ jobId, arrivedAt, customerExpected, getCoords, on
   if (!customerExpected) {
     // Only this stop's clock: the pickup's until it's collected, then the drop-off's.
     if (!wait || wait.stage !== (stop === 'dropoff' ? 'DROPOFF' : 'PICKUP')) return null;
+    // A store's pickup: never charged — said so, rather than a count that's never paid.
+    if (wait.counts === false) {
+      return (
+        <View style={s.card}>
+          <View style={s.row}>
+            <Timer size={15} color="#92400E" />
+            <Text style={s.title}>Waiting at a store isn't charged</Text>
+          </View>
+          <Text style={s.body}>Your fare covers it. Waiting is paid at a person's pickup and at the drop-off.</Text>
+        </View>
+      );
+    }
+    // Stopped early: the server's count is final — the phone stops counting.
+    if (wait.stopped_at) {
+      return (
+        <View style={s.card}>
+          <View style={s.row}>
+            <Timer size={15} color="#92400E" />
+            <Text style={s.title}>{`Waiting stopped · ${wait.minutes} min · $${wait.charge.toFixed(2)}`}</Text>
+          </View>
+          <Text style={s.body}>
+            {wait.stopped_by === 'LEFT'
+              ? `It stopped at ${clock(wait.stopped_at)} when you left the stop.`
+              : `The customer said it was handed over at ${clock(wait.stopped_at)}.`}
+            {stop === 'dropoff' ? ' Enter their code to finish.' : ' Take the photo and confirm the pickup.'}
+          </Text>
+        </View>
+      );
+    }
     const so = waitedSoFar(wait, arrivedAt, now);
     return (
       <View style={s.card}>
@@ -104,7 +138,8 @@ export function ArrivalPanel({ jobId, arrivedAt, customerExpected, getCoords, on
             ? `That's the most waiting pays ($${wait.hold.toFixed(2)} in all). Message the customer if you're still waiting.`
             : `Free until ${wait.free_until ? clock(wait.free_until) : 'the free minutes end'}, then $${wait.per_minute.toFixed(2)} a minute`
               + (wait.used_before > 0 ? ` (${wait.max_minutes - wait.used_before} min left after the pickup's ${wait.used_before})` : `, up to $${wait.hold.toFixed(2)} in all`)
-              + (stop === 'dropoff' ? '. It stops when the drop-off code is entered.' : '. It stops when you confirm pickup.')}
+              + (stop === 'dropoff' ? '. It stops when the drop-off code is entered' : '. It stops when you confirm pickup')
+              + ", when the customer taps \"It's handed over\", or if you leave."}
         </Text>
       </View>
     );

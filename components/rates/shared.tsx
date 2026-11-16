@@ -36,7 +36,7 @@ export const UNITS: { unit: Unit; label: string; hint: string }[] = [
   { unit: 'TRIP_VAN', label: 'Van extra', hint: 'Set it (even $0) to take items that need a van or pickup truck' },
   // Waiting at the pickup (skofy-backend app/domain/trip_wait.py): after the
   // free minutes, up to a cap the customer pays with the fare.
-  { unit: 'TRIP_WAIT', label: 'Waiting, per minute', hint: 'At the pickup and drop-off, after the free minutes. Empty: waiting is free. Typical: $0.30–$0.50' },
+  { unit: 'TRIP_WAIT', label: 'Waiting, per minute', hint: "At a person's pickup and at the drop-off, after the free minutes — never at a store (the fare covers it). Empty: waiting is free. Typical: $0.30–$0.50" },
   // Not a price: buying for customers is the provider's choice, since they
   // pay the store first (skofy-backend app/domain/pickup.py buys_for). Only
   // "Buy it for me" jobs within it reach them.

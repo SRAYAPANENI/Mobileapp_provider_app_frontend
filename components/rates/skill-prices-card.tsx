@@ -141,7 +141,7 @@ export const SkillPricesCard = React.memo(function SkillPricesCard({ sk, rates, 
           <View style={{ flex: 1 }}>
             <ThemedText style={rs.item}>{label}</ThemedText>
             <ThemedText style={rs.hint}>{unit === 'TRIP_WAIT' && waitRules
-              ? `${waitRules.free_minutes} min free at the pickup and at the drop-off, then up to ${waitRules.max_minutes} min in all. Empty: waiting is free. Typical: $0.30–$0.50`
+              ? `${waitRules.free_minutes} min free at a person's pickup and at the drop-off, then up to ${waitRules.max_minutes} min in all — never at a store. Empty: waiting is free. Typical: $0.30–$0.50`
               : hint}</ThemedText>
             {/* Shopping paid back isn't earnings: no fee on it, nothing to keep. */}
             {typing === unit && unit !== BUY_CAP && <YouKeep amount={draft[unit] ?? ''} />}

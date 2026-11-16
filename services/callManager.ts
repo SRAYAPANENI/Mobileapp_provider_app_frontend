@@ -679,6 +679,10 @@ const DASHBOARD_JOB_UPDATES = new Set([
   'care_update_due',
   // The pickup code was renewed — the job's card shows it.
   'pickup_code',
+  // The customer stopped the waiting clock ("It's handed over").
+  'wait_stopped',
+  // A dispute on a job you bought shopping for: your money is safe.
+  'job_disputed',
 ]);
 
 /** Pushes that open a screen of their own rather than the dashboard. */
