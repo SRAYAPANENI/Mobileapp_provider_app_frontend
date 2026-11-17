@@ -5,6 +5,7 @@ import { Fonts } from '@/constants/theme';
 import { SkoFyApi } from '@/services/api';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import { shrinkPhoto } from '@/services/photo';
 import * as Location from 'expo-location';
 import { Camera, CheckCircle2 } from 'lucide-react-native';
 import React, { useState } from 'react';
@@ -37,18 +38,19 @@ export function DeliveryHandover({ jobId, onDelivered, recipientName, kind = 'de
       appAlert.show('warning', 'Camera Permission Required', 'Allow camera access in your device settings to photograph the delivery.');
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 });
-    const asset = !result.canceled ? result.assets[0] : null;
-    if (!asset) return;
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
+    const shot = !result.canceled ? result.assets[0] : null;
+    if (!shot) return;
     setSaving(true);
     try {
+      const asset = await shrinkPhoto(shot);   // services/photo.ts
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null);
       if (!loc) {
         appAlert.show('error', 'Location needed', 'Turn on location — the photo only counts at the drop-off.');
         return;
       }
       await SkoFyApi.jobs.uploadDropoffPhoto(
-        jobId, { uri: asset.uri, mimeType: asset.mimeType || 'image/jpeg' }, loc.coords.latitude, loc.coords.longitude,
+        jobId, asset, loc.coords.latitude, loc.coords.longitude,
       );
       setTaken(asset.uri);
       onPhotoSaved?.();

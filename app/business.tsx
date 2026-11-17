@@ -1,4 +1,5 @@
 import { useAppAlert } from '@/components/app-alert';
+import { usePhotoPicker } from '@/components/photo-picker';
 import { CloseBusiness } from '@/components/business/close-business';
 import { BusinessDocumentForm } from '@/components/business/business-document-form';
 import { BusinessInvites } from '@/components/business/business-invites';
@@ -23,7 +24,6 @@ import { AlertTriangle, BadgeCheck, Briefcase, Building2, ChevronLeft, FileText,
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Share, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { PRO_APP_DOWNLOAD_URL } from '@/services/api-config';
 import { Asset } from 'expo-asset';
 import * as LegacyFS from 'expo-file-system/legacy';
@@ -56,6 +56,8 @@ const date = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString(und
 export default function BusinessScreen() {
   const bottomInset = useBottomInset();
   const appAlert = useAppAlert();
+  // Camera or gallery, in the app's own popup (components/photo-picker.tsx).
+  const photoPicker = usePhotoPicker();
   const scroll = useRef<KeyboardAwareScrollViewRef>(null);
   const { data, invites, board, canDispatch, refresh } = useMyBusiness();
   const [team, setTeam] = useState<Team | null>(null);
@@ -80,19 +82,18 @@ export default function BusinessScreen() {
   const reload = refresh;
   const refreshControl = usePullRefresh(refresh);
 
-  // The logo: picked from the phone, square, sent as an image.
-  const changeLogo = () => {
-    const pick = async () => {
-      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.7, base64: true });
-      const asset = !result.canceled ? result.assets[0] : null;
-      if (!asset?.base64) return;
-      await run('logo', () => SkoFyApi.business.setLogo(`data:${asset.mimeType ?? 'image/jpeg'};base64,${asset.base64}`), 'Logo updated.');
-    };
-    if (!business?.logo_url) { pick(); return; }
-    appAlert.show('info', 'Business logo', 'Customers see it on your business’s applications and jobs.', [
-      { text: 'Remove', variant: 'secondary', onPress: () => { run('logo', () => SkoFyApi.business.setLogo(null), 'Logo removed.'); } },
-      { text: 'Change', variant: 'primary', onPress: () => { pick(); } },
-    ]);
+  // The logo: a photo or a picture from the gallery, square, sent as an
+  // image — or removed, once there is one. Customers see it on the
+  // business's applications and jobs.
+  const changeLogo = async () => {
+    const [logo] = await photoPicker.pickPhotos({
+      title: 'Business Logo', size: 'avatar', crop: [1, 1], base64: true,
+      extra: business?.logo_url
+        ? { label: 'Remove Logo', kind: 'remove', onPress: () => { run('logo', () => SkoFyApi.business.setLogo(null), 'Logo removed.'); } }
+        : undefined,
+    });
+    if (!logo?.base64) return;
+    await run('logo', () => SkoFyApi.business.setLogo(`data:${logo.mimeType};base64,${logo.base64}`), 'Logo updated.');
   };
 
   // An invite to someone not on Dodorez, sent from the owner's phone.
@@ -554,6 +555,7 @@ export default function BusinessScreen() {
         </KeyboardAwareScrollView>
       )}
       {appAlert.element}
+      {photoPicker.element}
     </ThemedView>
   );
 }

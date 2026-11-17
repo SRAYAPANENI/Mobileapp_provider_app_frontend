@@ -15,8 +15,8 @@
         "NSLocationWhenInUseUsageDescription": "This app needs access to your location to show nearby customers.",
         "NSLocationAlwaysUsageDescription": "This app needs access to your location to show nearby customers.",
         "NSMicrophoneUsageDescription": "This app needs access to your microphone for voice calls with customers.",
-        "NSCameraUsageDescription": "Dodorez Pro needs camera access so you can take your profile photo and document photos.",
-        "NSPhotoLibraryUsageDescription": "Dodorez Pro needs photo library access so you can attach documents and skill-proof media.",
+        "NSCameraUsageDescription": "Dodorez Pro uses your camera for your profile photo, pickup and delivery photos, inspection photos, and photos of your documents and vehicle.",
+        "NSPhotoLibraryUsageDescription": "Dodorez Pro uses your photo library so you can attach documents, vehicle photos and skill-proof media.",
         "UIBackgroundModes": [
           "voip",
           "audio",
@@ -94,8 +94,8 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "Dodorez Pro needs camera access so you can take your profile photo and document photos.",
-          "photosPermission": "Dodorez Pro needs photo library access so you can attach documents and skill-proof media."
+          "cameraPermission": "Dodorez Pro uses your camera for your profile photo, pickup and delivery photos, inspection photos, and photos of your documents and vehicle.",
+          "photosPermission": "Dodorez Pro uses your photo library so you can attach documents, vehicle photos and skill-proof media."
         }
       ],
       "./plugins/with-notification-sounds.js",

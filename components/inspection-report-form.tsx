@@ -3,6 +3,7 @@ import { Fonts } from '@/constants/theme';
 import { SkoFyApi } from '@/services/api';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import { shrinkPhoto } from '@/services/photo';
 import { Camera, X } from 'lucide-react-native';
 import React, { useState } from 'react';
 import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-native';
@@ -33,9 +34,10 @@ export function InspectionReportForm({ jobId, getCoords, onSubmitted, onError }:
       onError('Camera Permission Required', 'Allow camera access to photograph what you inspected.');
       return;
     }
-    const shot = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.7 });
+    const shot = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
     if (!shot.canceled && shot.assets[0]) {
-      setPhotos((prev) => [...prev, { uri: shot.assets[0].uri, mimeType: shot.assets[0].mimeType || 'image/jpeg' }]);
+      const photo = await shrinkPhoto(shot.assets[0]);   // services/photo.ts
+      setPhotos((prev) => [...prev, photo]);
     }
   };
 

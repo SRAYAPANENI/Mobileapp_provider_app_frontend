@@ -9,17 +9,21 @@ const asList = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 
 /** `pollMs`: refresh every so often while the screen is in view (Home).
  * `enabled`: false skips the fetch entirely — for a caller that mounts
- * before it's known whether there's a session to fetch for (maintenance-gate.tsx). */
-export function useActiveJobs<T = any>(pollMs: number | false = false, enabled = true) {
+ * before it's known whether there's a session to fetch for (maintenance-gate.tsx).
+ * `refetchOnFocus`: false skips the refresh on coming back to the app — for
+ * a screen covered by something that must not be redrawn under (Home's Service Room). */
+export function useActiveJobs<T = any>(pollMs: number | false = false, enabled = true, refetchOnFocus = true) {
   return useQuery({
     queryKey: qk.jobs.active, queryFn: async () => asList<T>(await SkoFyApi.jobs.getActive()), refetchInterval: pollMs, enabled,
+    refetchOnWindowFocus: refetchOnFocus,
   });
 }
 
 /** Jobs offered to this provider — the Home feed. */
-export function useInboundJobs<T = any>(pollMs: number | false = false) {
+export function useInboundJobs<T = any>(pollMs: number | false = false, refetchOnFocus = true) {
   return useQuery({
     queryKey: qk.jobs.inbound, queryFn: async () => asList<T>(await SkoFyApi.jobs.getInbound()), refetchInterval: pollMs,
+    refetchOnWindowFocus: refetchOnFocus,
   });
 }
 

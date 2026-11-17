@@ -7,6 +7,7 @@ import { Fonts } from '@/constants/theme';
 import { SkoFyApi } from '@/services/api';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import { shrinkPhoto } from '@/services/photo';
 import { Camera, CheckCircle, DoorOpen, X } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
@@ -209,9 +210,11 @@ function PhotoStep({ title, body, max, confirmLabel, onSubmit, onDone, onMessage
       onMessage('error', 'Camera needed', 'Allow the camera to take the photos.');
       return;
     }
-    const shot = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.7 });
+    const shot = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
     const asset = shot.canceled ? null : shot.assets?.[0];
-    if (asset) setShots((prev) => [...prev, { uri: asset.uri, mimeType: asset.mimeType ?? 'image/jpeg' }].slice(0, max));
+    if (!asset) return;
+    const photo = await shrinkPhoto(asset);   // services/photo.ts
+    setShots((prev) => [...prev, photo].slice(0, max));
   };
 
   const submit = async () => {

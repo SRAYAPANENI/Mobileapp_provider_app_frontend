@@ -1,5 +1,7 @@
 import AnimatedBackground from '@/components/animated-background';
 import { AppAlert } from '@/components/app-alert';
+import { usePhotoPicker } from '@/components/photo-picker';
+import { shrinkPhoto } from '@/services/photo';
 import { showDialog } from '@/components/alert-host';
 import { CodeTimerRow } from '@/components/code-timer-row';
 import { useCodeTimer } from '@/hooks/use-code-timer';
@@ -75,6 +77,8 @@ const nameOf = (f: { firstName: string; middleName: string; lastName: string }) 
   ({ first: f.firstName, middle: f.middleName, last: f.lastName });
 
 export default function RegisterScreen() {
+  // Camera or gallery, in the app's own popup (components/photo-picker.tsx).
+  const photoPicker = usePhotoPicker();
   const bottomInset = useBottomInset();
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
@@ -454,8 +458,7 @@ export default function RegisterScreen() {
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.8,
-      base64: true,
+      quality: 1,
       cameraType: ImagePicker.CameraType.front,
     });
     if (result.canceled) return;
@@ -481,30 +484,27 @@ export default function RegisterScreen() {
       setCheckingFace(false);
     }
 
-    const mime = asset.mimeType ?? 'image/jpeg';
-    setProfileImage(asset.uri);
-    if (asset.base64) setProfileImageBase64({ data: asset.base64, mime });
+    // Shrunk for upload, with its base64 for the registration request (services/photo.ts).
+    const photo = await shrinkPhoto(asset, 'avatar', { base64: true });
+    setProfileImage(photo.uri);
+    if (photo.base64) setProfileImageBase64({ data: photo.base64, mime: photo.mimeType });
   };
 
   const pickImage = async (type: 'document' | 'workProof') => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [16, 9],
-      quality: 0.8,
+    // An ID is read by a person checking it: kept larger and sharper ('document').
+    const [photo] = await photoPicker.pickPhotos({
+      title: type === 'document' ? 'ID Document' : 'Work Photo',
+      size: type === 'document' ? 'document' : 'job',
+      crop: [16, 9],
       base64: true,
     });
-
-    if (!result.canceled) {
-      const asset = result.assets[0];
-      const mime = asset.mimeType ?? 'image/jpeg';
-      if (type === 'document') {
-        setIdDocumentImage(asset.uri);
-        if (asset.base64) setIdDocumentBase64({ data: asset.base64, mime });
-      } else if (type === 'workProof') {
-        setWorkProofImage(asset.uri);
-        if (asset.base64) setWorkProofBase64({ data: asset.base64, mime });
-      }
+    if (!photo) return;
+    if (type === 'document') {
+      setIdDocumentImage(photo.uri);
+      if (photo.base64) setIdDocumentBase64({ data: photo.base64, mime: photo.mimeType });
+    } else {
+      setWorkProofImage(photo.uri);
+      if (photo.base64) setWorkProofBase64({ data: photo.base64, mime: photo.mimeType });
     }
   };
 
@@ -519,18 +519,15 @@ export default function RegisterScreen() {
     // Note: deliberately NOT requesting base64 here — forcing base64 extraction on a
     // multi-MB video file can hang or crash the picker on real devices. Skill-proof
     // media (image or video) is always uploaded via multipart instead (see submit handler).
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images', 'videos'],
-      allowsMultipleSelection: true,
-      selectionLimit: MAX_PROOFS_PER_SKILL,
-      quality: 0.8,
+    const picked = await photoPicker.pickPhotos({
+      title: 'Proof of Your Work', videos: true, multiple: MAX_PROOFS_PER_SKILL,
     });
 
-    if (!result.canceled && result.assets.length > 0) {
-      setPendingMediaBatch(result.assets.map(asset => ({
-        uri: asset.uri,
-        type: asset.type === 'video' ? 'video' as const : 'image' as const,
-        mime: asset.mimeType ?? (asset.type === 'video' ? 'video/mp4' : 'image/jpeg'),
+    if (picked.length > 0) {
+      setPendingMediaBatch(picked.map(item => ({
+        uri: item.uri,
+        type: item.kind === 'video' ? 'video' as const : 'image' as const,
+        mime: item.mimeType,
       })));
       setPendingDescription('');
       setSelectedTagSkill(null);
@@ -1738,6 +1735,7 @@ export default function RegisterScreen() {
         onDismiss={hideAlert}
         buttons={[{ text: 'Got it' }]}
       />
+      {photoPicker.element}
 
     </ThemedView >
   );

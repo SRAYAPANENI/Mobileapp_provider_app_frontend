@@ -3,7 +3,7 @@ import { liftBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { useHosting, useMySkills, useProviderProfile } from '@/services/queries/provider';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { BadgeDollarSign } from 'lucide-react-native';
+import { Tag } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Keyboard, Platform, Pressable, StyleSheet, View } from 'react-native';
 
@@ -47,23 +47,25 @@ export function RatesFab() {
         accessibilityLabel={missing ? 'Rates & hosting — a skill needs a price' : 'Rates & hosting'}
         hitSlop={6}
       >
-        <BadgeDollarSign size={26} color="#111827" strokeWidth={2.2} />
+        <Tag size={24} color="#FFCE48" strokeWidth={2.4} />
         {missing && <View style={s.dot} />}
       </Pressable>
     </View>
   );
 }
 
+// Dark, with the brand's yellow in the icon: it stands out on screens full of
+// yellow (job cards, chips, Apply) without competing with their main button —
+// the same pairing as the Chat button. A price tag: "your prices", at a glance.
 const s = StyleSheet.create({
   fab: {
-    position: 'absolute', right: 18, bottom: 22, width: 58, height: 58, borderRadius: 29,
-    alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFCE48',
-    borderWidth: 3, borderColor: '#FFFFFF',
-    shadowColor: '#0F172A', shadowOpacity: 0.22, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8,
+    position: 'absolute', right: 18, bottom: 22, width: 56, height: 56, borderRadius: 28,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: '#111827',
+    shadowColor: '#0F172A', shadowOpacity: 0.28, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8,
   },
-  pressed: { transform: [{ scale: 0.94 }], opacity: 0.95 },
+  pressed: { transform: [{ scale: 0.94 }], opacity: 0.92 },
   dot: {
-    position: 'absolute', top: 6, right: 6, width: 12, height: 12, borderRadius: 6,
-    backgroundColor: '#EF4444', borderWidth: 2, borderColor: '#FFCE48',
+    position: 'absolute', top: 4, right: 4, width: 14, height: 14, borderRadius: 7,
+    backgroundColor: '#EF4444', borderWidth: 2.5, borderColor: '#111827',
   },
 });

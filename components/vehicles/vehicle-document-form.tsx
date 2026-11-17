@@ -4,6 +4,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Fonts } from '@/constants/theme';
 import { NewVehicleDocument, PickedFile, VehicleDocumentKind } from '@/services/api';
 import { asDate, isoDate } from '@/services/usDate';
+import { usePhotoPicker } from '@/components/photo-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { FileCheck2, Upload } from 'lucide-react-native';
 import React, { useState } from 'react';
@@ -25,13 +26,24 @@ export function VehicleDocumentForm({ kind, onSubmit, onCancel, onError }: Props
   const [issuer, setIssuer] = useState('');
   const [number, setNumber] = useState('');
   const [saving, setSaving] = useState(false);
+  const photoPicker = usePhotoPicker();
 
-  const pick = async () => {
+  // A photo of it (camera or gallery), or the PDF / file the issuer sent —
+  // in the app's own popup (components/photo-picker.tsx). A photo of a
+  // document is kept sharp enough to read ('document').
+  const pickFile = async () => {
     const result = await DocumentPicker.getDocumentAsync({
       type: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], copyToCacheDirectory: true,
     });
     const asset = result.canceled ? null : result.assets?.[0];
     if (asset) setFile({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType ?? 'application/pdf' });
+  };
+  const pick = async () => {
+    const [photo] = await photoPicker.pickPhotos({
+      title: insurance ? 'Insurance Card' : 'Registration', size: 'document',
+      extra: { label: 'Choose a File (PDF)', kind: 'file', onPress: () => { void pickFile(); } },
+    });
+    if (photo) setFile({ uri: photo.uri, name: 'document.jpg', mimeType: photo.mimeType });
   };
 
   const save = async () => {
@@ -80,6 +92,7 @@ export function VehicleDocumentForm({ kind, onSubmit, onCancel, onError }: Props
         <Button kind="secondary" label="Cancel" onPress={onCancel} disabled={saving} style={{ flex: 1 }} />
         <Button label="Upload" onPress={save} busy={saving} disabled={!file} style={{ flex: 1 }} />
       </View>
+      {photoPicker.element}
     </View>
   );
 }

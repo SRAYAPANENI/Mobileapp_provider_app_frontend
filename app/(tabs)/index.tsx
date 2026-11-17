@@ -1,6 +1,6 @@
 import { LabourHelper } from '@/components/labour-helper';
 import AnimatedBrandMark from '@/components/animated-brand-mark';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { AppState, BackHandler, StyleSheet, View, ScrollView, TouchableOpacity, Switch, Platform, SafeAreaView, ActivityIndicator, PanResponder, Animated as RNAnimated, useWindowDimensions, Linking, RefreshControl, Pressable } from 'react-native';
 import { Text, TextInput as RNTextInput } from '@/components/scaled-text';
 import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
@@ -9,6 +9,7 @@ import { AppAlert, useAppAlert } from '@/components/app-alert';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import { shrinkPhoto } from '@/services/photo';
 import { callTapAllowed } from '@/services/callManager';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
@@ -84,6 +85,7 @@ import { startBackgroundLocation, stopBackgroundLocation } from '@/services/back
 import { connectLocationSocket, disconnectLocationSocket, sendLocationViaSocket } from '@/services/location-socket';
 import Animated, {
   FadeInUp,
+  cancelAnimation,
   useSharedValue,
   useAnimatedStyle,
   withRepeat,
@@ -102,14 +104,32 @@ const formatTime = (deadline: number, now: number) => {
   return { days, hours, minutes, seconds };
 };
 
-/** A job's time left, ticking each second on its own — this used to be a
- * clock in the screen's state, which redrew all of Home every second. */
+/** The feed's one clock for every card's time left. One timer, one redraw a
+ * second for all cards together — a timer per card made a separate commit
+ * per card every second. Stopped while the feed isn't seen (another tab, or
+ * the Service Room open over it): those commits included the sheet and made
+ * its scrolling catch. */
+const feedClock = (() => {
+  let now = Date.now();
+  let timer: ReturnType<typeof setInterval> | null = null;
+  const listeners = new Set<() => void>();
+  const tick = () => { now = Date.now(); listeners.forEach((l) => l()); };
+  return {
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+    now: () => now,
+    run(running: boolean) {
+      if (running && !timer) { tick(); timer = setInterval(tick, 1000); }
+      if (!running && timer) { clearInterval(timer); timer = null; }
+    },
+  };
+})();
+
+/** A job's time left, from the feed's clock above. */
 function Countdown({ deadline, secondsStyle }: { deadline: number; secondsStyle: any }) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  const now = useSyncExternalStore(feedClock.subscribe, feedClock.now);
   const { days, hours, minutes, seconds } = formatTime(deadline, now);
   // Text pieces, inside the card's own (urgent-coloured) text.
   return <>{days}d : {hours}h : {minutes}m : <Text style={secondsStyle}>{seconds}s</Text></>;
@@ -472,8 +492,10 @@ export default function DashboardScreen() {
   // own 3-second poll of its job; the lists refresh when it closes.
   const [showManageModal, setShowManageModal] = useState(false);
   const feedPolling = homeInView && !showManageModal ? 15_000 : false;
-  const inboundQuery = useInboundJobs(feedPolling);
-  const activeQuery = useActiveJobs(feedPolling);
+  // Nor do they refresh on coming back to the app (from the sheet's camera,
+  // say) while it's open — closing it reloads them.
+  const inboundQuery = useInboundJobs(feedPolling, !showManageModal);
+  const activeQuery = useActiveJobs(feedPolling, true, !showManageModal);
   const loadJobs = React.useCallback(async () => {
     await Promise.all([inboundQuery.refetch(), activeQuery.refetch()]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -736,16 +758,24 @@ export default function DashboardScreen() {
       try {
         // Push cached GPS immediately so customer sees movement right away,
         // then follow with a fresh fix.
+        // Shown only when the Service Room isn't open over Home — coming back
+        // from its camera ("Take Photo") would redraw all of Home under the
+        // sheet twice. The ref always has it (actions read that).
+        const show = (c: { latitude: number; longitude: number }) => {
+          userCoordsRef.current = c;
+          if (sheetOpenRef.current) movedUnderSheetRef.current = true;
+          else setUserCoords(c);
+        };
         const cached = await Location.getLastKnownPositionAsync({ maxAge: 120000, requiredAccuracy: 500 });
         if (cached) {
           const c = { latitude: cached.coords.latitude, longitude: cached.coords.longitude };
-          setUserCoords(c);
+          show(c);
           const sent = sendLocationViaSocket(c.latitude, c.longitude, cached.coords.speed, cached.coords.heading);
           if (!sent) SkoFyApi.tracking.updateLocation(c.latitude, c.longitude, cached.coords.heading).catch(() => {});
         }
         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         const coords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-        setUserCoords(coords);
+        show(coords);
         const sent = sendLocationViaSocket(coords.latitude, coords.longitude, loc.coords.speed, loc.coords.heading);
         if (!sent) SkoFyApi.tracking.updateLocation(coords.latitude, coords.longitude, loc.coords.heading).catch(() => {});
       } catch {}
@@ -828,6 +858,8 @@ export default function DashboardScreen() {
   // to hand over a code, so a photo substitutes for it instead).
   const [pickupPhoto, setPickupPhoto] = useState<{ uri: string; mimeType: string } | null>(null);
   const [confirmingPickup, setConfirmingPickup] = useState(false);
+  // The pickup photo is being shrunk for upload (services/photo.ts).
+  const [preparingPhoto, setPreparingPhoto] = useState(false);
   // Buy it for me: the receipt total, and whether the customer's money is held.
   const [goodsAmountText, setGoodsAmountText] = useState('');
   const buyingForCustomer = isDelivery(selectedJob) && isBuyForMe(manageJobDetail);
@@ -872,13 +904,30 @@ export default function DashboardScreen() {
     // Every 3 s: one request at a time (a slow network used to stack them),
     // and no redraw when nothing changed — each one redrew all of Home, which
     // is what made the Service Room stutter and feel stuck.
+    //
+    // What's asked every 3 s is the job's stamp — one small query, a few
+    // bytes — and the whole job (about ten queries, kilobytes) only when it
+    // changed. A full reload every 30 s anyway covers anything the stamp
+    // doesn't (server: JobRepository.change_stamp).
     let inFlight = false;
     let lastSeen = '';
+    let lastStamp = '';
+    let lastFullAt = 0;
+    const FULL_EVERY_MS = 30_000;
     const poll = async () => {
       if (inFlight) return;
       inFlight = true;
       try {
+        // Read before the job, so a change made in between shows as a new
+        // stamp next time rather than slipping by. Unreadable (a server
+        // without it yet, a blip): the whole job, as before.
+        const stamp = await SkoFyApi.jobs.stamp(selectedJob.id).then((r) => r?.stamp ?? null).catch(() => null);
+        if (cancelled) return;
+        const due = Date.now() - lastFullAt >= FULL_EVERY_MS;
+        if (stamp !== null && stamp === lastStamp && !due) return;
         const detail = await SkoFyApi.jobs.get(selectedJob.id);
+        if (stamp !== null) lastStamp = stamp;
+        lastFullAt = Date.now();
         if (cancelled) return;
         const seen = JSON.stringify(detail);
         if (seen === lastSeen) return;
@@ -892,10 +941,26 @@ export default function DashboardScreen() {
         // since this poll's own fresher status was never fed back in.
         if (detail?.status && detail.status !== selectedJob.status) {
           if (detail.status === 'CANCELLED') {
-            appAlert.show(
-              'warning', 'Job Cancelled',
-              detail.cancellation_reason ? `The customer cancelled this job. Reason: ${detail.cancellation_reason}` : 'The customer cancelled this job.',
-            );
+            // Said as it happened (server: app/domain/cancellation.py CancelCause)
+            // — a refusal still uploading when this poll saw it, a no-show, or
+            // the provider's own cancel are not "the customer cancelled".
+            const cause: string | undefined = detail.cancel_cause;
+            if (cause === 'PICKUP_REFUSED') {
+              appAlert.show('success', 'Item Refused', 'The job is cancelled and your trip fee is kept. Thanks for checking.');
+            } else if (cause === 'CUSTOMER_NO_SHOW') {
+              appAlert.show('success', 'Job Cancelled', "The customer wasn't there — the visiting fee is yours.");
+            } else if (cause === 'NO_SHOW') {
+              appAlert.show('warning', 'Job Cancelled', "This job was cancelled because you hadn't set off in time.");
+            } else if (cause === 'PROVIDER') {
+              appAlert.show('warning', 'Job Cancelled', 'This job was cancelled.');
+            } else {
+              appAlert.show(
+                'warning', 'Job Cancelled',
+                detail.cancellation_reason ? `The customer cancelled this job. Reason: ${detail.cancellation_reason}` : 'The customer cancelled this job.',
+              );
+            }
+            setPersonItemChecked(false);
+            setPickupPhoto(null);
             setShowManageModal(false);
             // Unlock the dashboard the same way handleCompleteJob does —
             // this job is dead, no reason to keep it "locked in" as active.
@@ -975,10 +1040,16 @@ export default function DashboardScreen() {
       appAlert.show('warning', 'Camera Permission Required', 'Please allow camera access in your device settings to confirm pickup.');
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 });
+    // Full quality from the camera; shrunk once, here (services/photo.ts).
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
     if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      setPickupPhoto({ uri: asset.uri, mimeType: asset.mimeType || 'image/jpeg' });
+      // About a second on a slower phone: the button says so and can't reopen the camera.
+      setPreparingPhoto(true);
+      try {
+        setPickupPhoto(await shrinkPhoto(result.assets[0]));
+      } finally {
+        setPreparingPhoto(false);
+      }
     }
   };
 
@@ -1016,16 +1087,9 @@ export default function DashboardScreen() {
       appAlert.show('error', 'Location Required', 'Turn on location to confirm pickup.');
       return;
     }
-    setConfirmingPickup(true);
-    try {
-      await SkoFyApi.jobs.confirmPickup(
-        selectedJob.id, pickupPhoto.uri, pickupPhoto.mimeType, coords.latitude, coords.longitude,
-        buyingForCustomer ? parseGoodsAmount(goodsAmountText) : undefined,
-        pickupFromPerson && personItemChecked,
-        pickupFromPerson ? personChecksVersion : undefined,
-        businessShop ? paidWith ?? undefined : undefined,
-      );
-      const detail = await SkoFyApi.jobs.get(selectedJob.id);
+    const jobId = selectedJob.id;
+    // Collected: the job as it is now, and the form cleared.
+    const collected = (detail: any) => {
       setManageJobDetail(detail);
       // A trip goes IN_PROGRESS here — the list's copy too, now, not on the next poll.
       if (detail?.status) setJobs(prev => prev.map(j => j.id === detail.id ? { ...j, status: detail.status } : j));
@@ -1033,8 +1097,27 @@ export default function DashboardScreen() {
       setGoodsAmountText('');
       setPaidWith(null);
       setPersonItemChecked(false);
+    };
+    setConfirmingPickup(true);
+    try {
+      await SkoFyApi.jobs.confirmPickup(
+        jobId, pickupPhoto.uri, pickupPhoto.mimeType, coords.latitude, coords.longitude,
+        buyingForCustomer ? parseGoodsAmount(goodsAmountText) : undefined,
+        pickupFromPerson && personItemChecked,
+        pickupFromPerson ? personChecksVersion : undefined,
+        businessShop ? paidWith ?? undefined : undefined,
+      );
     } catch (err: any) {
-      if (err?.error_code === 'NOT_AT_LOCATION') {
+      // A photo upload on a weak signal can time out after the server saved
+      // it (or a retry meets "already confirmed"): the server says whether
+      // it's collected — never "Could not confirm" for a pickup that was.
+      // Not asked when the server's refusal is final (too far, new wording):
+      // on a weak signal that read alone could hold the message back 30 s.
+      const final = err?.error_code === 'NOT_AT_LOCATION' || err?.error_code === 'DECLARATION_CHANGED';
+      const now = final ? null : await SkoFyApi.jobs.get(jobId).catch(() => null);
+      if (now?.pickup_confirmed_at) {
+        collected(now);
+      } else if (err?.error_code === 'NOT_AT_LOCATION') {
         appAlert.show('warning', 'Too Far From Pickup Location', err.message ?? 'You need to be at the pickup location.');
       } else if (err?.error_code === 'DECLARATION_CHANGED') {
         setPersonItemChecked(false);
@@ -1043,9 +1126,16 @@ export default function DashboardScreen() {
       } else {
         appAlert.show('error', 'Could Not Confirm Pickup', err?.message ?? 'Please try again.');
       }
-    } finally {
       setConfirmingPickup(false);
+      return;
     }
+    // Confirmed. Reading the job back can fail on a weak signal — that's no
+    // failure of the pickup: the photo is cleared (so it can't be sent
+    // twice) and the sheet's own 3-second poll brings the next step.
+    const detail = await SkoFyApi.jobs.get(jobId).catch(() => null);
+    if (detail) collected(detail);
+    else setPickupPhoto(null);
+    setConfirmingPickup(false);
   };
 
   const handlePickupRefused = () => {
@@ -1834,8 +1924,22 @@ const filteredJobs = jobs.filter((job) => {
     };
   }, []);
 
-  // Pulse animations — must run inside useEffect, not during render
+  // The feed's moving parts — the urgent pulses and the time-left clock — run
+  // only while the feed is seen. Under the Service Room they kept going: each
+  // pulse frame commits the whole view tree on Android (Reanimated 4, new
+  // architecture), the sheet included, so its scrolling caught and stuck —
+  // worst on Pickup & Delivery, whose "now" trips are Urgent, so the provider's
+  // own active card pulses under the sheet the whole trip.
+  const feedMoving = homeInView && !showManageModal;
   useEffect(() => {
+    feedClock.run(feedMoving);
+    if (!feedMoving) {
+      cancelAnimation(acceptButtonScale);
+      cancelAnimation(urgentBadgeScale);
+      acceptButtonScale.value = 1;
+      urgentBadgeScale.value = 1;
+      return;
+    }
     acceptButtonScale.value = withRepeat(
       withSequence(withTiming(1.05, { duration: 800 }), withTiming(1, { duration: 800 })),
       -1,
@@ -1846,7 +1950,9 @@ const filteredJobs = jobs.filter((job) => {
       -1,
       true
     );
-  }, []);
+  }, [feedMoving]);
+  // Leaving Home for good (sign-out) stops the clock too.
+  useEffect(() => () => feedClock.run(false), []);
 
   const acceptButtonStyle = useAnimatedStyle(() => ({
     transform: [{ scale: acceptButtonScale.value }],
@@ -1889,7 +1995,7 @@ const filteredJobs = jobs.filter((job) => {
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View style={styles.centeredLogoRow}>
-            <AnimatedBrandMark size={32} nameSize={20} centered={false} pro />
+            <AnimatedBrandMark size={32} nameSize={20} centered={false} pro paused={showManageModal} />
           </View>
 
           <View style={styles.headerActions}>
@@ -2680,10 +2786,14 @@ const filteredJobs = jobs.filter((job) => {
                     {pickupPhoto ? (
                       <Image source={{ uri: pickupPhoto.uri }} style={styles.pickupPhotoPreview} contentFit="cover" />
                     ) : null}
-                    <TouchableOpacity style={styles.pickupPhotoBtn} onPress={handlePickPickupPhoto}>
-                      <Camera size={18} color="#111827" />
+                    <TouchableOpacity
+                      style={[styles.pickupPhotoBtn, preparingPhoto && { opacity: 0.6 }]}
+                      onPress={handlePickPickupPhoto}
+                      disabled={preparingPhoto || confirmingPickup}
+                    >
+                      {preparingPhoto ? <ActivityIndicator size="small" color="#111827" /> : <Camera size={18} color="#111827" />}
                       <ThemedText style={styles.pickupPhotoBtnText}>
-                        {pickupPhoto ? 'Retake Photo' : 'Take Photo'}
+                        {preparingPhoto ? 'Preparing photo…' : pickupPhoto ? 'Retake Photo' : 'Take Photo'}
                       </ThemedText>
                     </TouchableOpacity>
                     {tripUnpaid && (

@@ -2,6 +2,8 @@ import { NAME_PART_MAX, NameParts, fullName, hasFullName, namePayload } from '@/
 import { useOfflinePage } from '@/components/offline-gate';
 import { NoInternetState } from '@/components/no-internet-state';
 import { AppAlert } from '@/components/app-alert';
+import { usePhotoPicker } from '@/components/photo-picker';
+import { shrinkPhoto } from '@/services/photo';
 import { showDialog } from '@/components/alert-host';
 import { isValidPassword } from '@/services/password';
 import AnimatedBrandMark from '@/components/animated-brand-mark';
@@ -164,6 +166,8 @@ function TestCountdown({ from, running, onPause, onTimeout, style }: {
 const PROFILE_LOADER_MAX_MS = 6_000;
 
 export default function ProfileScreen() {
+  // Camera or gallery, in the app's own popup (components/photo-picker.tsx).
+  const photoPicker = usePhotoPicker();
   const passwordFit = useButtonRowFit();
   const queryClient = useQueryClient();
   const bottomInset = useBottomInset();
@@ -1059,18 +1063,15 @@ export default function ProfileScreen() {
     // Deliberately NOT requesting base64 here — forcing base64 extraction on a multi-MB
     // video file can hang or crash the picker on real devices. Always upload via
     // multipart instead (works for both images and videos, see handleAddProof).
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images', 'videos'],
-      allowsMultipleSelection: true,
-      selectionLimit: MAX_PROOFS_PER_SKILL,
-      quality: 0.8,
+    const picked = await photoPicker.pickPhotos({
+      title: 'Proof of Your Work', videos: true, multiple: MAX_PROOFS_PER_SKILL,
     });
 
-    if (!result.canceled && result.assets.length > 0) {
-      setPendingMediaBatch(result.assets.map(asset => ({
-        uri: asset.uri,
-        type: asset.type === 'video' ? 'video' as const : 'image' as const,
-        mime: asset.mimeType ?? (asset.type === 'video' ? 'video/mp4' : 'image/jpeg'),
+    if (picked.length > 0) {
+      setPendingMediaBatch(picked.map(item => ({
+        uri: item.uri,
+        type: item.kind === 'video' ? 'video' as const : 'image' as const,
+        mime: item.mimeType,
       })));
       setSelectedTagSkill(null);
       setTagDescription('');
@@ -1157,14 +1158,9 @@ export default function ProfileScreen() {
   };
 
   const handleUploadLicense = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsMultipleSelection: false,
-      quality: 0.8,
-      base64: true,
-    });
-    if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
+    // Read by a person checking it: kept larger and sharper ('document').
+    const [asset] = await photoPicker.pickPhotos({ title: 'Trade License', size: 'document', base64: true });
+    if (!asset) return;
     try {
       if (asset.base64) {
         await SkoFyApi.provider.addDocument({
@@ -1386,16 +1382,15 @@ export default function ProfileScreen() {
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.8,
-      base64: true,
+      quality: 1,
       cameraType: ImagePicker.CameraType.front,
     });
     if (result.canceled) return;
 
-    const asset = result.assets[0];
+    const shot = result.assets[0];
     setCheckingFace(true);
     try {
-      const faces = await FaceDetection.detect(asset.uri);
+      const faces = await FaceDetection.detect(shot.uri);
       if (!faces || faces.length === 0) {
         showAlert('error', 'No Face Detected', "We couldn't find a face in that photo. Please retake it with your face clearly visible.");
         return;
@@ -1412,11 +1407,13 @@ export default function ProfileScreen() {
     }
 
     const prevImage = profileImage;
+    // Shrunk for upload, with its base64 for the request (services/photo.ts).
+    const asset = await shrinkPhoto(shot, 'avatar', { base64: true });
     setProfileImage(asset.uri);
     try {
       const base64 = asset.base64;
       if (base64) {
-        const mime = asset.mimeType ?? 'image/jpeg';
+        const mime = asset.mimeType;
         await SkoFyApi.provider.uploadProfileImage(base64, mime);
       }
       setTimeout(() => {
@@ -3431,6 +3428,7 @@ export default function ProfileScreen() {
         onDismiss={hideAlert}
         buttons={[{ text: 'Got it' }]}
       />
+      {photoPicker.element}
 
     </ThemedView>
   );

@@ -8,7 +8,7 @@ import { NewVehicle, PickedFile, VehicleType } from '@/services/api';
 import { asDate, isoDate } from '@/services/usDate';
 import * as DocumentPicker from 'expo-document-picker';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
+import { usePhotoPicker } from '@/components/photo-picker';
 import { Camera, FileCheck2, Upload } from 'lucide-react-native';
 import { VehicleIcon } from './vehicle-icon';
 import React, { useState } from 'react';
@@ -41,6 +41,8 @@ interface Props {
 
 export function VehicleForm({ onSubmit, onCancel }: Props) {
   const alert = useAppAlert();
+  // Camera or gallery, in the app's own popup (components/photo-picker.tsx).
+  const photoPicker = usePhotoPicker();
   const [type, setType] = useState<VehicleType | null>(null);
   const [make, setMake] = useState('');
   const [model, setModel] = useState('');
@@ -54,34 +56,26 @@ export function VehicleForm({ onSubmit, onCancel }: Props) {
   const [saving, setSaving] = useState(false);
   const chosen = VEHICLE_TYPES.find((t) => t.value === type);
 
-  const takePhoto = async (slot: PhotoSlot, from: 'camera' | 'library') => {
-    const permission = from === 'camera'
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      alert.show('warning', 'Permission needed', from === 'camera'
-        ? 'Allow the camera to take the photo.' : 'Allow access to your photos to choose one.');
-      return;
-    }
-    // Compressed: a JPEG the server can check, small enough to send quickly.
-    const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.7 };
-    const result = from === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
-    const asset = result.canceled ? null : result.assets?.[0];
-    if (asset) {
-      setPhotos((p) => ({ ...p, [slot]: { uri: asset.uri, name: asset.fileName ?? `${slot}.jpg`, mimeType: asset.mimeType ?? 'image/jpeg' } }));
-    }
+  // A JPEG the server can check, shrunk to send quickly (services/photo.ts).
+  const choosePhoto = async (slot: PhotoSlot) => {
+    const [photo] = await photoPicker.pickPhotos({ title: slot === 'front_photo' ? 'Front of the Vehicle' : 'Cargo Space' });
+    if (photo) setPhotos((p) => ({ ...p, [slot]: { uri: photo.uri, name: `${slot}.jpg`, mimeType: photo.mimeType } }));
   };
-  const choosePhoto = (slot: PhotoSlot) => alert.show('info', 'Add a photo', 'Take it now, or choose one you already have.', [
-    { text: 'Choose a photo', variant: 'secondary', onPress: () => { void takePhoto(slot, 'library'); } },
-    { text: 'Take a photo', variant: 'primary', onPress: () => { void takePhoto(slot, 'camera'); } },
-  ]);
 
-  const pickRegistration = async () => {
+  // A photo of the registration (kept sharp enough to read), or its PDF.
+  const pickRegistrationFile = async () => {
     const result = await DocumentPicker.getDocumentAsync({
       type: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], copyToCacheDirectory: true,
     });
     const asset = result.canceled ? null : result.assets?.[0];
     if (asset) setRegistration({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType ?? 'application/pdf' });
+  };
+  const pickRegistration = async () => {
+    const [photo] = await photoPicker.pickPhotos({
+      title: 'Registration', size: 'document',
+      extra: { label: 'Choose a File (PDF)', kind: 'file', onPress: () => { void pickRegistrationFile(); } },
+    });
+    if (photo) setRegistration({ uri: photo.uri, name: 'registration.jpg', mimeType: photo.mimeType });
   };
 
   const missing = (): string | null => {
@@ -212,6 +206,7 @@ export function VehicleForm({ onSubmit, onCancel }: Props) {
         <Button label="Send for checking" onPress={save} busy={saving} style={{ flex: 1.4 }} />
       </View>
       {alert.element}
+      {photoPicker.element}
     </View>
   );
 }

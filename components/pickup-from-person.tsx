@@ -1,6 +1,7 @@
 import { Text, TextInput } from '@/components/scaled-text';
 import { Fonts } from '@/constants/theme';
 import { SkoFyApi } from '@/services/api';
+import { shrinkPhoto } from '@/services/photo';
 import { PickupDetails } from '@/services/pickupDelivery';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -92,9 +93,9 @@ export function PickupFromPerson({ jobId, item, value, details, onCheckedChange,
       onError('Camera Permission Required', 'Allow camera access to take a photo of the door.');
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.7 });
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
     if (!result.canceled && result.assets[0]) {
-      setPhoto({ uri: result.assets[0].uri, mimeType: result.assets[0].mimeType || 'image/jpeg' });
+      setPhoto(await shrinkPhoto(result.assets[0]));
     }
   };
 
@@ -113,6 +114,15 @@ export function PickupFromPerson({ jobId, item, value, details, onCheckedChange,
       setRefusing(false);
       onRefused();
     } catch (err: any) {
+      // Timed out after the server recorded it (the door photo on a weak
+      // signal), or a retry of one that was: the job says it's refused.
+      // Not asked when the refusal was turned down for being too far — final.
+      const now = err?.error_code === 'NOT_AT_LOCATION' ? null : await SkoFyApi.jobs.get(jobId).catch(() => null);
+      if (now?.status === 'CANCELLED' && now?.cancel_cause === 'PICKUP_REFUSED') {
+        setRefusing(false);
+        onRefused();
+        return;
+      }
       onError(
         err?.error_code === 'NOT_AT_LOCATION' ? 'Too Far From Pickup' : 'Could Not Refuse',
         err?.message ?? 'Please try again.',

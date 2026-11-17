@@ -24,6 +24,7 @@ export default function AnimatedBrandMark({
   centered = true,
   offsetX = 0,
   pro = false,
+  paused = false,
 }: {
   size?: number;
   showName?: boolean;
@@ -44,6 +45,8 @@ export default function AnimatedBrandMark({
   // Not present on the customer app's copy of this component — that app has
   // no such identity to badge.
   pro?: boolean;
+  // Something covers the mark (Home's Service Room): its rings stop (AnimatedLogoMark).
+  paused?: boolean;
 }) {
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
@@ -55,7 +58,7 @@ export default function AnimatedBrandMark({
     <View style={styles.container}>
       <View style={[styles.brandRow, { marginLeft: offsetX }]}>
         <View style={{ width: sideWidth, height: size }}>
-          <AnimatedLogoMark size={size} />
+          <AnimatedLogoMark size={size} paused={paused} />
         </View>
         {showName && (
           <Animated.View

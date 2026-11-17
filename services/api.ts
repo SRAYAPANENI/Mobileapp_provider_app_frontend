@@ -1315,6 +1315,11 @@ export const SkoFyApi = {
     get: async (jobId: string) =>
       request(`/jobs/${jobId}`),
 
+    /** A fingerprint of the job, one cheap query (server: JobService.job_stamp)
+     * — an open job screen polls this and reloads the job only when it changes. */
+    stamp: async (jobId: string): Promise<{ stamp: string }> =>
+      request(`/jobs/${jobId}/stamp`),
+
     /**
      * Apply to a distributed job. Bidding is retired — there's no fee to
      * propose anymore, price is only ever set by the post-inspection

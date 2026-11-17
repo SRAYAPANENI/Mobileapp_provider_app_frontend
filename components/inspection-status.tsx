@@ -2,7 +2,7 @@ import { Text, TextInput } from '@/components/scaled-text';
 import { Fonts } from '@/constants/theme';
 import { SkoFyApi } from '@/services/api';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
+import { usePhotoPicker } from '@/components/photo-picker';
 import { Camera, CheckCircle2, Clock, ShieldAlert, X } from 'lucide-react-native';
 import React, { useState } from 'react';
 import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-native';
@@ -25,13 +25,14 @@ export function InspectionStatus({ jobId, confidence, disputed, onChanged, onErr
   const [photos, setPhotos] = useState<{ uri: string; mimeType: string }[]>([]);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  // Camera or gallery, in the app's own popup — drawn here, inside the
+  // Service Room's sheet, so it opens over it (components/photo-picker.tsx).
+  const photoPicker = usePhotoPicker();
 
   const addPhoto = async () => {
     if (photos.length >= 3) return;
-    const shot = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
-    if (!shot.canceled && shot.assets[0]) {
-      setPhotos((prev) => [...prev, { uri: shot.assets[0].uri, mimeType: shot.assets[0].mimeType || 'image/jpeg' }]);
-    }
+    const picked = await photoPicker.pickPhotos({ title: 'Add a Photo', multiple: 3 - photos.length });
+    if (picked.length) setPhotos((prev) => [...prev, ...picked].slice(0, 3));
   };
 
   const sendStatement = async () => {
@@ -100,6 +101,7 @@ export function InspectionStatus({ jobId, confidence, disputed, onChanged, onErr
             </TouchableOpacity>
           </>
         )}
+        {photoPicker.element}
       </View>
     );
   }
