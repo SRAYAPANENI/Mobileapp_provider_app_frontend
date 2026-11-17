@@ -516,7 +516,8 @@ export interface GuaranteeClaim {
 /** Your prices per hour / day / night, and hosting at your place
  * (docs/JOB_SHAPE_DESIGN.md phase 4). */
 /** TRIP_BASE / TRIP_MILE: a Pickup & Delivery fare — base + per mile × the trip's miles. */
-export interface ProviderRate { skill_id: string; skill_name: string; unit: 'HOUR' | 'DAY' | 'NIGHT' | 'WEEK' | 'MONTH' | 'VISIT' | 'FIXED' | 'TRIP_BASE' | 'TRIP_MILE' | 'TRIP_BOX' | 'TRIP_TRUNK' | 'TRIP_VAN' | 'TRIP_WAIT' | 'TRIP_BUY'; amount: number }
+/** TRUNK_MILE / VAN_MILE: a big load's own price per mile (optional, never below TRIP_MILE). */
+export interface ProviderRate { skill_id: string; skill_name: string; unit: 'HOUR' | 'DAY' | 'NIGHT' | 'WEEK' | 'MONTH' | 'VISIT' | 'FIXED' | 'TRIP_BASE' | 'TRIP_MILE' | 'TRIP_BOX' | 'TRIP_TRUNK' | 'TRIP_VAN' | 'TRUNK_MILE' | 'VAN_MILE' | 'TRIP_WAIT' | 'TRIP_BUY'; amount: number }
 export type PetKind = 'DOG' | 'CAT' | 'BIRD' | 'SMALL_PET' | 'REPTILE' | 'FISH' | 'OTHER';
 export type DogSize = 'SMALL' | 'MEDIUM' | 'LARGE' | 'GIANT';
 export type ItemSize = 'SMALL' | 'MEDIUM' | 'LARGE' | 'BULKY';
@@ -1844,6 +1845,8 @@ export const SkoFyApi = {
      * nearby charge, or a typical local fare. Only a hint: the price is theirs. */
     suggestTripFare: async (): Promise<{
       base: number; per_mile: number; providers: number; based_on: 'nearby' | 'typical'; text: string;
+      /** A big load's price per mile to start from (older servers leave them out). */
+      trunk_per_mile?: number; van_per_mile?: number;
     }> => request('/hosting/me/rates/trip-suggestion') as any,
   },
 

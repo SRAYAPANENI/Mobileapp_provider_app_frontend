@@ -59,9 +59,16 @@ export type PriceChange = { unit: ProviderRate['unit']; amount: number | null };
 export function useSaveSkillPrices() {
   return useMutation({
     mutationFn: async ({ skillId, changes }: { skillId: string; changes: PriceChange[] }) => {
-      const results = await Promise.allSettled(changes.map(({ unit, amount }) => amount == null
+      const send = ({ unit, amount }: PriceChange) => (amount == null
         ? SkoFyApi.hosting.removeRate(skillId, unit)
-        : SkoFyApi.hosting.setRate(skillId, unit, amount)));
+        : SkoFyApi.hosting.setRate(skillId, unit, amount));
+      // The usual price per mile first: a car-trunk or van price per mile is
+      // checked against it, and sent alongside it, the server could check
+      // against the old one ("can't be below your usual $2" just after
+      // lowering it to $1.50).
+      const first = changes.filter((c) => c.unit === 'TRIP_MILE');
+      const firstResults = await Promise.allSettled(first.map(send));
+      const results = [...firstResults, ...await Promise.allSettled(changes.filter((c) => c.unit !== 'TRIP_MILE').map(send))];
       const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
       if (failed) throw failed.reason;
     },

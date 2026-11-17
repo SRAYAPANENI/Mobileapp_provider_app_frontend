@@ -8,7 +8,7 @@ import React, { useEffect, useState } from 'react';
 import { ChevronDown, ChevronUp, Sparkles } from 'lucide-react-native';
 import { ActivityIndicator, TouchableOpacity, View } from 'react-native';
 import { TextInput } from '@/components/scaled-text';
-import { BUY_CAP, Notify, TRIP_EXTRAS, Unit, priceText, rs, tripExample, unitsFor } from './shared';
+import { BUY_CAP, Notify, SIZE_MILES, TRIP_EXTRAS, Unit, priceText, rs, tripExample, unitsFor } from './shared';
 
 type Prices = Partial<Record<Unit, string>>;
 const asPrices = (rates: ProviderRate[]): Prices =>
@@ -21,9 +21,12 @@ const samePrices = (a: Prices, b: Prices, units: { unit: Unit }[]) => units.ever
   return x === y || (x !== '' && y !== '' && Number(x) === Number(y));
 });
 const PER: Record<Unit, string> = { HOUR: 'hour', VISIT: 'visit', DAY: 'day', NIGHT: 'night', WEEK: 'week', MONTH: 'month',
-  TRIP_BASE: 'trip', TRIP_MILE: 'mile', TRIP_BOX: 'box', TRIP_TRUNK: 'car trunk', TRIP_VAN: 'van', TRIP_WAIT: 'min', TRIP_BUY: 'shop' };
-/** How a price on file reads: "$6 base", "$1.5/mile", "$40/night". */
+  TRIP_BASE: 'trip', TRIP_MILE: 'mile', TRIP_BOX: 'box', TRIP_TRUNK: 'car trunk', TRIP_VAN: 'van',
+  TRUNK_MILE: 'mile', VAN_MILE: 'mile', TRIP_WAIT: 'min', TRIP_BUY: 'shop' };
+/** How a price on file reads: "$6 base", "$1.5/mile", "$40/night", "van $2.75/mile". */
 const onFileLabel = (unit: Unit, amount: string) => (unit === 'TRIP_BASE' ? `$${amount} base`
+  : unit === 'TRUNK_MILE' ? `car trunk $${amount}/mile`
+  : unit === 'VAN_MILE' ? `van $${amount}/mile`
   : unit === 'TRIP_WAIT' ? `waiting $${amount}/min`
   : unit === BUY_CAP ? `buys up to $${amount}`
   : TRIP_EXTRAS.includes(unit) ? `${PER[unit]} +$${amount}` : `$${amount}/${PER[unit]}`);
@@ -87,7 +90,12 @@ export const SkillPricesCard = React.memo(function SkillPricesCard({ sk, rates, 
     setSuggesting(true);
     try {
       const tip = await SkoFyApi.hosting.suggestTripFare();
-      edit((p) => ({ ...p, TRIP_BASE: String(tip.base), TRIP_MILE: String(tip.per_mile) }));
+      // A big load's own rate only for a size they take (its loading fee set).
+      edit((p) => ({
+        ...p, TRIP_BASE: String(tip.base), TRIP_MILE: String(tip.per_mile),
+        ...(tip.trunk_per_mile != null && (p.TRIP_TRUNK ?? '').trim() !== '' ? { TRUNK_MILE: String(tip.trunk_per_mile) } : {}),
+        ...(tip.van_per_mile != null && (p.TRIP_VAN ?? '').trim() !== '' ? { VAN_MILE: String(tip.van_per_mile) } : {}),
+      }));
       setSuggestion(`${tip.text}. It's your price — change it to anything you like, then save.`);
     } catch (err: any) {
       notify('error', 'Could not suggest', err?.message ?? 'Try again in a moment.');
@@ -111,6 +119,14 @@ export const SkillPricesCard = React.memo(function SkillPricesCard({ sk, rates, 
       const lowest = TRIP_EXTRAS.includes(unit) ? 0 : Number.MIN_VALUE;
       if (!Number.isFinite(amount) || amount < lowest) {
         notify('error', 'Not saved', 'Enter a price in dollars, like 25.');
+        return;
+      }
+      // A big load's per mile is more than the usual one (the server says so too).
+      const usual = Number((draft.TRIP_MILE ?? '').trim());
+      // Only one being changed: one on file left below a usual price raised
+      // since isn't blocking — the usual one is charged, and the row says so.
+      if (SIZE_MILES.includes(unit) && amount !== savedAmount && usual > 0 && amount < usual) {
+        notify('error', 'Not saved', `A ${unit === 'VAN_MILE' ? 'van' : 'car-trunk'} load's price per mile can't be below your usual $${usual} — or leave it empty to use that.`);
         return;
       }
       if (amount !== savedAmount) changes.push({ unit, amount });
@@ -166,6 +182,12 @@ export const SkillPricesCard = React.memo(function SkillPricesCard({ sk, rates, 
               : hint}</ThemedText>
             {/* A car trunk or a van: the price alone isn't enough — the vehicle, checked. */}
             {vehicleRoom && ROOM_SIZE[unit] && <VehicleNeed room={vehicleRoom[ROOM_SIZE[unit]!]} />}
+            {/* Below the usual price per mile: what's charged is the usual one. */}
+            {SIZE_MILES.includes(unit) && Number(draft[unit]) > 0 && Number(draft.TRIP_MILE) > Number(draft[unit]) && (
+              <ThemedText style={[rs.hint, { color: '#B45309' }]}>
+                Below your usual ${draft.TRIP_MILE}/mile — that's what's charged. Raise this, or leave it empty.
+              </ThemedText>
+            )}
             {/* Shopping paid back isn't earnings: no fee on it, nothing to keep. */}
             {typing === unit && unit !== BUY_CAP && <YouKeep amount={draft[unit] ?? ''} />}
           </View>
@@ -175,7 +197,10 @@ export const SkillPricesCard = React.memo(function SkillPricesCard({ sk, rates, 
               style={rs.moneyInput}
               keyboardType="decimal-pad"
               // Empty per hour uses the usual hourly rate (set above).
-              placeholder={unit === 'HOUR' && hourlyHint ? hourlyHint : unit === BUY_CAP ? 'Off' : '—'}
+              // Empty per hour uses the usual hourly rate; a big load's per mile, the usual per mile.
+              placeholder={unit === 'HOUR' && hourlyHint ? hourlyHint
+                : SIZE_MILES.includes(unit) && (draft.TRIP_MILE ?? '').trim() ? draft.TRIP_MILE!
+                : unit === BUY_CAP ? 'Off' : '—'}
               placeholderTextColor="#9CA3AF"
               value={draft[unit] ?? ''}
               onChangeText={(t) => edit((p) => ({ ...p, [unit]: priceText(t) }))}

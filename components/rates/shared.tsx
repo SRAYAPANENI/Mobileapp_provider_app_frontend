@@ -10,7 +10,7 @@ import { StyleSheet, Switch, TouchableOpacity, View } from 'react-native';
 // What Rates & hosting's cards share: units, choices, small controls, styles.
 
 export type Unit = Extract<ProviderRate['unit'], 'HOUR' | 'VISIT' | 'DAY' | 'NIGHT' | 'WEEK' | 'MONTH'
-  | 'TRIP_BASE' | 'TRIP_MILE' | 'TRIP_BOX' | 'TRIP_TRUNK' | 'TRIP_VAN' | 'TRIP_WAIT' | 'TRIP_BUY'>;
+  | 'TRIP_BASE' | 'TRIP_MILE' | 'TRIP_BOX' | 'TRIP_TRUNK' | 'TRIP_VAN' | 'TRUNK_MILE' | 'VAN_MILE' | 'TRIP_WAIT' | 'TRIP_BUY'>;
 export type Notify = (type: 'success' | 'error', title: string, message: string) => void;
 
 // The prices a job can be booked at up front (docs/JOB_SHAPE_DESIGN.md) — in
@@ -32,8 +32,13 @@ export const UNITS: { unit: Unit; label: string; hint: string }[] = [
   // an extra. A car trunk or a van reaches you once you set one (it can be
   // $0) and a vehicle that carries it is checked (My vehicles, app/vehicles.tsx).
   { unit: 'TRIP_BOX', label: 'Box extra', hint: 'Empty: boxes at no extra' },
-  { unit: 'TRIP_TRUNK', label: 'Car-trunk extra', hint: 'Set it (even $0) to take items that fill a car trunk — with a vehicle we’ve checked' },
-  { unit: 'TRIP_VAN', label: 'Van extra', hint: 'Set it (even $0) to take items that need a van or pickup truck — with a vehicle we’ve checked' },
+  // A big load: its loading fee (once — setting it, even $0, is how you take
+  // that size) and, if you like, its own price per mile: it costs more every
+  // mile (fuel, wear, a bigger vehicle), which a flat extra didn't follow.
+  { unit: 'TRIP_TRUNK', label: 'Car-trunk loading fee', hint: 'Once per trip. Set it (even $0) to take items that fill a car trunk — with a vehicle we’ve checked' },
+  { unit: 'TRUNK_MILE', label: 'Car-trunk per mile', hint: 'Optional — a full trunk costs more each mile. Empty: your usual per mile. Typical: $1.75–$2.25' },
+  { unit: 'TRIP_VAN', label: 'Van loading fee', hint: 'Once per trip. Set it (even $0) to take items that need a van or pickup truck — with a vehicle we’ve checked' },
+  { unit: 'VAN_MILE', label: 'Van per mile', hint: 'Optional — a van costs more each mile. Empty: your usual per mile. Typical: $2.50–$3.50' },
   // Waiting at the pickup (skofy-backend app/domain/trip_wait.py): after the
   // free minutes, up to a cap the customer pays with the fare.
   { unit: 'TRIP_WAIT', label: 'Waiting, per minute', hint: "At a person's pickup and at the drop-off, after the free minutes — never at a store (the fare covers it). Empty: waiting is free. Typical: $0.30–$0.50" },
@@ -73,9 +78,11 @@ const UNITS_BY_PRICING: Record<string, Unit[]> = {
   VISIT: ['VISIT'],
   NIGHT: ['NIGHT', 'WEEK', 'MONTH'],
   DAY: ['DAY', 'WEEK', 'MONTH'],
-  TRIP: ['TRIP_BASE', 'TRIP_MILE', 'TRIP_BOX', 'TRIP_TRUNK', 'TRIP_VAN', 'TRIP_WAIT', 'TRIP_BUY'],
+  TRIP: ['TRIP_BASE', 'TRIP_MILE', 'TRIP_BOX', 'TRIP_TRUNK', 'TRUNK_MILE', 'TRIP_VAN', 'VAN_MILE', 'TRIP_WAIT', 'TRIP_BUY'],
 };
-const TRIP_PARTS: Unit[] = ['TRIP_BASE', 'TRIP_MILE', 'TRIP_BOX', 'TRIP_TRUNK', 'TRIP_VAN', 'TRIP_WAIT', 'TRIP_BUY'];
+const TRIP_PARTS: Unit[] = ['TRIP_BASE', 'TRIP_MILE', 'TRIP_BOX', 'TRIP_TRUNK', 'TRUNK_MILE', 'TRIP_VAN', 'VAN_MILE', 'TRIP_WAIT', 'TRIP_BUY'];
+/** A big load's own price per mile — never below the usual one (TRIP_MILE). */
+export const SIZE_MILES: Unit[] = ['TRUNK_MILE', 'VAN_MILE'];
 export const unitsFor = (sk: MySkill) => {
   const allowed = sk.pricing ? UNITS_BY_PRICING[sk.pricing] : null;
   return allowed ? UNITS.filter((u) => allowed.includes(u.unit))
