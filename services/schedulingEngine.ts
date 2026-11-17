@@ -21,6 +21,19 @@ export interface FeasibilityResult {
   travelTime?: number;
 }
 
+/** How a job fits around their other bookings, in words — the raw status
+ * ("SAFE") meant nothing to a provider. */
+export const FIT_LABEL: Record<FeasibilityStatus, string> = {
+  SAFE: 'Fits your day', TIGHT: 'Tight fit', RISKY: 'Very tight', NOT_FEASIBLE: 'Clashes',
+};
+
+/** The gap to their nearest other booking, in words. With no other booking
+ * the gap is Infinity — it read "Infinity min gap". */
+export const fitText = (f: FeasibilityResult): string =>
+  f.status === 'NOT_FEASIBLE' ? 'Clashes with a booking (with travel)'
+  : !Number.isFinite(f.score) ? 'No other bookings around then'
+  : `${f.score} min spare around your other booking`;
+
 export interface ProviderSettings {
   minGapMinutes: number;
 }

@@ -76,7 +76,7 @@ import notifee from '@notifee/react-native';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { ThemedText } from '@/components/themed-text';
-import { checkFeasibility, FeasibilityResult, calculateDistance, kmToMiles, estimateDriveMinutes, formatDriveTime } from '@/services/schedulingEngine';
+import { checkFeasibility, FeasibilityResult, FIT_LABEL, fitText, calculateDistance, kmToMiles, estimateDriveMinutes, formatDriveTime } from '@/services/schedulingEngine';
 import { resolveApplyGate } from '@/services/applyErrorGate';
 import { SkoFyApi } from '@/services/api';
 import { markRatingSkipped, nextPendingRating, markRatingSubmitted } from '@/services/ratingReminders';
@@ -160,7 +160,12 @@ const UNIT_WORD: Record<string, string> = { HOUR: 'hour', DAY: 'day', NIGHT: 'ni
  * it's made up; else a nudge to set one. A quoted job keeps its budget. */
 function feedPrice(j: any): { fee: string; feeLabel?: string; feeDetail?: string; priceMissing?: boolean } {
   if (!(j.steps ?? []).includes('PAY_UPFRONT')) {
-    return { fee: j.budget_min && j.budget_max ? `$${j.budget_min}–$${j.budget_max}` : j.budget_min ? `From $${j.budget_min}` : 'Negotiable' };
+    // Quoted: no budget (posting doesn't ask for one). A visit fee when
+    // there's a visit to pay for; online or at your place, just the quote.
+    if (Number(j.inspection_fee) > 0) {
+      return { fee: `$${Number(j.inspection_fee)}`, feeLabel: 'Visit fee', feeDetail: 'You quote for the work after the visit' };
+    }
+    return { fee: 'To quote', feeLabel: 'Price', feeDetail: 'You quote for the work' };
   }
   if (j.proposed_fee) return { fee: `$${Number(j.proposed_fee).toFixed(2)} total`, feeLabel: 'Your price' };
   if (j.my_price) {
@@ -244,9 +249,11 @@ const JobFeedCard = React.memo(function JobFeedCard({
                 </ThemedText>
               </View>
             )}
-            {!job.isOngoing && (
+            {/* Only where the clash check ran: a job with no place isn't
+                checked, and "Fits your day" would be a guess. */}
+            {!job.isOngoing && job.latitude != null && job.longitude != null && (
               <View style={[styles.feasibilityBadge, { backgroundColor: getFeasibilityColor(feasibility.status) }]}>
-                <ThemedText style={styles.feasibilityText}>{feasibility.status}</ThemedText>
+                <ThemedText style={styles.feasibilityText}>{FIT_LABEL[feasibility.status]}</ThemedText>
               </View>
             )}
             {job.jobType && (
@@ -302,7 +309,7 @@ const JobFeedCard = React.memo(function JobFeedCard({
                 return `~${formatDriveTime(estimateDriveMinutes(distKm))} drive`;
               }
               return `${feasibility.travelTime} min travel`;
-            })()} {'•'} {feasibility.score < 0 ? 'Conflict' : `${feasibility.score} min gap`} {'•'} {feasibility.reason}
+            })()} {'•'} {fitText(feasibility)}
           </ThemedText>
         </View>
       )}
@@ -553,8 +560,6 @@ export default function DashboardScreen() {
         deadline: j.scheduled_at
           ? new Date(j.scheduled_at).getTime()
           : new Date(j.created_at).getTime() + 9 * 3600000,
-        budgetMin: j.budget_min,
-        budgetMax: j.budget_max,
         // Priced up front: your total once you've applied; before that your
         // own price from your rates (server: RateCardService.prices_for_feed),
         // or "Set your price" when your rates don't cover it yet.
@@ -616,13 +621,11 @@ export default function DashboardScreen() {
         deadline: j.scheduled_at
           ? new Date(j.scheduled_at).getTime()
           : new Date(j.created_at).getTime() + 9 * 3600000,
-        budgetMin: j.budget_min,
-        budgetMax: j.budget_max,
         // Bidding is retired — final_amount (the settled, post-inspection-
         // invoice price) is the real number once agreed; proposed_fee only
-        // survives on pre-migration applications; budget is a rough fallback
-        // for a job that hasn't reached that point yet.
-        fee: j.final_amount ? `$${j.final_amount}` : j.proposed_fee ? `$${j.proposed_fee}` : j.budget_min ? `$${j.budget_min}` : 'Negotiable',
+        // survives on pre-migration applications. Before either, the work
+        // is still to be quoted (there's no budget).
+        fee: j.final_amount ? `$${j.final_amount}` : j.proposed_fee ? `$${j.proposed_fee}` : 'To quote',
         skills: j.skills ?? [],
         hasMedia: Array.isArray(j.images) && j.images.length > 0,
         icon: Gas,

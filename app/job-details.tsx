@@ -8,7 +8,7 @@ import { StyleSheet, View, ScrollView, TouchableOpacity, SafeAreaView, Platform,
 import { Text } from '@/components/scaled-text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { openDashboardTab, openServiceRoom } from '@/services/service-room';
-import { ChevronLeft, MapPin, Clock, Briefcase, Star, ShieldCheck, Play, Navigation, Share2, Lock, Zap, XCircle, X, CheckCircle2, User, Home, Users, Package } from 'lucide-react-native';
+import { ChevronLeft, MapPin, Clock, ShieldCheck, Play, Navigation, Share2, Lock, Zap, XCircle, CheckCircle2, Home, Users, Package, Flag, Receipt, Route as RouteIcon, ListChecks } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
 import Svg, { Circle, LinearGradient, Stop, Defs } from 'react-native-svg';
@@ -18,7 +18,7 @@ import MapView, { Marker, PROVIDER_GOOGLE, Polyline } from 'react-native-maps';
 import { useRoadRoute } from '@/hooks/use-road-route';
 import { estimate } from '@/services/route';
 import * as Location from 'expo-location';
-import { checkFeasibility, FeasibilityResult, calculateDistance, estimateDriveMinutes, formatDriveTime } from '@/services/schedulingEngine';
+import { checkFeasibility, FeasibilityResult, FIT_LABEL, fitText, calculateDistance, estimateDriveMinutes, formatDriveTime } from '@/services/schedulingEngine';
 import { resolveApplyGate } from '@/services/applyErrorGate';
 import { SkoFyApi } from '@/services/api';
 import Animated, { FadeInUp, FadeInRight } from 'react-native-reanimated';
@@ -44,17 +44,19 @@ function projectToScreen(lat: number, lng: number, region: MapRegion, boxWidth: 
 
 
 
-const formatTime = (deadline: number, now: number) => {
-  const diff = Math.max(0, deadline - now);
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
-  const minutes = Math.floor((diff / 1000 / 60) % 60);
-  const seconds = Math.floor((diff / 1000) % 60);
 
-  return { days, hours, minutes, seconds };
-};
+/** One fact on the page: an icon, what it is, and its value. */
+const FactRow = ({ icon, label, value, styles }: { icon: React.ReactNode; label: string; value: string; styles: any }) => (
+  <View style={styles.factRow}>
+    <View style={styles.factIcon}>{icon}</View>
+    <View style={{ flex: 1 }}>
+      <Text style={styles.summaryStatLabel}>{label}</Text>
+      <Text style={styles.summaryStatValue}>{value}</Text>
+    </View>
+  </View>
+);
 
-const SkillMatchCircle = ({ percentage, styles }: { percentage: number; styles: any }) => {
+const SkillMatchCircle = ({ percentage, caption, styles }: { percentage: number; caption: string; styles: any }) => {
   const size = 110;
   const strokeWidth = 10;
   const center = size / 2;
@@ -102,7 +104,7 @@ const SkillMatchCircle = ({ percentage, styles }: { percentage: number; styles: 
         <Text style={styles.skillMatchValue} numberOfLines={1} adjustsFontSizeToFit>{`${Math.round(percentage)}%`}</Text>
       </View>
       <Text style={styles.skillMeterText}>
-        Recommended based on your Skill-O-Meter data
+        {caption}
       </Text>
     </View>
   );
@@ -131,16 +133,37 @@ function upfrontPricing(j: any): { myPrice: any; unitWord: string; rate: string;
   };
 }
 
-/** Time left to the job's deadline, ticking on its own — a clock in the
- * screen's state redrew all of the job's details every second. */
-function TimeLeft({ deadline }: { deadline: number }) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  const { days, hours, minutes, seconds } = formatTime(deadline, now);
-  return <>{`${days}d : ${hours}h : ${minutes}m : ${seconds}s`}</>;
+/** A moment in the job's own time zone: "Tue, Nov 18, 3:00 PM". */
+function whenText(iso: string | null | undefined, timeZone?: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const opts: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+  try {
+    return d.toLocaleString('en-US', timeZone ? { ...opts, timeZone } : opts);
+  } catch {
+    return d.toLocaleString('en-US', opts);   // a zone this phone doesn't know
+  }
+}
+
+const HIDDEN_UNTIL_HIRED = 'Exact address shown once you’re hired';
+
+const WEEKDAY: Record<string, string> = { MO: 'Mon', TU: 'Tue', WE: 'Wed', TH: 'Thu', FR: 'Fri', SA: 'Sat', SU: 'Sun' };
+
+/** When the work is: its start (or as soon as possible), its end for a
+ * window or a stay, and how it repeats. */
+function scheduleText(j: any): string {
+  const tz = j.timezone ?? null;
+  const start = whenText(j.scheduled_at, tz);
+  const end = whenText(j.shape?.ends_at, tz);
+  const rec = j.shape?.recurrence;
+  const parts = [start ?? 'As soon as possible'];
+  if (end) parts.push(`until ${end}`);
+  if (rec?.freq) {
+    const days = Array.isArray(rec.days) && rec.days.length ? ` on ${rec.days.map((d: string) => WEEKDAY[d] ?? d).join(', ')}` : '';
+    parts.push(`repeats ${String(rec.freq).toLowerCase()}${days}`);
+  }
+  return parts.join(' · ');
 }
 
 export default function JobDetailsScreen() {
@@ -293,10 +316,9 @@ export default function JobDetailsScreen() {
           // fully-tappable "Accept & Apply" button that only failed with a
           // generic "Job is not accepting bids" error after the tap.
           const isClosed = ['CANCELLED', 'DISPUTED', 'EXPIRED'].includes(j.status);
-          const budgetStr =
-            j.budget_min && j.budget_max ? `$${j.budget_min}–$${j.budget_max}` :
-            j.budget_min ? `From $${j.budget_min}` :
-            j.budget_max ? `Up to $${j.budget_max}` : 'Negotiable';
+          // A quoted job has no budget (posting doesn't ask for one): the
+          // visit is paid, and the work is quoted after it.
+          const visitFee = Number(j.inspection_fee) > 0 ? `$${Number(j.inspection_fee)}` : null;
           const scheduledMs = j.scheduled_at ? new Date(j.scheduled_at).getTime() : null;
           // Priced up front (docs/JOB_SHAPE_DESIGN.md phase 4): your own
           // price for these dates, from Rates & hosting — no quoting.
@@ -322,31 +344,41 @@ export default function JobDetailsScreen() {
               ? { latitude: j.dropoff_lat, longitude: j.dropoff_lng }
               : null,
             serviceMode: j.service_mode ?? 'ON_SITE',
-            location: j.pickup_address ?? j.full_address ?? 'Customer Location',
+            // Until you're hired, a home is its area (city, state, ZIP) and the
+            // pin is in the neighbourhood (the server's
+            // app/domain/customer_privacy.py); a store a delivery is collected
+            // from is exact. Never the customer's saved address for a
+            // delivery: that can be the very home being kept back.
+            location: (j.job_type === 'PICKUP_DROPOFF' ? j.pickup_address : j.full_address) ?? HIDDEN_UNTIL_HIRED,
+            dropoffAddress: j.job_type === 'PICKUP_DROPOFF'
+              ? (j.dropoff_address ?? (j.dropoff_lat != null ? HIDDEN_UNTIL_HIRED : null))
+              : null,
+            dropoffNotes: j.job_type === 'PICKUP_DROPOFF' ? (j.dropoff_notes ?? null) : null,
+            // When the work is (in the job's own time zone), and where.
+            when: scheduleText(j),
+            venue: j.shape?.venue ?? null,
+            // How their price is made up ("$6 + 4.2 mi × $1.50").
+            priceText: (j.my_price ?? j.upfront_price)?.text ?? null,
+            // What the customer needs the provider to have ("fenced yard", "has a van").
+            needs: (j.shape?.requirements ?? []) as string[],
+            applicantCount: j.applicant_count ?? 0,
             // Pickup & Delivery: what it takes to carry it (bag, box, car trunk, van).
             itemSize: j.job_type === 'PICKUP_DROPOFF' ? (j.item_size ?? 'SMALL') : null,
             startTime: scheduledMs ?? Date.now() + 3600000,
             endTime: scheduledMs ? scheduledMs + 7200000 : Date.now() + 7200000,
-            // Anchored to when the job was actually POSTED (j.created_at),
-            // not to whenever this screen happens to load — same reasoning
-            // as (tabs)/index.tsx's mapInbound/mapActive. Using Date.now()
-            // here meant an ASAP job's countdown silently reset to a fresh
-            // 9 hours every time this screen was opened, never actually
-            // counting down to anything real.
-            deadline: scheduledMs ?? new Date(j.created_at).getTime() + 9 * 3600000,
             // When the work happens — its start, or when it was posted: in a
             // team member's work hours that makes it the business's job
             // (docs/EMPLOYER_PARTNERS_DESIGN.md).
             workTime: scheduledMs ?? new Date(j.created_at).getTime(),
-            budgetMin: j.budget_min,
-            budgetMax: j.budget_max,
-            rate: upfront?.rate ?? budgetStr,
-            duration: upfront?.duration ?? 'project',
+            // No visit fee (online, at your place, or a free visit): just the quote.
+            rate: upfront ? `${upfront.rate} / ${upfront.duration}` : visitFee ? `${visitFee} visit` : 'To quote',
             upfront,
-            fee: upfront ? 'None — paid when booked'
-              : j.inspection_fee > 0
-              ? `$${j.inspection_fee}`
-              : j.job_type === 'PICKUP_DROPOFF' ? '$0 (No Delivery Fee)' : '$0 (No Visiting Fee)',
+            fee: upfront ? null
+              : visitFee ? `${visitFee} for the visit — then you quote for the work` : 'You quote for the work',
+            // Where it is: the area and a pin in the neighbourhood until you're
+            // hired (the server's app/domain/customer_privacy.py).
+            locationApproximate: !!j.location_approximate,
+            tripMiles: j.trip_miles != null ? Number(j.trip_miles) : null,
             skills: requiredSkills.map(s => s.name),
             requiredSkills,
             // Pickup & Drop: from a person (the item and its worth) or a store
@@ -406,7 +438,6 @@ export default function JobDetailsScreen() {
           jobData = {
             ...local,
             coordinates: (local as any).coordinates ?? { latitude: local.latitude || 0, longitude: local.longitude || 0 },
-            deadline: local.deadline || (Date.now() + 9 * 3600000),
             rate: local.fee ?? 'Negotiable',
             duration: 'project',
             requirements: (local as any).requirements || [],
@@ -452,7 +483,7 @@ export default function JobDetailsScreen() {
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Check out this ${job.title} job on Dodorez! It pays ${job.rate}.`,
+        message: `Check out this ${job.title} job on Dodorez — ${job.rate}.`,
       });
     } catch (error) {
       // Most rejections here are just the user dismissing the share sheet,
@@ -640,9 +671,9 @@ export default function JobDetailsScreen() {
                 <Text style={[styles.feasibilityText, { color: '#111827' }]}>⚡ Direct Request</Text>
               </View>
             )}
-            {!job.isOngoing && feasibility && (
+            {!job.isOngoing && feasibility && jobPoint && (
               <View style={[styles.feasibilityBadge, { backgroundColor: getFeasibilityColor(feasibility.status) }]}>
-                <Text style={styles.feasibilityText}>{feasibility.status}</Text>
+                <Text style={styles.feasibilityText}>{FIT_LABEL[feasibility.status as keyof typeof FIT_LABEL] ?? feasibility.status}</Text>
               </View>
             )}
             {job.jobType && (
@@ -659,7 +690,7 @@ export default function JobDetailsScreen() {
             )}
           </View>
 
-          {!job.isOngoing && feasibility && (
+          {!job.isOngoing && feasibility && jobPoint && (
             <View style={[styles.feasibilityInfoRowTop, { backgroundColor: getFeasibilityColor(feasibility.status) + '15' }]}>
               <Zap size={12} color={getFeasibilityColor(feasibility.status)} />
               <Text style={[styles.feasibilityDetailTextSmall, { color: getFeasibilityColor(feasibility.status) }]}>
@@ -671,7 +702,7 @@ export default function JobDetailsScreen() {
                   ? `~${formatDriveTime(toJob.durationMins)} drive`
                   : userLocation && job.coordinates
                   ? `~${formatDriveTime(estimateDriveMinutes(calculateDistance(userLocation, job.coordinates)))} drive`
-                  : `${feasibility.travelTime} min travel`} {'\u2022'} {feasibility.score < 0 ? 'Conflict' : `${feasibility.score} min gap`} {'\u2022'} {feasibility.reason}
+                  : `${feasibility.travelTime} min travel`} {'\u2022'} {fitText(feasibility)}
               </Text>
             </View>
           )}
@@ -682,8 +713,17 @@ export default function JobDetailsScreen() {
               {!!job.businessName && <Text style={styles.locationText}>For {job.businessName}</Text>}
               <View style={styles.locationLink}>
                 <MapPin size={16} color="#6B7280" />
-                <Text style={styles.locationText}>{job.location}</Text>
+                <Text style={styles.locationText}>{job.jobKind === 'PICKUP_DROPOFF' ? `Pickup: ${job.location}` : job.location}</Text>
               </View>
+              {job.locationApproximate && (
+                <Text style={styles.approxNote}>Area only — the exact address is shown once you’re hired</Text>
+              )}
+              {!!job.dropoffAddress && (
+                <View style={styles.locationLink}>
+                  <Flag size={16} color="#0EA5E9" />
+                  <Text style={styles.locationText}>Drop-off: {job.dropoffAddress}</Text>
+                </View>
+              )}
               {!!job.itemSize && (
                 <View style={styles.locationLink}>
                   <Package size={16} color="#6B7280" />
@@ -692,7 +732,7 @@ export default function JobDetailsScreen() {
               )}
             </View>
             <View style={styles.rateBadge}>
-              <Text style={styles.rateText}>{job.rate} / {job.duration}</Text>
+              <Text style={styles.rateText}>{job.rate}</Text>
             </View>
           </View>
 
@@ -728,7 +768,7 @@ export default function JobDetailsScreen() {
                 {/* Job Location (Customer/Employer) — the pickup point for a
                     PICKUP_DROPOFF job, same as the single location on any
                     other job. */}
-                <Marker coordinate={job.coordinates} title={job.jobKind === 'PICKUP_DROPOFF' ? 'Pickup Location' : 'Customer Location'}>
+                <Marker coordinate={job.coordinates} title={`${job.jobKind === 'PICKUP_DROPOFF' ? 'Pickup' : 'Job'}${job.locationApproximate && !job.isOngoing ? ' area (approximate)' : ' location'}`}>
                   <View style={styles.customerMarkerContainer}>
                     <View style={styles.customerMarkerInner}>
                       <Home size={18} color="#fff" fill="#fff" />
@@ -741,7 +781,7 @@ export default function JobDetailsScreen() {
                     PICKUP_DROPOFF jobs. */}
                 {job.jobKind === 'PICKUP_DROPOFF' && job.dropoffCoordinates && (
                   <>
-                    <Marker coordinate={job.dropoffCoordinates} title="Drop-off Location" pinColor="#0EA5E9" />
+                    <Marker coordinate={job.dropoffCoordinates} title={job.locationApproximate ? 'Drop-off area (approximate)' : 'Drop-off location'} pinColor="#0EA5E9" />
                     {/* Pickup to drop-off, along the roads. */}
                     {tripRoad && <Polyline coordinates={tripRoad.coords} strokeColor="#0EA5E9" strokeWidth={4} />}
                   </>
@@ -788,17 +828,42 @@ export default function JobDetailsScreen() {
           )}
         </Animated.View>
 
-        {/* Job Meta Card */}
-        <Animated.View entering={FadeInUp.delay(200)} style={styles.employerCard}>
-          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: '#FEF9C3', alignItems: 'center', justifyContent: 'center' }}>
-              <Briefcase size={20} color="#FFCE48" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.employerName}>{job.upfront ? 'Your price' : 'Budget Range'}</Text>
-              <Text style={styles.statText}>{job.rate} · {job.employer.jobsCompleted} applicants</Text>
-            </View>
-          </View>
+        {/* What to decide on: when, the trip, how the price is made up, the
+            visiting fee, where — the price itself is already at the top. */}
+        <Animated.View entering={FadeInUp.delay(200)} style={styles.factsCard}>
+          <FactRow icon={<Clock size={18} color="#D97706" />} label="When" value={job.when} styles={styles} />
+          {job.jobKind === 'PICKUP_DROPOFF' && jobPoint && job.dropoffCoordinates && (
+            <FactRow
+              icon={<RouteIcon size={18} color="#0EA5E9" />}
+              label="Trip"
+              // The server's miles, measured from the real places when it was
+              // posted; the map's pins can be only the neighbourhood until hired.
+              value={job.tripMiles != null
+                ? `${job.tripMiles.toFixed(1)} mi pickup to drop-off`
+                : `${(tripRoad ? tripRoad.distanceMi : estimate(jobPoint, job.dropoffCoordinates).distanceMi).toFixed(1)} mi pickup to drop-off (about)`}
+              styles={styles}
+            />
+          )}
+          {!!job.priceText && (
+            <FactRow icon={<Receipt size={18} color="#16A34A" />} label="Your price" value={job.priceText} styles={styles} />
+          )}
+          {!job.upfront && !!job.fee && (
+            <FactRow icon={<Receipt size={18} color="#16A34A" />} label="How it’s paid" value={job.fee} styles={styles} />
+          )}
+          {job.venue === 'PROVIDER_PLACE' && (
+            <FactRow icon={<Home size={18} color="#7C3AED" />} label="Where" value="At your place — the customer comes to you" styles={styles} />
+          )}
+          {job.venue === 'ONLINE' && (
+            <FactRow icon={<Zap size={18} color="#7C3AED" />} label="Where" value="Online" styles={styles} />
+          )}
+          {!job.isOngoing && (
+            <FactRow
+              icon={<Users size={18} color="#6B7280" />}
+              label="Applied so far"
+              value={job.applicantCount === 0 ? 'No one yet' : `${job.applicantCount} provider${job.applicantCount === 1 ? '' : 's'}`}
+              styles={styles}
+            />
+          )}
         </Animated.View>
 
         {/* Description & Requirements Section */}
@@ -807,19 +872,37 @@ export default function JobDetailsScreen() {
             <Text style={styles.sectionTitle}>Job Description & Requirements</Text>
           </View>
 
-          <View style={styles.matchSpacingBox}>
-            <SkillMatchCircle percentage={job.skillMatch} styles={styles} />
-          </View>
+          {(job.requiredSkills?.length ?? 0) > 0 && (
+            <View style={styles.matchSpacingBox}>
+              <SkillMatchCircle
+                percentage={job.skillMatch}
+                caption={`${job.requiredSkills.filter((s: any) => s.is_verified_by_provider).length} of ${job.requiredSkills.length} skills it needs are verified on your profile`}
+                styles={styles}
+              />
+            </View>
+          )}
 
           <View style={styles.bulletsContainerDetailed}>
             {/* What to do or collect — the item, its worth, what to buy —
                 stands out: it's what the job is. */}
-            {job.requirements.length > 0 && (
+            {(job.requirements.length > 0 || job.needs?.length > 0 || !!job.dropoffNotes) && (
               <View style={styles.keyFacts}>
                 {job.requirements.map((req: string, index: number) => (
                   <View key={index} style={styles.keyFactRow}>
                     <Package size={16} color="#1D4ED8" style={{ marginTop: 2 }} />
                     <Text style={styles.keyFactText}>{req}</Text>
+                  </View>
+                ))}
+                {!!job.dropoffNotes && (
+                  <View style={styles.keyFactRow}>
+                    <Flag size={16} color="#1D4ED8" style={{ marginTop: 2 }} />
+                    <Text style={styles.keyFactText}>At the drop-off: {job.dropoffNotes}</Text>
+                  </View>
+                )}
+                {(job.needs ?? []).map((need: string, index: number) => (
+                  <View key={`need-${index}`} style={styles.keyFactRow}>
+                    <ListChecks size={16} color="#1D4ED8" style={{ marginTop: 2 }} />
+                    <Text style={styles.keyFactText}>Needs: {need}</Text>
                   </View>
                 ))}
               </View>
@@ -868,25 +951,7 @@ export default function JobDetailsScreen() {
 
         {/* Job Card Details (Timer and Skills from Dashboard) */}
         <Animated.View entering={FadeInUp.delay(500)} style={styles.dashboardDetailsSection}>
-          <Text style={styles.sectionTitle}>Job card Summary</Text>
-          <View style={styles.summaryStatsRow}>
-            <View style={styles.summaryStatItem}>
-              <Clock size={18} color="#FFCE48" />
-              <View style={styles.summaryStatContent}>
-                <Text style={styles.summaryStatLabel}>Remaining Time</Text>
-                <Text style={styles.summaryStatValue}>
-                  <TimeLeft deadline={job.deadline} />
-                </Text>
-              </View>
-            </View>
-            <View style={styles.summaryStatItem}>
-              <Briefcase size={18} color="#FFCE48" />
-              <View style={styles.summaryStatContent}>
-                <Text style={styles.summaryStatLabel}>Service ID</Text>
-                <Text style={styles.summaryStatValue}>#SFY-{job.id.slice(0, 8).toUpperCase()}</Text>
-              </View>
-            </View>
-          </View>
+          <Text style={styles.sectionTitle}>About this job</Text>
 
           {/* Customer Meter — reverse of the Skill-O-Meter customers see
               about providers, sourced from past providers' reviews of this
@@ -920,7 +985,7 @@ export default function JobDetailsScreen() {
 
 
 
-          <Text style={[styles.summaryStatLabel, { marginTop: 16 }]}>Required Skills</Text>
+          <Text style={[styles.summaryStatLabel, job.customerReviewCount > 0 && { marginTop: 16 }]}>Skills it needs</Text>
           <View style={styles.skillsTagsRow}>
             {(job.requiredSkills && job.requiredSkills.length > 0
               ? job.requiredSkills
@@ -946,6 +1011,8 @@ export default function JobDetailsScreen() {
               </View>
             ))}
           </View>
+          {/* For support: which job this is. */}
+          <Text style={[styles.summaryStatLabel, { marginTop: 16 }]}>Job ID #SFY-{job.id.slice(0, 8).toUpperCase()}</Text>
         </Animated.View>
 
         <View style={{ height: 120 + bottomInset }} />
@@ -1345,19 +1412,6 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     borderRadius: 12,
     backgroundColor: 'rgba(59, 130, 246, 0.3)',
   },
-  employerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: t.card,
-    borderRadius: 20,
-    padding: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
-    marginBottom: 16,
-  },
   employerImage: {
     width: 50,
     height: 50,
@@ -1367,23 +1421,10 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   employerDetails: {
     flex: 1,
   },
-  employerName: {
-    fontSize: 16,
-    lineHeight: 22,
-    fontFamily: Fonts.poppinsBold,
-    color: t.textPrimary,
-  },
   employerStats: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 2,
-  },
-  statText: {
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: Fonts.poppins,
-    color: t.textSecondary,
-    marginLeft: 4,
   },
   employerArrow: {
     padding: 4,
@@ -1447,6 +1488,40 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     width: 120,
   },
   // The job's key facts — same look as the service room's job box.
+  approxNote: {
+    fontSize: 11,
+    lineHeight: 16,
+    fontFamily: Fonts.poppins,
+    color: t.textMuted,
+    marginLeft: 22,
+    marginTop: 2,
+  },
+  factsCard: {
+    backgroundColor: t.card,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+    marginBottom: 16,
+  },
+  factRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingVertical: 10,
+  },
+  factIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: t.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   keyFacts: {
     backgroundColor: '#EFF6FF',
     borderRadius: 14,
@@ -1560,19 +1635,6 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     shadowRadius: 5,
     elevation: 2,
     marginBottom: 30,
-  },
-  summaryStatsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  summaryStatItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  summaryStatContent: {
-    marginLeft: 10,
   },
   summaryStatLabel: {
     fontSize: 11,
