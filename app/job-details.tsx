@@ -15,8 +15,10 @@ import Svg, { Circle, LinearGradient, Stop, Defs } from 'react-native-svg';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import MapView, { Marker, PROVIDER_GOOGLE, Polyline } from 'react-native-maps';
+import { useRoadRoute } from '@/hooks/use-road-route';
+import { estimate } from '@/services/route';
 import * as Location from 'expo-location';
-import { checkFeasibility, FeasibilityResult, calculateDistance, kmToMiles, estimateDriveMinutes, formatDriveTime } from '@/services/schedulingEngine';
+import { checkFeasibility, FeasibilityResult, calculateDistance, estimateDriveMinutes, formatDriveTime } from '@/services/schedulingEngine';
 import { resolveApplyGate } from '@/services/applyErrorGate';
 import { SkoFyApi } from '@/services/api';
 import Animated, { FadeInUp, FadeInRight } from 'react-native-reanimated';
@@ -580,6 +582,12 @@ export default function JobDetailsScreen() {
     }
   };
 
+  // The roads on the map — you to the job, and a delivery's pickup to its
+  // drop-off. Drawn only as roads, never a straight line (hooks/use-road-route.ts).
+  const jobPoint = job?.coordinates?.latitude != null && job?.coordinates?.longitude != null ? job.coordinates : null;
+  const toJob = useRoadRoute(userLocation, jobPoint);
+  const tripRoad = useRoadRoute(job?.jobKind === 'PICKUP_DROPOFF' ? jobPoint : null, job?.dropoffCoordinates ?? null);
+
   // Offline with nothing loaded: the shared page; reloads when back online.
   const offline = useOfflinePage(!!job, () => { void fetchJobAndLocation(); });
   if (offline) return <OfflineScreen onRetry={() => { void fetchJobAndLocation(); }} />;
@@ -657,7 +665,11 @@ export default function JobDetailsScreen() {
               <Text style={[styles.feasibilityDetailTextSmall, { color: getFeasibilityColor(feasibility.status) }]}>
                 {/* Travel is from where the provider is now \u2014 feasibility.travelTime
                     is measured from their nearest OTHER job (0 when they have none). */}
-                {userLocation && job.coordinates
+                {/* Google's time along the road when there is one; else the
+                    scheduling estimate the clash check uses. */}
+                {toJob
+                  ? `~${formatDriveTime(toJob.durationMins)} drive`
+                  : userLocation && job.coordinates
                   ? `~${formatDriveTime(estimateDriveMinutes(calculateDistance(userLocation, job.coordinates)))} drive`
                   : `${feasibility.travelTime} min travel`} {'\u2022'} {feasibility.score < 0 ? 'Conflict' : `${feasibility.score} min gap`} {'\u2022'} {feasibility.reason}
               </Text>
@@ -710,18 +722,8 @@ export default function JobDetailsScreen() {
                 // mainly moves from GPS updates, not from panning this map.
                 onRegionChangeComplete={setMapRegion}
               >
-                {/* Dotted Line between Provider and Customer */}
-                {userLocation && (
-                  <Polyline
-                    coordinates={[
-                      { latitude: userLocation.latitude, longitude: userLocation.longitude },
-                      { latitude: job.coordinates.latitude, longitude: job.coordinates.longitude }
-                    ]}
-                    strokeColor="#FFCE48"
-                    strokeWidth={3}
-                    lineDashPattern={[5, 5]}
-                  />
-                )}
+                {/* You to the job, along the roads (none drawn without a road route). */}
+                {toJob && <Polyline coordinates={toJob.coords} strokeColor="#FFCE48" strokeWidth={4} />}
 
                 {/* Job Location (Customer/Employer) — the pickup point for a
                     PICKUP_DROPOFF job, same as the single location on any
@@ -740,12 +742,8 @@ export default function JobDetailsScreen() {
                 {job.jobKind === 'PICKUP_DROPOFF' && job.dropoffCoordinates && (
                   <>
                     <Marker coordinate={job.dropoffCoordinates} title="Drop-off Location" pinColor="#0EA5E9" />
-                    <Polyline
-                      coordinates={[job.coordinates, job.dropoffCoordinates]}
-                      strokeColor="#0EA5E9"
-                      strokeWidth={3}
-                      lineDashPattern={[5, 5]}
-                    />
+                    {/* Pickup to drop-off, along the roads. */}
+                    {tripRoad && <Polyline coordinates={tripRoad.coords} strokeColor="#0EA5E9" strokeWidth={4} />}
                   </>
                 )}
 
@@ -776,7 +774,8 @@ export default function JobDetailsScreen() {
                 <View style={styles.mapDistanceOverlay}>
                   <Navigation size={12} color="#FFCE48" fill="#FFCE48" />
                   <Text style={styles.mapDistanceText}>
-                    {kmToMiles(calculateDistance(userLocation, job.coordinates)).toFixed(1)} mi
+                    {/* Along the road, or the same estimate as the live maps (services/route.ts). */}
+                    {(toJob ? toJob.distanceMi : estimate(userLocation, job.coordinates).distanceMi).toFixed(1)} mi
                   </Text>
                 </View>
               )}

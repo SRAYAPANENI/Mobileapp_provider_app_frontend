@@ -4,6 +4,7 @@ import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { SkoFyApi } from '@/services/api';
 import { GOOGLE_PLACES_API_KEY } from '@/services/google-places';
+import { RouteFollower, haversineKm } from '@/services/route';
 import { callTapAllowed } from '@/services/callManager';
 import { router, useLocalSearchParams } from 'expo-router';
 import { openServiceRoom } from '@/services/service-room';
@@ -35,54 +36,10 @@ if (Platform.OS !== 'web') {
   } catch {}
 }
 
-const ROUTE_REFETCH_KM = 0.3;
 const ANIM_TICK_MS = 50;
 const GPS_ANIM_WINDOW_MS = 4000; // interpolate each GPS reading over this window
 
 type LatLng = { latitude: number; longitude: number };
-
-function decodePolyline(encoded: string): LatLng[] {
-  const coords: LatLng[] = [];
-  let index = 0, lat = 0, lng = 0;
-  while (index < encoded.length) {
-    let b: number, shift = 0, result = 0;
-    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
-    lat += (result & 1) ? ~(result >> 1) : result >> 1;
-    shift = result = 0;
-    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
-    lng += (result & 1) ? ~(result >> 1) : result >> 1;
-    coords.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
-  }
-  return coords;
-}
-
-function haversineKm(a: LatLng, b: LatLng): number {
-  const R = 6371;
-  const dLat = (b.latitude - a.latitude) * Math.PI / 180;
-  const dLon = (b.longitude - a.longitude) * Math.PI / 180;
-  const x = Math.sin(dLat / 2) ** 2 +
-    Math.cos(a.latitude * Math.PI / 180) * Math.cos(b.latitude * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-}
-
-async function fetchRoute(origin: LatLng, dest: LatLng): Promise<{ coords: LatLng[]; durationMins: number | null; distanceMi: number | null }> {
-  try {
-    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${dest.latitude},${dest.longitude}&mode=driving&key=${GOOGLE_PLACES_API_KEY}`;
-    const res = await fetch(url);
-    const json = await res.json();
-    const encoded = json?.routes?.[0]?.overview_polyline?.points;
-    const leg = json?.routes?.[0]?.legs?.[0];
-    const durationMins = leg ? Math.ceil(leg.duration.value / 60) : null;
-    const distanceMi = leg ? leg.distance.value / 1609.34 : null;
-    if (encoded) return { coords: decodePolyline(encoded), durationMins, distanceMi };
-  } catch {}
-  const distKm = haversineKm(origin, dest);
-  return {
-    coords: [origin, dest],
-    durationMins: Math.ceil(distKm / (40 / 60)),
-    distanceMi: distKm * 0.621371,
-  };
-}
 
 export default function NavigateToSiteScreen() {
   const bottomInset = useBottomInset();
@@ -131,8 +88,10 @@ export default function NavigateToSiteScreen() {
   const currentPosRef = useRef<LatLng | null>(null);
   const headingRef = useRef(0); // degrees clockwise from north — same pattern as customer tracking
   // Route state
-  const fullRouteCoordsRef = useRef<LatLng[]>([]);
-  const lastRouteFetchLocRef = useRef<LatLng | null>(null);
+  // Follows the trip — when to ask for the road again (services/route.ts).
+  const followerRef = useRef<RouteFollower | null>(null);
+  if (!followerRef.current) followerRef.current = new RouteFollower(GOOGLE_PLACES_API_KEY);
+  useEffect(() => () => followerRef.current?.stop(), []);
   // Follow mode — camera locks onto provider icon when active
   const isFollowingRef = useRef(false);
   const lastFollowTickRef = useRef(0);
@@ -317,26 +276,14 @@ export default function NavigateToSiteScreen() {
     // between the phone's reading and the server's check.
     setIsNearSite(distKm < 0.12);
 
-    // Trim existing route to start from nearest point to provider
-    const full = fullRouteCoordsRef.current;
-    if (full.length >= 2) {
-      let minIdx = 0, minDist = Infinity;
-      for (let i = 0; i < full.length; i++) {
-        const d = haversineKm(gpsLoc, full[i]);
-        if (d < minDist) { minDist = d; minIdx = i; }
-      }
-      setRouteCoords([gpsLoc, ...full.slice(minIdx + 1)]);
-    }
-
-    // Re-fetch from Directions API when moved 0.3km
-    const last = lastRouteFetchLocRef.current;
-    if (last && haversineKm(last, gpsLoc) < ROUTE_REFETCH_KM) return;
-    lastRouteFetchLocRef.current = gpsLoc;
-    fetchRoute(gpsLoc, destination).then(({ coords, durationMins, distanceMi }) => {
-      fullRouteCoordsRef.current = coords;
-      setRouteCoords(coords);
-      if (durationMins != null) setEtaText(`${durationMins} min${durationMins === 1 ? '' : 's'}`);
-      if (distanceMi != null) setDistanceText(`${distanceMi.toFixed(1)} mi`);
+    // What's left, from this fix — along the road route, or the straight
+    // line × 1.3 without one (services/route.ts). Every GPS fix, so distance
+    // and time go down as they drive. Only a road is drawn: without one the
+    // map shows where they are and where they're going, never a straight line.
+    followerRef.current!.follow(gpsLoc, destination, (left) => {
+      setRouteCoords(left.road ? left.coords : []);
+      setDistanceText(`${left.distanceMi.toFixed(1)} mi`);
+      setEtaText(`${left.durationMins} min${left.durationMins === 1 ? '' : 's'}`);
     });
   }, [gpsLoc, destination]);
 
