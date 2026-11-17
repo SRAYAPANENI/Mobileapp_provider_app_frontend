@@ -24,6 +24,26 @@ export function sendLocationViaSocket(lat: number, lng: number, speed?: number |
   return true;
 }
 
+/** What's left of the trip as this phone has it — the customer's phone shows
+ * exactly these, so both say the same miles and minutes (backend ws.py
+ * relays them). Only for the job the socket is open for. */
+export interface TripFigures {
+  eta_min: number;
+  distance_mi: number;
+  dest_lat: number;
+  dest_lng: number;
+  /** The road, when it's new (or now and then for a customer who just opened
+   * the map): Google's encoding, and Google's time for all of it. */
+  route?: string;
+  route_mins?: number;
+}
+
+export function sendTripViaSocket(jobId: string, trip: TripFigures): boolean {
+  if (_jobId !== jobId || _socket?.readyState !== WebSocket.OPEN) return false;
+  _socket.send(JSON.stringify({ type: 'trip', ...trip }));
+  return true;
+}
+
 export async function connectLocationSocket(jobId: string): Promise<void> {
   if (_jobId === jobId && _socket?.readyState === WebSocket.OPEN) return;
   _jobId = jobId;

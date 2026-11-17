@@ -2093,7 +2093,7 @@ const filteredJobs = jobs.filter((job) => {
             </View>
             <TouchableOpacity
               style={styles.notifNudgeBtn}
-              onPress={() => { notifNudge.dismiss(); notifee.openNotificationSettings(); }}
+              onPress={() => { notifee.openNotificationSettings(); }}
             >
               <Text style={styles.notifNudgeBtnText}>Enable</Text>
             </TouchableOpacity>

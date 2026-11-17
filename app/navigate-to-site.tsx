@@ -4,7 +4,8 @@ import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { SkoFyApi } from '@/services/api';
 import { GOOGLE_PLACES_API_KEY } from '@/services/google-places';
-import { RouteFollower, haversineKm } from '@/services/route';
+import { RouteFollower, haversineKm, type Progress } from '@/services/route';
+import { sendTripViaSocket, type TripFigures } from '@/services/location-socket';
 import { callTapAllowed } from '@/services/callManager';
 import { router, useLocalSearchParams } from 'expo-router';
 import { openServiceRoom } from '@/services/service-room';
@@ -40,6 +41,9 @@ const ANIM_TICK_MS = 50;
 const GPS_ANIM_WINDOW_MS = 4000; // interpolate each GPS reading over this window
 
 type LatLng = { latitude: number; longitude: number };
+
+/** Miles to a tenth — once, so this screen and the customer's show one number. */
+const tenths = (mi: number) => Math.round(mi * 10) / 10;
 
 export default function NavigateToSiteScreen() {
   const bottomInset = useBottomInset();
@@ -282,10 +286,56 @@ export default function NavigateToSiteScreen() {
     // map shows where they are and where they're going, never a straight line.
     followerRef.current!.follow(gpsLoc, destination, (left) => {
       setRouteCoords(left.road ? left.coords : []);
-      setDistanceText(`${left.distanceMi.toFixed(1)} mi`);
+      // The very figures the customer is sent (shareTrip), rounded once.
+      setDistanceText(`${tenths(left.distanceMi).toFixed(1)} mi`);
       setEtaText(`${left.durationMins} min${left.durationMins === 1 ? '' : 's'}`);
+      shareTrip(left);
     });
   }, [gpsLoc, destination]);
+
+  // The customer's phone shows exactly these figures, and this road — so
+  // both say the same miles and minutes (it used to work them out itself:
+  // its own Google route, a smoothed position, its own countdown — and the
+  // two drifted apart). Sent with each fix and every few seconds standing
+  // still (it treats figures older than 15 s as gone); the road when it's
+  // new, and every 30 s for a customer who's only just opened the map.
+  const lastTripRef = useRef<TripFigures | null>(null);
+  const sentRouteRef = useRef<{ encoded: string; at: number } | null>(null);
+  const shareTrip = (left: Progress) => {
+    if (!jobId || !destination) return;
+    const trip: TripFigures = {
+      eta_min: left.durationMins,
+      distance_mi: tenths(left.distanceMi),
+      dest_lat: destination.latitude,
+      dest_lng: destination.longitude,
+    };
+    const road = followerRef.current?.road;
+    const sent = sentRouteRef.current;
+    if (road?.encoded && (!sent || sent.encoded !== road.encoded || Date.now() - sent.at > 30_000)) {
+      trip.route = road.encoded;
+      trip.route_mins = road.durationMins;
+      sentRouteRef.current = { encoded: road.encoded, at: Date.now() };
+    }
+    lastTripRef.current = { ...trip, route: undefined, route_mins: undefined };
+    sendTripViaSocket(jobId, trip);
+  };
+  useEffect(() => {
+    if (!jobId) return;
+    const beat = setInterval(() => {
+      const last = lastTripRef.current;
+      if (!last) return;
+      const road = followerRef.current?.road;
+      const sent = sentRouteRef.current;
+      // The road again now and then, standing still too.
+      if (road?.encoded && (!sent || Date.now() - sent.at > 30_000)) {
+        sentRouteRef.current = { encoded: road.encoded, at: Date.now() };
+        sendTripViaSocket(jobId, { ...last, route: road.encoded, route_mins: road.durationMins });
+      } else {
+        sendTripViaSocket(jobId, last);
+      }
+    }, 5_000);
+    return () => clearInterval(beat);
+  }, [jobId]);
 
   const handleLocate = () => {
     isFollowingRef.current = true;
