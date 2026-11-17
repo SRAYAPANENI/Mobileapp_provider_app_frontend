@@ -73,6 +73,7 @@ import { SkillTestPrompt } from '@/components/skill-test-prompt';
 import { TeamPanel } from '@/components/business/team-panel';
 import { WorkspaceSwitch, type Workspace } from '@/components/business/workspace-switch';
 import notifee from '@notifee/react-native';
+import { useNotificationNudge } from '@/hooks/use-notification-nudge';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { ThemedText } from '@/components/themed-text';
@@ -460,7 +461,8 @@ export default function DashboardScreen() {
   const { data: appConfig } = useAppConfig();
   const [isAvailable, setIsAvailable] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [showNotifNudge, setShowNotifNudge] = useState(false);
+  // Only while notifications are really off (hooks/use-notification-nudge.ts).
+  const notifNudge = useNotificationNudge();
   const [isIdentityVerified, setIsIdentityVerified] = useState(false);
   const [pickupDropoffEnabled, setPickupDropoffEnabled] = useState(false);
   // Their business (docs/BUSINESS_PROVIDERS_DESIGN.md): the home card, and
@@ -1249,11 +1251,6 @@ export default function DashboardScreen() {
     })
   ).current;
 
-  useEffect(() => {
-    notifee.getNotificationSettings()
-      .then(s => { if (s.authorizationStatus < 1) setShowNotifNudge(true); })
-      .catch(() => {});
-  }, []);
 
   // Set the instant any of this screen's own live fetches (profile, jobs)
   // actually lands — guards the cache-priming read right below against
@@ -2085,7 +2082,7 @@ const filteredJobs = jobs.filter((job) => {
         <ScheduledMaintenanceBanner />
         <TermsUpdatedBanner />
 
-        {showNotifNudge && (
+        {notifNudge.show && (
           <View style={styles.notifNudge}>
             <View style={styles.notifNudgeIconWrap}>
               <Bell size={18} color="#FFCE48" />
@@ -2096,11 +2093,11 @@ const filteredJobs = jobs.filter((job) => {
             </View>
             <TouchableOpacity
               style={styles.notifNudgeBtn}
-              onPress={() => { setShowNotifNudge(false); notifee.openNotificationSettings(); }}
+              onPress={() => { notifNudge.dismiss(); notifee.openNotificationSettings(); }}
             >
               <Text style={styles.notifNudgeBtnText}>Enable</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.notifNudgeDismiss} onPress={() => setShowNotifNudge(false)}>
+            <TouchableOpacity style={styles.notifNudgeDismiss} onPress={notifNudge.dismiss}>
               <XIcon size={16} color="#6B7280" />
             </TouchableOpacity>
           </View>
