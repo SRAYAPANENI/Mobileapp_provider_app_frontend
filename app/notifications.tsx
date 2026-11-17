@@ -29,6 +29,7 @@ import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { ThemedText } from '@/components/themed-text';
 import { router, useFocusEffect } from 'expo-router';
+import { openDashboardTab, openServiceRoom } from '@/services/service-room';
 import Animated, { FadeInUp, LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SkoFyApi } from '@/services/api';
@@ -150,7 +151,7 @@ export default function NotificationsScreen() {
     }
     // A skill-test reminder: the skills to test, each with its test.
     if (item.notif_type === 'skill_test') {
-      router.push({ pathname: '/(tabs)/profile', params: { section: 'verification' } } as any);
+      openDashboardTab({ pathname: '/(tabs)/profile', params: { section: 'verification' } });
       return;
     }
     if (!item.job_id) return;
@@ -168,7 +169,7 @@ export default function NotificationsScreen() {
       case 'job_cost_paid':
       case 'care_update_due':
       case 'pickup_code':
-        router.push({ pathname: '/(tabs)', params: { openServiceRoom: 'true', jobId: item.job_id } } as any);
+        openServiceRoom(item.job_id);
         break;
       case 'business_job':
         openScreen('/business-job', item.job_id, { jobId: item.job_id });

@@ -112,35 +112,26 @@ export default function RatesAndHostingScreen() {
   // would otherwise keep hiding skills with nothing left to clear it.
   const searchable = priced.length > 4;
   const searching = searchable ? query.trim() : '';
+  // A summary tile tapped: only its section (null: all three).
+  const [focus, setFocus] = useState<RateGroup | null>(null);
   const sections = useMemo<RateSection[]>(() => {
     const q = searching.toLowerCase();
     const matches = (sk: MySkill) => !q || sk.name.toLowerCase().includes(q) || sk.profession?.toLowerCase().includes(q);
     return ORDER.filter(visible)
+      // A search looks through everything (the tiles are hidden while it's on).
+      .filter((group) => !!q || !focus || group === focus)
       .map((group) => ({ group, data: priced.filter((sk) => groupOf(sk) === group && matches(sk)) }))
       .filter((sec) => !q || sec.data.length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [priced, searching, deliveryOn, hostingOn]);
+  }, [priced, searching, deliveryOn, hostingOn, focus]);
 
-  // Tap a summary tile: scroll to its section. One not drawn yet fails the
-  // first time — the list draws further, and it's tried again (a few times).
-  const pendingJump = useRef<{ sectionIndex: number; tries: number } | null>(null);
-  const scrollTo = useCallback((sectionIndex: number) => {
-    listRef.current?.scrollToLocation({ sectionIndex, itemIndex: 0, viewOffset: 8, animated: true });
+  // Showing one section: its heading comes into view (it's just under the tiles).
+  const pick = useCallback((group: RateGroup | null) => {
+    setFocus(group);
+    if (group) {
+      setTimeout(() => listRef.current?.scrollToLocation({ sectionIndex: 0, itemIndex: 0, viewOffset: 8, animated: true }), 60);
+    }
   }, []);
-  const jump = useCallback((group: RateGroup) => {
-    const sectionIndex = sections.findIndex((sec) => sec.group === group);
-    if (sectionIndex < 0) return;
-    pendingJump.current = { sectionIndex, tries: 0 };
-    scrollTo(sectionIndex);
-  }, [sections, scrollTo]);
-  const onJumpFailed = useCallback((info: { averageItemLength: number; index: number }) => {
-    const pending = pendingJump.current;
-    if (!pending || pending.tries >= 3) return;
-    pending.tries += 1;
-    // Near it first, so it gets drawn; then exactly onto it.
-    listRef.current?.getScrollResponder()?.scrollTo?.({ y: info.averageItemLength * info.index, animated: false });
-    setTimeout(() => scrollTo(pending.sectionIndex), 120);
-  }, [scrollTo]);
 
   // A callback of its own, listed below: the footers are memoised, and a
   // stale copy read the profile from before it loaded ("verify your ID" for
@@ -239,7 +230,7 @@ export default function RatesAndHostingScreen() {
           </ThemedText>
         </View>
       )}
-      {!searching && <Overview statuses={statuses} onJump={jump} />}
+      {!searching && <Overview statuses={statuses} selected={focus} onPick={pick} />}
       {searchable && (
         <View style={s.search}>
           <Search size={16} color="#6B7280" />
@@ -304,7 +295,7 @@ export default function RatesAndHostingScreen() {
           initialNumToRender={12}
           maxToRenderPerBatch={10}
           windowSize={11}
-          onScrollToIndexFailed={onJumpFailed}
+          onScrollToIndexFailed={() => {}}
         />
       )}
       {appAlert.element}

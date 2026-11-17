@@ -6,6 +6,7 @@ import { SkoFyApi } from '@/services/api';
 import { GOOGLE_PLACES_API_KEY } from '@/services/google-places';
 import { callTapAllowed } from '@/services/callManager';
 import { router, useLocalSearchParams } from 'expo-router';
+import { openServiceRoom } from '@/services/service-room';
 import * as Location from 'expo-location';
 import { ChevronLeft, Navigation, MapPin, LocateFixed, MessageSquare, Phone } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
@@ -89,8 +90,10 @@ export default function NavigateToSiteScreen() {
   const themeColors = Colors[colorScheme];
   const styles = React.useMemo(() => makeStyles(themeColors), [colorScheme]);
 
-  const { lat, lng, title, jobId, customerName } = useLocalSearchParams<{
+  const { lat, lng, title, jobId, customerName, stop } = useLocalSearchParams<{
     lat: string; lng: string; title: string; jobId?: string; customerName?: string;
+    /** A delivery's leg: the pickup, or the drop-off once it's collected. */
+    stop?: 'pickup' | 'dropoff';
   }>();
 
   // Call / Chat without leaving the map (e.g. "which gate?", "5 min away").
@@ -156,11 +159,34 @@ export default function NavigateToSiteScreen() {
   // Also records "I'm here" (checked against the job's location), which
   // tells the customer and starts the wait before "Customer not here" — if
   // it can't (too far yet, no GPS), the Service Room offers it again.
-  const handleArrivedAtLocation = () => {
-    if (!jobId) return;
+  // The drop-off has its own "I'm here" (the pickup's refused it once the
+  // order was collected — and the refusal was swallowed, so the drop-off's
+  // arrival was never recorded from here). Told when it isn't recorded, so
+  // they say it again from the Service Room once at the door.
+  const [arriving, setArriving] = useState(false);
+  const handleArrivedAtLocation = async () => {
+    if (!jobId || arriving) return;
     const here = gpsLoc ?? currentPosRef.current;
-    if (here) SkoFyApi.jobs.markArrived(jobId, here.latitude, here.longitude).catch(() => {});
-    router.replace({ pathname: '/(tabs)', params: { openServiceRoom: 'true', jobId } } as any);
+    if (!here) {
+      openServiceRoom(jobId);
+      return;
+    }
+    setArriving(true);
+    try {
+      await (stop === 'dropoff'
+        ? SkoFyApi.jobs.arrivedAtDropoff(jobId, here.latitude, here.longitude)
+        : SkoFyApi.jobs.markArrived(jobId, here.latitude, here.longitude));
+      openServiceRoom(jobId);
+    } catch (err: any) {
+      appAlert.show(
+        'warning',
+        err?.error_code === 'NOT_AT_LOCATION' ? 'Not at the spot yet' : "Couldn't mark you arrived",
+        `${err?.message ?? 'Please try again.'} Tap “I'm here” in the Service Room once you're there.`,
+        [{ text: 'OK', onPress: () => openServiceRoom(jobId) }],
+      );
+    } finally {
+      setArriving(false);
+    }
   };
 
   // Watch provider's own GPS
@@ -287,7 +313,9 @@ export default function NavigateToSiteScreen() {
     if (!gpsLoc || !destination) return;
 
     const distKm = haversineKm(gpsLoc, destination);
-    setIsNearSite(distKm < 0.15);
+    // A little inside the server's 150 m (WAIT_START_MAX_KM): GPS drifts
+    // between the phone's reading and the server's check.
+    setIsNearSite(distKm < 0.12);
 
     // Trim existing route to start from nearest point to provider
     const full = fullRouteCoordsRef.current;
@@ -469,9 +497,10 @@ export default function NavigateToSiteScreen() {
             <TouchableOpacity
               style={styles.arrivedBtn}
               onPress={handleArrivedAtLocation}
+              disabled={arriving}
               activeOpacity={0.85}
             >
-              <ThemedText style={styles.arrivedBtnText}>Arrived at Location</ThemedText>
+              <ThemedText style={styles.arrivedBtnText}>{arriving ? 'Checking…' : 'Arrived at Location'}</ThemedText>
             </TouchableOpacity>
           ) : (
             <View style={styles.panelRow}>

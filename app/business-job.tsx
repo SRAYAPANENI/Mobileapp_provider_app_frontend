@@ -22,6 +22,8 @@ const STEP_WORDS: Record<string, string> = {
   TRACK_EN_ROUTE: 'Set off', ARRIVAL_CODE: 'Arrived and checked in', CHECK_IN_CODE: 'Checked in',
   INSPECT: 'Inspected', QUOTE: 'Quote paid', PAY_UPFRONT: 'Booked and paid', PICKUP_PROOF: 'Picked up',
   HANDOVER_PHOTOS: 'Hand-over photos', HANDBACK_CODE: 'Handed back', COMPLETE: 'Completed', RATE_BOTH_WAYS: 'Rated',
+  // Moments kept beside the steps (server job_step_event_repo.py).
+  ARRIVED: 'Arrived', WAIT_STOPPED: 'Waiting stopped', WAIT_REVIEW: 'Waiting sent to support',
 };
 const time = (iso: string) => new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });

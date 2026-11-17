@@ -2,6 +2,7 @@ import notifee, { AndroidForegroundServiceType, AndroidImportance, AndroidStyle,
 import { showDialog } from '@/components/alert-host';
 import messaging from '@react-native-firebase/messaging';
 import { router } from 'expo-router';
+import { openServiceRoom } from '@/services/service-room';
 import * as SecureStore from 'expo-secure-store';
 import { AppRegistry, AppState, Linking, NativeEventEmitter, NativeModules, Platform } from 'react-native';
 import RNCallKeep from 'react-native-callkeep';
@@ -1520,7 +1521,7 @@ function openGeneralNotification(type: string, ticketId?: string, jobId?: string
     return;
   }
   if (jobId) {
-    safeNavigate(() => router.push({ pathname: '/(tabs)', params: { openServiceRoom: 'true', jobId } } as any));
+    safeNavigate(() => openServiceRoom(jobId));
     return;
   }
   safeNavigate(() => openScreen('/notifications', 'list', {}));

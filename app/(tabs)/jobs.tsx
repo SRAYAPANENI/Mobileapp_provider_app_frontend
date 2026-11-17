@@ -11,6 +11,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { router } from 'expo-router';
+import { openServiceRoom } from '@/services/service-room';
 import { CustomerRatingSheet } from '@/components/customer-rating-sheet';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useAppAlert } from '@/components/app-alert';
@@ -181,7 +182,7 @@ const JobCard = React.memo(function JobCard({
             // invoice entirely and jumped the job straight to IN_PROGRESS.
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: '#6366F1' }]}
-              onPress={() => router.push({ pathname: '/(tabs)', params: { openServiceRoom: 'true', jobId: job.job_id.toString() } } as any)}
+              onPress={() => openServiceRoom(job.job_id.toString())}
               activeOpacity={0.82}
             >
               <Play size={14} color="#fff" fill="#fff" />
@@ -194,7 +195,7 @@ const JobCard = React.memo(function JobCard({
             // plain "complete" before it.
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: '#10B981' }]}
-              onPress={() => router.push({ pathname: '/(tabs)', params: { openServiceRoom: 'true', jobId: job.job_id.toString() } } as any)}
+              onPress={() => openServiceRoom(job.job_id.toString())}
               activeOpacity={0.82}
             >
               <CheckCircle2 size={14} color="#fff" />

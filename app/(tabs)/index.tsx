@@ -12,7 +12,8 @@ import * as Location from 'expo-location';
 import { shrinkPhoto } from '@/services/photo';
 import { callTapAllowed } from '@/services/callManager';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
+import { onServiceRoomRequest, takePendingServiceRoom } from '@/services/service-room';
 import { useRefreshOnFocus } from '@/hooks/use-refresh-on-focus';
 import { useActiveJobs, useInboundJobs } from '@/services/queries/jobs';
 import { NoInternetState } from '@/components/no-internet-state';
@@ -983,10 +984,15 @@ export default function DashboardScreen() {
 
   // The opened job's detail, once — whatever its status (the poll above only
   // runs while it's moving), and never another job's left over from before.
+  // When that poll runs it loads the job at once itself — loading it here as
+  // well fetched it twice on opening and redrew all of Home twice.
   useEffect(() => {
     if (!showManageModal || !selectedJob?.id) return;
     let cancelled = false;
     setManageJobDetail((prev: any) => (prev?.id === selectedJob.id ? prev : null));
+    const polled = ['ACCEPTED', 'INSPECTING', 'INVOICE_PENDING'].includes(selectedJob.status)
+      || (selectedJob.status === 'IN_PROGRESS' && isDelivery(selectedJob));
+    if (polled) return;
     SkoFyApi.jobs.get(selectedJob.id).then((detail) => { if (!cancelled) setManageJobDetail(detail); }).catch(() => {});
     return () => { cancelled = true; };
   }, [showManageModal, selectedJob?.id]);
@@ -1584,6 +1590,45 @@ const filteredJobs = jobs.filter((job) => {
     setShowManageModal(true);
   };
 
+  // A screen opened from the Service Room — chat, a call, the map — comes
+  // back to it, not to the dashboard (it has to close first: a popup would sit
+  // over the next screen). Reopened as it was left: a half-typed invoice or a
+  // pickup photo already taken are kept (handleManageService clears them).
+  const returnToRoomRef = useRef<string | null>(null);
+  const leaveRoomFor = (open: () => void) => {
+    returnToRoomRef.current = selectedJob?.id ?? null;
+    setShowManageModal(false);
+    open();
+  };
+  useFocusEffect(React.useCallback(() => {
+    const id = returnToRoomRef.current;
+    if (!id) return;
+    returnToRoomRef.current = null;
+    // Gone meanwhile (finished, cancelled)? The room says so and offers Close.
+    setSelectedJobId(id);
+    setShowManageModal(true);
+  }, []));
+
+  // A room asked for elsewhere (services/service-room.ts): opened here, on
+  // this dashboard, once it's the screen in view — the app coming back to it,
+  // or the Home tab being switched to.
+  const navigation = useNavigation();
+  const manageRef = useRef(handleManageService);
+  manageRef.current = handleManageService;
+  useFocusEffect(React.useCallback(() => {
+    const id = takePendingServiceRoom();
+    if (id) manageRef.current(id);
+  }, []));
+  useEffect(() => onServiceRoomRequest(() => {
+    if (navigation.isFocused()) {
+      const id = takePendingServiceRoom();
+      if (id) manageRef.current(id);
+    } else {
+      // Another tab is showing: switch to Home, whose focus opens it.
+      navigation.navigate('index' as never);
+    }
+  }), [navigation]);
+
   // Auto-open service room modal when navigated from job details
   useEffect(() => {
     if (openServiceRoom === 'true' && paramJobId) {
@@ -1790,15 +1835,16 @@ const filteredJobs = jobs.filter((job) => {
     // A delivery goes to the store first, then to the customer's drop-off.
     const target = navigationTarget(selectedJob, manageJobDetail);
     if (target) {
-      setShowManageModal(false);
-      router.push({
+      leaveRoomFor(() => router.push({
         pathname: '/navigate-to-site' as any,
         params: {
           lat: String(target.lat), lng: String(target.lng), title: target.title, jobId: selectedJob.id,
+          // Which stop "Arrived" there is (the pickup's endpoint refused the drop-off's).
+          stop: target.stop,
           // Shown on the map screen's Call / Chat row.
           customerName: selectedJob.employer?.name || 'Customer',
         },
-      });
+      }));
     }
   };
 
@@ -2385,8 +2431,7 @@ const filteredJobs = jobs.filter((job) => {
                         // call so it actually goes through our calling system
                         // (push notifications, call logs, etc.) like everywhere else.
                         if (!callTapAllowed()) return;
-                        setShowManageModal(false);
-                        router.push({
+                        leaveRoomFor(() => router.push({
                           pathname: '/chat' as any,
                           params: {
                             jobId: selectedJob.id,
@@ -2394,7 +2439,7 @@ const filteredJobs = jobs.filter((job) => {
                             jobTitle: selectedJob.title,
                             autoCall: 'true',
                           },
-                        });
+                        }));
                       }}
                     >
                       <Phone size={18} color="#16A34A" />
@@ -2402,15 +2447,14 @@ const filteredJobs = jobs.filter((job) => {
                     <TouchableOpacity
                       style={[styles.contactBtn, { backgroundColor: '#DBEAFE' }]}
                       onPress={() => {
-                        setShowManageModal(false);
-                        router.push({
+                        leaveRoomFor(() => router.push({
                           pathname: '/chat' as any,
                           params: {
                             jobId: selectedJob.id,
                             name: selectedJob.employer?.name || 'Customer',
                             jobTitle: selectedJob.title,
                           },
-                        });
+                        }));
                       }}
                     >
                       <MessageSquare size={18} color="#2563EB" />
@@ -2720,7 +2764,12 @@ const filteredJobs = jobs.filter((job) => {
                       onCustomerAbsent={handleCustomerAbsent}
                       onError={(title, message) => appAlert.show('error', title, message)}
                     />
-                    {pickupFromPerson ? (
+                    {/* Store or person isn't known until the job's details are
+                        in: the store card drawn meanwhile was swapped out under
+                        the provider's finger. */}
+                    {!manageJobDetail ? (
+                      <ActivityIndicator style={{ marginVertical: 16 }} color="#9CA3AF" />
+                    ) : pickupFromPerson ? (
                       <PickupFromPerson
                         key={`${selectedJob.id}-${personChecksRound}`}
                         jobId={selectedJob.id}

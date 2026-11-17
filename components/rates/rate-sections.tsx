@@ -59,19 +59,45 @@ function Pill({ status }: { status: SectionStatus }) {
   );
 }
 
-/** At the top: the three sections at a glance — tap one to go to it. */
-export function Overview({ statuses, onJump }: { statuses: Record<RateGroup, SectionStatus | null>; onJump: (g: RateGroup) => void }) {
+/** At the top: the three sections at a glance — tap one to show only it
+ * (with hundreds of skills, scrolling to Delivery or Stays meant passing them
+ * all); tap it again, or "Show all", for everything. */
+export function Overview({ statuses, selected, onPick }: {
+  statuses: Record<RateGroup, SectionStatus | null>;
+  selected: RateGroup | null;
+  onPick: (g: RateGroup | null) => void;
+}) {
   const groups = (Object.keys(SECTION_INFO) as RateGroup[]).filter((g) => statuses[g]);
   return (
-    <View style={s.overview}>
-      {groups.map((g) => (
-        <TouchableOpacity key={g} style={[s.tile, { backgroundColor: SECTION_INFO[g].tint }]} onPress={() => onJump(g)} activeOpacity={0.8}
-          accessibilityRole="button" accessibilityLabel={`${SECTION_INFO[g].title}: ${statuses[g]!.label}`}>
-          <GroupIcon group={g} size={20} />
-          <ThemedText style={s.tileTitle} numberOfLines={1}>{SECTION_INFO[g].short}</ThemedText>
-          <ThemedText style={[s.tileStatus, { color: TONE[statuses[g]!.tone].fg }]} numberOfLines={2}>{statuses[g]!.label}</ThemedText>
-        </TouchableOpacity>
-      ))}
+    <View style={{ gap: 8 }}>
+      <View style={s.overview}>
+        {groups.map((g) => {
+          const on = selected === g;
+          return (
+            <TouchableOpacity
+              key={g}
+              style={[s.tile, { backgroundColor: SECTION_INFO[g].tint }, on && { borderColor: SECTION_INFO[g].ink }, selected && !on && s.tileDim]}
+              onPress={() => onPick(on ? null : g)}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityState={{ selected: on }}
+              accessibilityLabel={`${SECTION_INFO[g].title}: ${statuses[g]!.label}${on ? ', showing only this' : ''}`}
+            >
+              <GroupIcon group={g} size={20} />
+              <ThemedText style={s.tileTitle} numberOfLines={1}>{SECTION_INFO[g].short}</ThemedText>
+              <ThemedText style={[s.tileStatus, { color: TONE[statuses[g]!.tone].fg }]} numberOfLines={2}>{statuses[g]!.label}</ThemedText>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      {selected && (
+        <View style={s.filterRow}>
+          <ThemedText style={s.filterText}>Showing {SECTION_INFO[selected].title} only</ThemedText>
+          <TouchableOpacity onPress={() => onPick(null)} hitSlop={8} accessibilityRole="button">
+            <ThemedText style={s.filterAll}>Show all</ThemedText>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
@@ -146,7 +172,11 @@ export function VehicleRoomCard({ room }: { room: VehicleRoom | undefined }) {
 
 const s = StyleSheet.create({
   overview: { flexDirection: 'row', gap: 10 },
-  tile: { flex: 1, borderRadius: 16, padding: 12, gap: 4 },
+  tile: { flex: 1, borderRadius: 16, padding: 12, gap: 4, borderWidth: 2, borderColor: 'transparent' },
+  tileDim: { opacity: 0.55 },
+  filterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4 },
+  filterText: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.poppinsSemiBold, color: '#4B5563' },
+  filterAll: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.poppinsBold, color: '#0369A1' },
   tileTitle: { fontSize: 13.5, lineHeight: 19, fontFamily: Fonts.poppinsBold, color: '#111827', marginTop: 4 },
   tileStatus: { fontSize: 11.5, lineHeight: 15, fontFamily: Fonts.poppinsSemiBold },
   head: { gap: 6, paddingTop: 22, paddingBottom: 10 },

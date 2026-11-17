@@ -7,6 +7,7 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { StyleSheet, View, ScrollView, TouchableOpacity, SafeAreaView, Platform, Dimensions, ActivityIndicator, Share, Pressable, LayoutChangeEvent } from 'react-native';
 import { Text } from '@/components/scaled-text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { openDashboardTab, openServiceRoom } from '@/services/service-room';
 import { ChevronLeft, MapPin, Clock, Briefcase, Star, ShieldCheck, Play, Navigation, Share2, Lock, Zap, XCircle, X, CheckCircle2, User, Home, Users, Package } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
@@ -502,7 +503,7 @@ export default function JobDetailsScreen() {
         setShowSuccessModal(false);
         setHiredSuccess(false);
         if (result?.hired) {
-          router.replace({ pathname: '/(tabs)', params: { openServiceRoom: 'true', jobId: job.id } });
+          openServiceRoom(job.id);
         } else {
           router.back();
         }
@@ -515,7 +516,7 @@ export default function JobDetailsScreen() {
           title: gate.title,
           message: gate.message,
           actionLabel: gate.actionLabel,
-          onAction: () => { setGateModal(null); router.push({ pathname: '/(tabs)/profile', params: { section: 'verification' } } as any); },
+          onAction: () => { setGateModal(null); openDashboardTab({ pathname: '/(tabs)/profile', params: { section: 'verification' } }); },
         });
       } else {
         showDialog('Failed', msg || 'Could not accept this request. Please try again.');
@@ -559,7 +560,7 @@ export default function JobDetailsScreen() {
           title: gate.title,
           message: gate.message,
           actionLabel: gate.actionLabel,
-          onAction: () => { setGateModal(null); router.push({ pathname: '/(tabs)/profile', params: { section: 'verification' } } as any); },
+          onAction: () => { setGateModal(null); openDashboardTab({ pathname: '/(tabs)/profile', params: { section: 'verification' } }); },
         });
       } else {
         showDialog('Failed', msg || 'Could not apply for this job. Please try again.');
@@ -1047,10 +1048,7 @@ export default function JobDetailsScreen() {
                 ]}
                 onPress={() => {
                   if (job.isOngoing) {
-                    router.push({
-                      pathname: '/(tabs)',
-                      params: { openServiceRoom: 'true', jobId: job.id }
-                    });
+                    openServiceRoom(job.id);
                   } else if (!disabled) {
                     handleApply();
                   }

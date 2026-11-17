@@ -42,12 +42,14 @@ export function isCollected(job: JobLike, detail: DetailLike): boolean {
 
 /** Where "Navigate" should go: the store, then — once collected — the drop-off.
  * It used to go to the store for the whole job. */
-export function navigationTarget(job: JobLike, detail: DetailLike): { lat: number; lng: number; title: string } | null {
+export function navigationTarget(
+  job: JobLike, detail: DetailLike,
+): { lat: number; lng: number; title: string; stop: 'pickup' | 'dropoff' } | null {
   if (isDelivery(job) && isCollected(job, detail) && job.dropoffLatitude != null && job.dropoffLongitude != null) {
-    return { lat: job.dropoffLatitude, lng: job.dropoffLongitude, title: 'Drop-off' };
+    return { lat: job.dropoffLatitude, lng: job.dropoffLongitude, title: 'Drop-off', stop: 'dropoff' };
   }
   if (job.latitude == null || job.longitude == null) return null;
-  return { lat: job.latitude, lng: job.longitude, title: job.title ?? 'Job Site' };
+  return { lat: job.latitude, lng: job.longitude, title: job.title ?? 'Job Site', stop: 'pickup' };
 }
 
 /** The customer chose who pays for the goods — or, from a person, what's collected. */
