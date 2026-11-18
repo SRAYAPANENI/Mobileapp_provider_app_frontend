@@ -37,7 +37,8 @@ export default function PausedBanner() {
   const lapses: PauseLapse[] = Array.isArray(profile?.pause_lapses) ? profile.pause_lapses : [];
   const forLapses = profile?.pause_reason === 'LAPSES';
   const why = forLapses
-    ? `${lapses.length} missed or cancelled jobs within 30 days.`
+    // Lapses are missed starts, backing out, arriving late and lost disputes.
+    ? `${lapses.length} times in 30 days a job was missed, cancelled or reached late.`
     : 'You were found asking a customer to pay outside the app.';
 
   return (
