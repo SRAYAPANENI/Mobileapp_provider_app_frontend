@@ -21,6 +21,7 @@ import { useOfflinePage } from '@/components/offline-gate';
 import { useJobAlerts, useMySkills, useProviderProfile } from '@/services/queries/provider';
 import { useAppConfig } from '@/services/queries/app-config';
 import TermsUpdatedBanner from '@/components/terms-updated-banner';
+import PausedBanner from '@/components/paused-banner';
 import ScheduledMaintenanceBanner from '@/components/scheduled-maintenance-banner';
 import {
   Clock,
@@ -1312,6 +1313,8 @@ export default function DashboardScreen() {
   // shared with Profile and Rates & hosting. A change made on any of them
   // reaches Home by itself; coming back refreshes only what's out of date.
   const profileQuery = useProviderProfile();
+  const pausedUntil: string | null = (profileQuery.data as any)?.paused_until ?? null;
+  const isPaused = !!pausedUntil && new Date(pausedUntil).getTime() > Date.now();
   const skillsQuery = useMySkills();
   const alertsQuery = useJobAlerts();
   useRefreshOnFocus(profileQuery, skillsQuery, alertsQuery);
@@ -2121,6 +2124,8 @@ const filteredJobs = jobs.filter((job) => {
         </View>
 
         <ScheduledMaintenanceBanner />
+        {/* Paused: until when and why — no new job reaches them meanwhile. */}
+        <PausedBanner />
         <TermsUpdatedBanner />
 
         {notifNudge.show && (
@@ -2334,14 +2339,16 @@ const filteredJobs = jobs.filter((job) => {
         ) : filteredJobs.length === 0 ? (
           <View style={styles.emptyContainer}>
             <ThemedText style={styles.emptyText}>
-              {activeTab === 0 && !isAvailable ? "You're offline"
+              {activeTab === 0 && isPaused ? 'Paused from new jobs'
+                : activeTab === 0 && !isAvailable ? "You're offline"
                 : activeTab === 1 ? 'No ongoing jobs'
                 : activeTab === 2 ? 'No booked slots'
                 : activeTab === 3 ? 'No applications yet'
                 : 'Waiting for job assignments...'}
             </ThemedText>
             <ThemedText style={styles.emptySubText}>
-              {activeTab === 0 && teamOnlyFor ? `You're in your hours with ${teamOnlyFor} — jobs come through them and show under Ongoing once you're given one. After your hours, your own jobs show here.`
+              {activeTab === 0 && isPaused ? 'No new jobs reach you until the pause ends — see why at the top.'
+                : activeTab === 0 && teamOnlyFor ? `You're in your hours with ${teamOnlyFor} — jobs come through them and show under Ongoing once you're given one. After your hours, your own jobs show here.`
                 : activeTab === 0 && !isAvailable ? 'Turn on availability at the top of the dashboard to see new jobs.'
                 : activeTab === 0 && skillFilter ? `No ${skillFilter} jobs right now. Tap All to see every job you qualify for.`
                 : activeTab === 0 ? 'Jobs posted by customers will appear here once assigned to you.'
