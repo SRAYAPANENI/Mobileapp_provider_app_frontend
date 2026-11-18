@@ -3,36 +3,50 @@ import * as TaskManager from 'expo-task-manager';
 import { API_BASE_URL } from './api-config';
 import { getFreshAccessToken } from './api';
 
+// Two ways the server learns where a provider is, each its own task:
+// - On a trip (LOCATION_TASK_NAME): every few metres, for the customer's map.
+// - Online and free (ONLINE_TASK_NAME): about every 500 m, even with the app
+//   closed — so jobs reach them as they come near, and leave as they go
+//   (the server's catch-up and feed, DistributionAgent.catch_up).
+// Never both: a trip takes over from online, and online resumes after.
 export const LOCATION_TASK_NAME = 'skofy-background-location';
+export const ONLINE_TASK_NAME = 'skofy-online-location';
 
-// Registered at module level so it's available before any component mounts.
-// This file MUST be imported in the root _layout.tsx before anything renders.
-TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
+/** One fix to the server (PATCH /providers/me/location). */
+async function sendFix({ data, error }: any): Promise<void> {
   if (error) { console.warn('[BGLocation]', error); return; }
   const location = (data as any)?.locations?.[0];
   if (!location) return;
-
   try {
     // Renewed when it's about to lapse (tokens last 15 minutes): reading the
     // stored one as-is had every update refused a quarter of an hour into a
     // trip, and the customer's live tracking stopped with the phone locked.
     const token = await getFreshAccessToken();
     if (!token) return;
-    // Must be PATCH — matches the backend endpoint PATCH /providers/me/location
     await fetch(`${API_BASE_URL}/providers/me/location`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ lat: location.coords.latitude, lng: location.coords.longitude }),
     });
   } catch {
-    // Network blip or a keychain still shut — next GPS tick will retry
+    // Network blip or a keychain still shut — the next fix will retry
   }
-});
+}
 
+// Registered at module level so they're available before any component mounts.
+// This file MUST be imported in the root _layout.tsx before anything renders.
+TaskManager.defineTask(LOCATION_TASK_NAME, sendFix);
+TaskManager.defineTask(ONLINE_TASK_NAME, sendFix);
+
+async function running(task: string): Promise<boolean> {
+  return Location.hasStartedLocationUpdatesAsync(task).catch(() => false);
+}
+
+/** On a trip: the customer follows them closely. Online mode steps aside. */
 export async function startBackgroundLocation() {
   try {
-    const already = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-    if (already) return;
+    await stopOnlineLocation();
+    if (await running(LOCATION_TASK_NAME)) return;
     await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
       accuracy: Location.Accuracy.High,
       distanceInterval: 5,  // fire after 5 m of movement …
@@ -53,9 +67,53 @@ export async function startBackgroundLocation() {
 
 export async function stopBackgroundLocation() {
   try {
-    const started = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-    if (started) await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+    if (await running(LOCATION_TASK_NAME)) await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
   } catch (e) {
     console.warn('[BGLocation] stop failed:', e);
   }
+}
+
+/** Online and free for work: where they are, every ~500 m, app open or not.
+ * Never during a trip (its own, closer tracking runs then). */
+export async function startOnlineLocation() {
+  try {
+    if (await running(LOCATION_TASK_NAME) || await running(ONLINE_TASK_NAME)) return;
+    const fg = await Location.getForegroundPermissionsAsync();
+    // "While using the app" is enough: started while the app is open, it
+    // carries on in the background (iPhone shows its blue location pill;
+    // Android its "Online" notification). No "Always" asked for — on Android
+    // that opens Settings unexplained the moment they go online.
+    if (!fg.granted) return;                     // asked for on Home; nothing to do without it
+    await Location.startLocationUpdatesAsync(ONLINE_TASK_NAME, {
+      accuracy: Location.Accuracy.Balanced,
+      distanceInterval: 500,          // a new fix after ~500 m of movement
+      deferredUpdatesDistance: 500,   // batched by the phone to save battery
+      deferredUpdatesInterval: 60_000,
+      activityType: Location.ActivityType.AutomotiveNavigation,
+      // Not paused by iOS while they stay put: a paused task only resumes
+      // when the app is opened, and jobs would stop reaching them as they moved.
+      pausesUpdatesAutomatically: false,
+      foregroundService: {
+        notificationTitle: 'Dodorez Pro — Online',
+        notificationBody: 'Finding jobs near you. Go offline to stop.',
+        notificationColor: '#FFCE48',
+      },
+      showsBackgroundLocationIndicator: true,
+    });
+  } catch (e) {
+    console.warn('[OnlineLocation] start failed:', e);
+  }
+}
+
+export async function stopOnlineLocation() {
+  try {
+    if (await running(ONLINE_TASK_NAME)) await Location.stopLocationUpdatesAsync(ONLINE_TASK_NAME);
+  } catch (e) {
+    console.warn('[OnlineLocation] stop failed:', e);
+  }
+}
+
+/** Logging out / deleting the account: no location leaves the phone after. */
+export async function stopAllBackgroundLocation() {
+  await Promise.all([stopBackgroundLocation(), stopOnlineLocation()]);
 }

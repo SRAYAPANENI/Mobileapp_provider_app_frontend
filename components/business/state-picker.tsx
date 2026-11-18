@@ -13,11 +13,13 @@ interface Props {
   /** The two-letter code chosen, or '' for none yet. */
   value: string;
   onChange: (code: string) => void;
+  /** The list's heading — what the state is for. */
+  title?: string;
 }
 
 /** A US state, chosen from the list the server checks against
  * (GET /businesses/us-states) — searchable by name or code. */
-export function StatePicker({ value, onChange }: Props) {
+export function StatePicker({ value, onChange, title = 'State registered in' }: Props) {
   const insets = useSafeAreaInsets();
   const states = useUsStates();
   const [open, setOpen] = useState(false);
@@ -48,7 +50,7 @@ export function StatePicker({ value, onChange }: Props) {
         <View style={s.backdrop} />
         <PopupCard style={[s.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
           <View style={s.header}>
-            <ThemedText style={s.title}>State registered in</ThemedText>
+            <ThemedText style={s.title}>{title}</ThemedText>
             <TouchableOpacity onPress={() => setOpen(false)} hitSlop={10}><X size={22} color={C.ink} /></TouchableOpacity>
           </View>
           <View style={s.search}>

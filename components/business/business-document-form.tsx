@@ -9,6 +9,7 @@ import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { TextInput } from '@/components/scaled-text';
 import { asDate, isoDate } from '@/services/usDate';
 import { Button, C, Field, u } from './ui';
+import { StatePicker } from './state-picker';
 
 const KINDS: { value: BusinessDocumentKind; label: string }[] = [
   { value: 'GENERAL_LIABILITY', label: 'General liability' },
@@ -112,17 +113,16 @@ export function BusinessDocumentForm({ minLiability, initialKind, onSubmit, onCa
             placeholder="1000000" />
         </Field>
       ) : (
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <View style={{ flex: 1 }}>
-            <Field label="Trade">
-              <TextInput style={u.input} value={trade} onChangeText={setTrade} placeholder="e.g. Plumbing" placeholderTextColor={C.faint} />
-            </Field>
-          </View>
-          <Field label="State">
-            <TextInput style={[u.input, { width: 84 }]} value={issuingState} autoCapitalize="characters" placeholderTextColor={C.faint}
-              onChangeText={(t) => setIssuingState(t.replace(/[^a-zA-Z]/g, '').slice(0, 2))} placeholder="TX" />
+        <>
+          <Field label="Trade">
+            <TextInput style={u.input} value={trade} onChangeText={setTrade} placeholder="e.g. Plumbing" placeholderTextColor={C.faint} />
           </Field>
-        </View>
+          {/* Chosen from the list the server checks against — typed, any two
+              letters went through ("FG"), and the licence was refused later. */}
+          <Field label="State">
+            <StatePicker value={issuingState} onChange={setIssuingState} title="State that issued the licence" />
+          </Field>
+        </>
       )}
       <Field label={insurance ? 'Policy ends' : 'Expires'} hint={insurance ? 'MM/DD/YYYY' : 'MM/DD/YYYY, if it does'}>
         <TextInput style={u.input} value={expires} onChangeText={(t) => setExpires(asDate(t))} keyboardType="number-pad"

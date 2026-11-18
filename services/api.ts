@@ -1418,6 +1418,12 @@ export const SkoFyApi = {
     getActive: async () =>
       request('/jobs/active'),
 
+    /** A location shared (WhatsApp, Google Maps), pasted as a link: its pin
+     * and, when the link names it, the place (`name`); or — with no pin — the
+     * place's name to search for. services/location-link.ts uses it. */
+    resolveLocationLink: async (link: string): Promise<{ lat: number | null; lng: number | null; query: string | null; name?: string | null }> =>
+      request('/jobs/pickup-location-link', { method: 'POST', body: JSON.stringify({ link }) }),
+
     getHistory: async (page = 1) =>
       request(`/jobs/history?page=${page}`),
 

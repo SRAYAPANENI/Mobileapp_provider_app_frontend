@@ -22,6 +22,7 @@ import { AppProvider } from '@/context/AppContext';
 import { clearPushForSignOut, initCallManager, registerFcmToken } from '@/services/callManager';
 import { startAppConfigSocket } from '@/services/app-config-socket';
 import { staleSessionCleared, setSessionExpiredHandler, storedAccessToken } from '@/services/api';
+import { stopAllBackgroundLocation } from '@/services/background-location';
 import { clearDashboardCache } from '@/services/homeCache';
 import { NetworkStatusBanner } from '@/components/network-status-banner';
 import AppLockGate from '@/components/app-lock-gate';
@@ -89,6 +90,9 @@ export default function RootLayout() {
       // The login is gone, so this phone must stop ringing for it: Firebase
       // forgets the token (login registers a fresh one) and any ringing stops.
       clearPushForSignOut().catch(() => {});
+      // Nor follow where they are: online mode (and a trip's tracking) kept
+      // the GPS and its "Online" notice running for a login that was gone.
+      stopAllBackgroundLocation().catch(() => {});
       // The dashboard cache is keyed to the account that was logged in —
       // a session dying here (token revoked, or the account itself no
       // longer exists) means whatever's cached no longer has a confirmed

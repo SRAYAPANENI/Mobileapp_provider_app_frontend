@@ -4,7 +4,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
 import { useBottomInset } from '@/hooks/use-bottom-inset';
 import { AccountDeletionStatus, SkoFyApi } from '@/services/api';
-import { stopBackgroundLocation } from '@/services/background-location';
+import { stopAllBackgroundLocation } from '@/services/background-location';
 import { signOutDevice } from '@/services/callManager';
 import { clearDashboardCache } from '@/services/homeCache';
 import { disconnectLocationSocket } from '@/services/location-socket';
@@ -55,7 +55,7 @@ export default function DeleteAccountScreen() {
       const r = await SkoFyApi.account.deleteAccount(code.trim());
       // Signed out everywhere by the server already; this clears the phone too
       // (as Log out does: location sharing off, cached dashboard gone).
-      await stopBackgroundLocation().catch(() => {});
+      await stopAllBackgroundLocation().catch(() => {});
       disconnectLocationSocket();
       await clearDashboardCache().catch(() => {});
       await signOutDevice();

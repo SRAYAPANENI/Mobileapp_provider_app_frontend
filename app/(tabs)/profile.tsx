@@ -20,7 +20,7 @@ import { isEmail, tidyEmail } from '@/services/email';
 import { AppLock } from '@/services/appLock';
 import { signOutDevice } from '@/services/callManager';
 import { useServerReachable } from '@/services/server-status';
-import { stopBackgroundLocation } from '@/services/background-location';
+import { stopAllBackgroundLocation } from '@/services/background-location';
 import { disconnectLocationSocket } from '@/services/location-socket';
 import { clearDashboardCache } from '@/services/homeCache';
 import { StyleSheet, View, TouchableOpacity, ScrollView, Platform, Dimensions, Switch, RefreshControl, SafeAreaView, Pressable, BackHandler, PanResponder, Animated as RNAnimated, ActivityIndicator, Linking } from 'react-native';
@@ -1341,7 +1341,7 @@ export default function ProfileScreen() {
     // otherwise kept running after logout (the task itself no-ops once the
     // token is cleared below, but the OS-level location service and the
     // misleading notification would persist until the app was killed).
-    await stopBackgroundLocation().catch(() => {});
+    await stopAllBackgroundLocation().catch(() => {});
     disconnectLocationSocket();
     // The dashboard cache is stamped with this account's userId and
     // already won't be read back for a DIFFERENT account — this is

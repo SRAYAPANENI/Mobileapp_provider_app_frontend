@@ -159,7 +159,7 @@ export function VehicleForm({ onSubmit, onCancel }: Props) {
         </View>
         <View style={s.half}>
           <Field label="State">
-            <StatePicker value={plateState} onChange={setPlateState} />
+            <StatePicker value={plateState} onChange={setPlateState} title="State on the plate" />
           </Field>
         </View>
       </View>

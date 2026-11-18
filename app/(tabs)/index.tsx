@@ -83,7 +83,7 @@ import { SkoFyApi } from '@/services/api';
 import { markRatingSkipped, nextPendingRating, markRatingSubmitted } from '@/services/ratingReminders';
 import { readDashboardCache, writeDashboardCache } from '@/services/homeCache';
 import { Skeleton } from '@/components/skeleton';
-import { startBackgroundLocation, stopBackgroundLocation } from '@/services/background-location';
+import { startBackgroundLocation, startOnlineLocation, stopBackgroundLocation, stopOnlineLocation } from '@/services/background-location';
 import { connectLocationSocket, disconnectLocationSocket, sendLocationViaSocket } from '@/services/location-socket';
 import Animated, {
   FadeInUp,
@@ -462,6 +462,9 @@ export default function DashboardScreen() {
 
   const { data: appConfig } = useAppConfig();
   const [isAvailable, setIsAvailable] = useState(true);
+  // The server has said whether they're online: until then isAvailable is
+  // only a guess (true), and online mode must not follow someone offline.
+  const [availabilityKnown, setAvailabilityKnown] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   // Only while notifications are really off (hooks/use-notification-nudge.ts).
   const notifNudge = useNotificationNudge();
@@ -773,6 +776,13 @@ export default function DashboardScreen() {
     }
   }, [activeJobId]);
   useEffect(() => { userCoordsRef.current = userCoords; }, [userCoords]);
+  // Online and free: the server follows them every ~500 m, app open or not,
+  // so jobs reach them as they come near and leave as they go. Offline, or
+  // on a job (its own closer tracking above), it stops.
+  useEffect(() => {
+    if (availabilityKnown && isAvailable && !activeJobId) void startOnlineLocation();
+    else void stopOnlineLocation();
+  }, [availabilityKnown, isAvailable, activeJobId]);
 
   // When the provider brings the app to the foreground after it was backgrounded
   // or killed, push an immediate fresh GPS fix so the customer's tracking screen
@@ -1313,6 +1323,7 @@ export default function DashboardScreen() {
     if (profile.name) { setUserName(profile.name); writeDashboardCache({ userName: profile.name }); }
     if (typeof profile.is_available === 'boolean') {
       setIsAvailable(profile.is_available);
+      setAvailabilityKnown(true);
       writeDashboardCache({ isAvailable: profile.is_available });
     }
     // Removed in Profile: cleared here too, not only ever set.
