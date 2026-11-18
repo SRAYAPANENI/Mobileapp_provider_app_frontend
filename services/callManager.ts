@@ -685,6 +685,8 @@ const DASHBOARD_JOB_UPDATES = new Set([
   'wait_stopped',
   // A dispute on a job you bought shopping for: your money is safe.
   'job_disputed',
+  // Dodorez lifted your pause from new jobs: they show on the dashboard again.
+  'pause_lifted',
 ]);
 
 /** Pushes that open a screen of their own rather than the dashboard. */

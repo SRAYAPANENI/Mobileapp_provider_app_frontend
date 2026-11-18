@@ -21,6 +21,7 @@ import {
   FileText,
   MessageSquare,
   Phone,
+  PlayCircle,
   Star,
   XCircle,
   Zap,
@@ -73,6 +74,8 @@ function getTypeStyles(type: string) {
       return { icon: DollarSign, color: '#10B981', bg: '#ECFDF5' };
     case 'terms_updated':
       return { icon: FileText, color: '#111827', bg: '#F3F4F6' };
+    case 'pause_lifted':
+      return { icon: PlayCircle, color: '#10B981', bg: '#ECFDF5' };
     default:
       return { icon: Bell, color: '#FFCE48', bg: '#FFFBEB' };
   }
@@ -147,6 +150,11 @@ export default function NotificationsScreen() {
     }
     if (item.notif_type === 'terms_updated') {
       router.push('/terms' as any);
+      return;
+    }
+    // Dodorez lifted their pause: the dashboard, where new jobs show again.
+    if (item.notif_type === 'pause_lifted') {
+      router.push('/(tabs)');
       return;
     }
     // A skill-test reminder: the skills to test, each with its test.
