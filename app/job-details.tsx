@@ -3,12 +3,12 @@ import { OfflineScreen, useOfflinePage } from '@/components/offline-gate';
 import { AppAlert } from '@/components/app-alert';
 import { showDialog } from '@/components/alert-host';
 import { purchaseSummary } from '@/services/pickupDelivery';
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, ScrollView, TouchableOpacity, SafeAreaView, Platform, Dimensions, ActivityIndicator, Share, Pressable, LayoutChangeEvent } from 'react-native';
 import { Text } from '@/components/scaled-text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { openDashboardTab, openServiceRoom } from '@/services/service-room';
-import { ChevronLeft, MapPin, Clock, ShieldCheck, Play, Navigation, Share2, Lock, Zap, XCircle, CheckCircle2, Home, Users, Package, Flag, Receipt, Route as RouteIcon, ListChecks } from 'lucide-react-native';
+import { ChevronLeft, MapPin, Clock, ShieldCheck, Play, Navigation, Share2, Lock, Zap, XCircle, CheckCircle2, Home, Users, Package, Flag, Receipt, Route as RouteIcon, ListChecks, Maximize2, X } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
 import Svg, { Circle, LinearGradient, Stop, Defs } from 'react-native-svg';
@@ -16,7 +16,7 @@ import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import MapView, { Marker, PROVIDER_GOOGLE, Polyline } from 'react-native-maps';
 import { useRoadRoute } from '@/hooks/use-road-route';
-import { estimate } from '@/services/route';
+import { estimate, type Progress } from '@/services/route';
 import * as Location from 'expo-location';
 import { checkFeasibility, FeasibilityResult, FIT_LABEL, fitText, calculateDistance, estimateDriveMinutes, formatDriveTime } from '@/services/schedulingEngine';
 import { resolveApplyGate } from '@/services/applyErrorGate';
@@ -166,6 +166,116 @@ function scheduleText(j: any): string {
   return parts.join(' · ');
 }
 
+type MapPoint = { latitude: number; longitude: number };
+
+/**
+ * The job's map: where the job is (the pickup, for a delivery), the drop-off,
+ * the roads between them and from you, and you. Used twice on this screen —
+ * the small preview and the full-screen view — so both always show the same.
+ * It never sends anyone out to Google Maps (no toolbar).
+ *
+ * Your own dot is a plain view laid over the map, projected from the map's
+ * live viewport, not Marker children: on Android react-native-maps turns a
+ * Marker's children into a bitmap, and that crops custom views unreliably,
+ * worst on one that re-renders on every GPS update (same fix as
+ * business-map.tsx and the customer app's provider-map.tsx).
+ */
+function JobMap({ job, userLocation, toJob, tripRoad, styles, full = false }: {
+  job: any;
+  userLocation: MapPoint | null;
+  toJob: Progress | null;
+  tripRoad: Progress | null;
+  styles: ReturnType<typeof makeStyles>;
+  /** Full screen: fits every point in view, and the map can be turned and tilted. */
+  full?: boolean;
+}) {
+  const mapRef = useRef<MapView>(null);
+  const start: MapRegion = {
+    latitude: job.coordinates.latitude,
+    longitude: job.coordinates.longitude,
+    latitudeDelta: 0.05,
+    longitudeDelta: 0.05,
+  };
+  // Seeded with the initial region, so your dot shows before the first gesture.
+  const [region, setRegion] = useState<MapRegion>(start);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const approximate = job.locationApproximate && !job.isOngoing;
+
+  const fitAll = () => {
+    if (!full) return;
+    const points: MapPoint[] = [job.coordinates];
+    if (job.jobKind === 'PICKUP_DROPOFF' && job.dropoffCoordinates) points.push(job.dropoffCoordinates);
+    if (userLocation) points.push(userLocation);
+    if (points.length < 2) return;
+    // Room at the top for the close button and at the bottom for the details card.
+    mapRef.current?.fitToCoordinates(points, { edgePadding: { top: 120, right: 60, bottom: 320, left: 60 }, animated: false });
+  };
+
+  return (
+    <>
+      <MapView
+        ref={mapRef}
+        // No Google toolbar: tapping a pin must not send people out to Google Maps.
+        toolbarEnabled={false}
+        provider={PROVIDER_GOOGLE}
+        style={styles.map}
+        initialRegion={start}
+        scrollEnabled
+        rotateEnabled={full}
+        pitchEnabled={full}
+        onMapReady={fitAll}
+        onLayout={(e: LayoutChangeEvent) => setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
+        // Gesture end only, not every frame of a pan: this sits on a heavy
+        // screen, and your dot moves mainly from GPS, not from panning.
+        onRegionChangeComplete={setRegion}
+      >
+        {/* You to the job, along the roads (none drawn without a road route). */}
+        {toJob && <Polyline coordinates={toJob.coords} strokeColor="#FFCE48" strokeWidth={4} />}
+
+        {/* The job — the pickup point for a delivery. */}
+        <Marker coordinate={job.coordinates} title={`${job.jobKind === 'PICKUP_DROPOFF' ? 'Pickup' : 'Job'}${approximate ? ' area (approximate)' : ' location'}`}>
+          <View style={styles.customerMarkerContainer}>
+            <View style={styles.customerMarkerInner}>
+              <Home size={18} color="#fff" fill="#fff" />
+            </View>
+            <View style={styles.markerPointer} />
+          </View>
+        </Marker>
+
+        {/* A delivery's drop-off, and the road from the pickup to it. */}
+        {job.jobKind === 'PICKUP_DROPOFF' && job.dropoffCoordinates && (
+          <>
+            <Marker coordinate={job.dropoffCoordinates} title={job.locationApproximate ? 'Drop-off area (approximate)' : 'Drop-off location'} pinColor="#0EA5E9" />
+            {tripRoad && <Polyline coordinates={tripRoad.coords} strokeColor="#0EA5E9" strokeWidth={4} />}
+          </>
+        )}
+      </MapView>
+
+      {/* You: the logo in a round dot with a white edge, in a soft halo. */}
+      {userLocation && size.width > 0 && (() => {
+        const pos = projectToScreen(userLocation.latitude, userLocation.longitude, region, size.width, size.height);
+        return (
+          <View pointerEvents="none" style={[styles.skofyMarkerContainer, { position: 'absolute', left: pos.x - 22, top: pos.y - 22 }]}>
+            <View style={styles.skofyMarkerDot}>
+              <Image source={require('@/assets/images/icon-mark.png')} style={styles.skofyMarkerIcon} contentFit="cover" />
+            </View>
+          </View>
+        );
+      })()}
+
+      {/* How far you are — along the road, or the same estimate as the live maps. */}
+      {userLocation && !full && (
+        <View style={styles.mapDistanceOverlay}>
+          <Navigation size={12} color="#FFCE48" fill="#FFCE48" />
+          <Text style={styles.mapDistanceText}>
+            {(toJob ? toJob.distanceMi : estimate(userLocation, job.coordinates).distanceMi).toFixed(1)} mi
+          </Text>
+        </View>
+      )}
+    </>
+  );
+}
+
 export default function JobDetailsScreen() {
   const bottomInset = useBottomInset();
   const topInset = useSafeAreaInsets().top;
@@ -193,14 +303,7 @@ export default function JobDetailsScreen() {
   // Details..." forever since it can't tell "still loading" from "never will".
   const [loadError, setLoadError] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ latitude: number, longitude: number } | null>(null);
-  // Tracks the map preview's live viewport so the provider's own location dot
-  // can be drawn as a plain overlay view instead of Marker children — on
-  // Android, react-native-maps turns a Marker's children into a bitmap, and
-  // that snapshot pipeline crops custom views unreliably, worst on a marker
-  // like this one that re-renders on every GPS update (see the same fix in
-  // business-map.tsx and the customer app's provider-map.tsx).
-  const [mapRegion, setMapRegion] = useState<MapRegion | null>(null);
-  const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
+  const [mapFull, setMapFull] = useState(false);
   const [feasibility, setFeasibility] = useState<FeasibilityResult | null>(null);
   const [selectedMedia, setSelectedMedia] = useState<{
     type: 'image' | 'video',
@@ -248,20 +351,6 @@ export default function JobDetailsScreen() {
       }
     };
   }, []);
-
-  // Seeds the map overlay's projection region as soon as the job's location
-  // loads, matching the MapView's own initialRegion — otherwise the provider
-  // dot has nothing to project against until the first onRegionChangeComplete.
-  useEffect(() => {
-    if (!mapRegion && job?.coordinates?.latitude != null && job?.coordinates?.longitude != null) {
-      setMapRegion({
-        latitude: job.coordinates.latitude,
-        longitude: job.coordinates.longitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      });
-    }
-  }, [job, mapRegion]);
 
   // Quiet: a pull-down reload keeps the job on screen while it reloads.
   const fetchJobAndLocation = useCallback(async (quiet = false) => {
@@ -741,84 +830,17 @@ export default function JobDetailsScreen() {
               placeholder instead of a MapView centered on (0,0). */}
           {job.coordinates.latitude != null && job.coordinates.longitude != null ? (
             <View style={styles.mapContainer}>
-              <MapView
-                provider={PROVIDER_GOOGLE}
-                style={styles.map}
-                initialRegion={{
-                  latitude: job.coordinates.latitude,
-                  longitude: job.coordinates.longitude,
-                  latitudeDelta: 0.05,
-                  longitudeDelta: 0.05,
-                }}
-                scrollEnabled={true}
-                onLayout={(e: LayoutChangeEvent) => setMapSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
-                // Gesture end only, not onRegionChange (every frame of a pan) —
-                // unlike the dedicated map screens this pattern is borrowed
-                // from, this is a small preview on an otherwise heavy screen
-                // (SVG stat rings, feasibility calc), so re-rendering it on
-                // every frame of a pan would be a real perf hit. The provider
-                // dot "snapping" into place after a gesture instead of
-                // gliding during it is an acceptable trade for that — it
-                // mainly moves from GPS updates, not from panning this map.
-                onRegionChangeComplete={setMapRegion}
+              <JobMap job={job} userLocation={userLocation} toJob={toJob} tripRoad={tripRoad} styles={styles} />
+              {/* Opens the same map full screen, inside the app, with the trip's details. */}
+              <TouchableOpacity
+                style={styles.mapExpandButton}
+                onPress={() => setMapFull(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Show the map full screen"
+                hitSlop={8}
               >
-                {/* You to the job, along the roads (none drawn without a road route). */}
-                {toJob && <Polyline coordinates={toJob.coords} strokeColor="#FFCE48" strokeWidth={4} />}
-
-                {/* Job Location (Customer/Employer) — the pickup point for a
-                    PICKUP_DROPOFF job, same as the single location on any
-                    other job. */}
-                <Marker coordinate={job.coordinates} title={`${job.jobKind === 'PICKUP_DROPOFF' ? 'Pickup' : 'Job'}${job.locationApproximate && !job.isOngoing ? ' area (approximate)' : ' location'}`}>
-                  <View style={styles.customerMarkerContainer}>
-                    <View style={styles.customerMarkerInner}>
-                      <Home size={18} color="#fff" fill="#fff" />
-                    </View>
-                    <View style={styles.markerPointer} />
-                  </View>
-                </Marker>
-
-                {/* Drop-off point — a second, independent location only for
-                    PICKUP_DROPOFF jobs. */}
-                {job.jobKind === 'PICKUP_DROPOFF' && job.dropoffCoordinates && (
-                  <>
-                    <Marker coordinate={job.dropoffCoordinates} title={job.locationApproximate ? 'Drop-off area (approximate)' : 'Drop-off location'} pinColor="#0EA5E9" />
-                    {/* Pickup to drop-off, along the roads. */}
-                    {tripRoad && <Polyline coordinates={tripRoad.coords} strokeColor="#0EA5E9" strokeWidth={4} />}
-                  </>
-                )}
-
-              </MapView>
-
-              {/* Provider Live Location (Skofy Icon) — a plain overlay view
-                  projected from userLocation, not Marker children (see the
-                  note on mapRegion above for why). */}
-              {userLocation && mapRegion && mapSize.width > 0 && (() => {
-                const pos = projectToScreen(userLocation.latitude, userLocation.longitude, mapRegion, mapSize.width, mapSize.height);
-                return (
-                  // "You are here": the logo clipped to a round dot with a
-                  // white edge, in a soft halo — centred on the position.
-                  <View pointerEvents="none" style={[styles.skofyMarkerContainer, { position: 'absolute', left: pos.x - 22, top: pos.y - 22 }]}>
-                    <View style={styles.skofyMarkerDot}>
-                      <Image
-                        source={require('@/assets/images/icon-mark.png')}
-                        style={styles.skofyMarkerIcon}
-                        contentFit="cover"
-                      />
-                    </View>
-                  </View>
-                );
-              })()}
-
-              {/* Distance Overlay on Map */}
-              {userLocation && (
-                <View style={styles.mapDistanceOverlay}>
-                  <Navigation size={12} color="#FFCE48" fill="#FFCE48" />
-                  <Text style={styles.mapDistanceText}>
-                    {/* Along the road, or the same estimate as the live maps (services/route.ts). */}
-                    {(toJob ? toJob.distanceMi : estimate(userLocation, job.coordinates).distanceMi).toFixed(1)} mi
-                  </Text>
-                </View>
-              )}
+                <Maximize2 size={16} color="#111827" />
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={[styles.mapContainer, styles.remoteJobPlaceholder]}>
@@ -1153,6 +1175,82 @@ export default function JobDetailsScreen() {
           );
         })()}
       </View>
+
+      {/* The map, full screen — still inside the app, with what the trip is. */}
+      {job.coordinates.latitude != null && job.coordinates.longitude != null && (
+        <Popup closeOn="back" visible={mapFull} animationType="slide" onClose={() => setMapFull(false)} statusBarTranslucent>
+          <View style={[styles.mapFullScreen, { backgroundColor: themeColors.background }]}>
+            <JobMap job={job} userLocation={userLocation} toJob={toJob} tripRoad={tripRoad} styles={styles} full />
+
+            <TouchableOpacity
+              style={[styles.mapFullClose, { top: topInset + 12 }]}
+              onPress={() => setMapFull(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Close the map"
+              hitSlop={8}
+            >
+              <X size={22} color="#111827" />
+            </TouchableOpacity>
+
+            <View style={[styles.mapFullCard, { paddingBottom: bottomInset + 16 }]}>
+              <Text style={styles.mapFullTitle} numberOfLines={2}>{job.title}</Text>
+              <View style={styles.locationLink}>
+                <MapPin size={16} color="#EF4444" />
+                <Text style={styles.locationText}>{job.jobKind === 'PICKUP_DROPOFF' ? `Pickup: ${job.location}` : job.location}</Text>
+              </View>
+              {!!job.dropoffAddress && (
+                <View style={styles.locationLink}>
+                  <Flag size={16} color="#0EA5E9" />
+                  <Text style={styles.locationText}>Drop-off: {job.dropoffAddress}</Text>
+                </View>
+              )}
+              {job.locationApproximate && !job.isOngoing && (
+                <Text style={styles.approxNote}>Area only — the exact address is shown once you’re hired</Text>
+              )}
+
+              <View style={styles.mapFullStats}>
+                {userLocation && (
+                  <View style={styles.mapFullStat}>
+                    <Navigation size={14} color="#D97706" />
+                    <Text style={styles.mapFullStatText}>
+                      {(toJob ? toJob.distanceMi : estimate(userLocation, job.coordinates).distanceMi).toFixed(1)} mi from you
+                      {' · ~'}{formatDriveTime(toJob ? toJob.durationMins : estimateDriveMinutes(calculateDistance(userLocation, job.coordinates)))}
+                    </Text>
+                  </View>
+                )}
+                {job.jobKind === 'PICKUP_DROPOFF' && job.dropoffCoordinates && (
+                  <View style={styles.mapFullStat}>
+                    <RouteIcon size={14} color="#0EA5E9" />
+                    <Text style={styles.mapFullStatText}>
+                      {job.tripMiles != null
+                        ? `${job.tripMiles.toFixed(1)} mi trip`
+                        : `${(tripRoad ? tripRoad.distanceMi : estimate(job.coordinates, job.dropoffCoordinates).distanceMi).toFixed(1)} mi trip (about)`}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.mapFullStat}>
+                  <Clock size={14} color="#D97706" />
+                  <Text style={styles.mapFullStatText}>{job.when}</Text>
+                </View>
+              </View>
+
+              <View style={styles.mapFullFooter}>
+                <Text style={styles.mapFullRate}>{job.rate}</Text>
+                <View style={styles.mapFullLegend}>
+                  <View style={[styles.mapFullSwatch, { backgroundColor: '#FFCE48' }]} />
+                  <Text style={styles.mapFullLegendText}>Your way there</Text>
+                  {job.jobKind === 'PICKUP_DROPOFF' && (
+                    <>
+                      <View style={[styles.mapFullSwatch, { backgroundColor: '#0EA5E9' }]} />
+                      <Text style={styles.mapFullLegendText}>The trip</Text>
+                    </>
+                  )}
+                </View>
+              </View>
+            </View>
+          </View>
+        </Popup>
+      )}
 
       {/* Media Viewer Modal */}
       <Popup closeOn={selectedMedia?.type === 'video' ? 'back' : 'outside'}
@@ -1955,6 +2053,114 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     borderRightColor: 'transparent',
     borderTopColor: '#EF4444',
     marginTop: -2,
+  },
+  mapExpandButton: {
+    // Top-left: the bottom-left corner is Google's logo, which must stay visible.
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  mapFullScreen: {
+    flex: 1,
+  },
+  mapFullClose: {
+    position: 'absolute',
+    left: 16,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  mapFullCard: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: t.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  mapFullTitle: {
+    fontSize: 18,
+    lineHeight: 24,
+    fontFamily: Fonts.poppinsBold,
+    color: t.textPrimary,
+    marginBottom: 2,
+  },
+  mapFullStats: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  mapFullStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 206, 72, 0.14)',
+  },
+  mapFullStatText: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: Fonts.poppinsSemiBold,
+    color: t.textPrimary,
+  },
+  mapFullFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  mapFullRate: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontFamily: Fonts.poppinsBold,
+    color: '#B45309',
+  },
+  mapFullLegend: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  mapFullSwatch: {
+    width: 14,
+    height: 4,
+    borderRadius: 2,
+  },
+  mapFullLegendText: {
+    fontSize: 11,
+    lineHeight: 16,
+    fontFamily: Fonts.poppins,
+    color: t.textSecondary,
   },
   mapDistanceOverlay: {
     position: 'absolute',

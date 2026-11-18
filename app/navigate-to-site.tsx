@@ -381,6 +381,8 @@ export default function NavigateToSiteScreen() {
         </View>
       ) : (
         <MapView
+          // No Google toolbar: tapping a pin must not send people out to Google Maps.
+          toolbarEnabled={false}
           ref={mapRef}
           style={StyleSheet.absoluteFillObject}
           provider={PROVIDER_GOOGLE}
