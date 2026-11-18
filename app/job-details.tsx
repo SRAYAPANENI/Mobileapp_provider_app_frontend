@@ -186,7 +186,7 @@ function JobMap({ job, userLocation, toJob, tripRoad, styles, full = false }: {
   toJob: Progress | null;
   tripRoad: Progress | null;
   styles: ReturnType<typeof makeStyles>;
-  /** Full screen: fits every point in view, and the map can be turned and tilted. */
+  /** Full screen: fits the job, the drop-off and you in view. */
   full?: boolean;
 }) {
   const mapRef = useRef<MapView>(null);
@@ -207,9 +207,20 @@ function JobMap({ job, userLocation, toJob, tripRoad, styles, full = false }: {
     if (job.jobKind === 'PICKUP_DROPOFF' && job.dropoffCoordinates) points.push(job.dropoffCoordinates);
     if (userLocation) points.push(userLocation);
     if (points.length < 2) return;
-    // Room at the top for the close button and at the bottom for the details card.
-    mapRef.current?.fitToCoordinates(points, { edgePadding: { top: 120, right: 60, bottom: 320, left: 60 }, animated: false });
+    // Room at the top for the close button; the details card sits below the map.
+    mapRef.current?.fitToCoordinates(points, { edgePadding: { top: 110, right: 60, bottom: 60, left: 60 }, animated: false });
   };
+
+  // Your location often comes after the map is ready (a slow GPS fix): fit
+  // once more when it first arrives, so you're in view too.
+  const fittedWithYou = useRef(false);
+  const mapReady = useRef(false);
+  useEffect(() => {
+    if (full && mapReady.current && userLocation && !fittedWithYou.current) {
+      fittedWithYou.current = true;
+      fitAll();
+    }
+  }, [userLocation]);
 
   return (
     <>
@@ -221,9 +232,10 @@ function JobMap({ job, userLocation, toJob, tripRoad, styles, full = false }: {
         style={styles.map}
         initialRegion={start}
         scrollEnabled
-        rotateEnabled={full}
-        pitchEnabled={full}
-        onMapReady={fitAll}
+        // Never turned or tilted: your dot is laid over the map north-up and flat.
+        rotateEnabled={false}
+        pitchEnabled={false}
+        onMapReady={() => { mapReady.current = true; fittedWithYou.current = !!userLocation; fitAll(); }}
         onLayout={(e: LayoutChangeEvent) => setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
         // Gesture end only, not every frame of a pan: this sits on a heavy
         // screen, and your dot moves mainly from GPS, not from panning.
@@ -1180,17 +1192,21 @@ export default function JobDetailsScreen() {
       {job.coordinates.latitude != null && job.coordinates.longitude != null && (
         <Popup closeOn="back" visible={mapFull} animationType="slide" onClose={() => setMapFull(false)} statusBarTranslucent>
           <View style={[styles.mapFullScreen, { backgroundColor: themeColors.background }]}>
-            <JobMap job={job} userLocation={userLocation} toJob={toJob} tripRoad={tripRoad} styles={styles} full />
+            {/* The map fills what the card leaves — the card never covers it
+                (nor Google's logo in its corner). */}
+            <View style={styles.mapFullArea}>
+              <JobMap job={job} userLocation={userLocation} toJob={toJob} tripRoad={tripRoad} styles={styles} full />
 
-            <TouchableOpacity
-              style={[styles.mapFullClose, { top: topInset + 12 }]}
-              onPress={() => setMapFull(false)}
-              accessibilityRole="button"
-              accessibilityLabel="Close the map"
-              hitSlop={8}
-            >
-              <X size={22} color="#111827" />
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.mapFullClose, { top: topInset + 12 }]}
+                onPress={() => setMapFull(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close the map"
+                hitSlop={8}
+              >
+                <X size={22} color="#111827" />
+              </TouchableOpacity>
+            </View>
 
             <View style={[styles.mapFullCard, { paddingBottom: bottomInset + 16 }]}>
               <Text style={styles.mapFullTitle} numberOfLines={2}>{job.title}</Text>
@@ -2074,6 +2090,10 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
   mapFullScreen: {
     flex: 1,
   },
+  mapFullArea: {
+    flex: 1,
+    overflow: 'hidden',
+  },
   mapFullClose: {
     position: 'absolute',
     left: 16,
@@ -2090,13 +2110,8 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     elevation: 4,
   },
   mapFullCard: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
+    // Square top: it sits below the map, so rounded corners would show gaps.
     backgroundColor: t.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
     paddingHorizontal: 20,
     paddingTop: 18,
     gap: 6,
