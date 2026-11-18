@@ -4,11 +4,11 @@ import { AppAlert } from '@/components/app-alert';
 import { showDialog } from '@/components/alert-host';
 import { purchaseSummary } from '@/services/pickupDelivery';
 import React, { useCallback, useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, ScrollView, TouchableOpacity, SafeAreaView, Platform, Dimensions, ActivityIndicator, Share, Pressable, LayoutChangeEvent } from 'react-native';
+import { StyleSheet, View, ScrollView, TouchableOpacity, SafeAreaView, Platform, Dimensions, ActivityIndicator, Pressable, LayoutChangeEvent } from 'react-native';
 import { Text } from '@/components/scaled-text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { openDashboardTab, openServiceRoom } from '@/services/service-room';
-import { ChevronLeft, MapPin, Clock, ShieldCheck, Play, Navigation, Share2, Lock, Zap, XCircle, CheckCircle2, Home, Users, Package, Flag, Receipt, Route as RouteIcon, ListChecks, Maximize2, X } from 'lucide-react-native';
+import { ChevronLeft, MapPin, Clock, ShieldCheck, Play, Navigation, Lock, Zap, XCircle, CheckCircle2, Home, Users, Package, Flag, Receipt, Route as RouteIcon, ListChecks, Maximize2, X } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
 import Svg, { Circle, LinearGradient, Stop, Defs } from 'react-native-svg';
@@ -583,18 +583,6 @@ export default function JobDetailsScreen() {
   useEffect(() => { fetchJobAndLocation(); }, [fetchJobAndLocation]);
   const refreshControl = usePullRefresh(() => fetchJobAndLocation(true));
 
-  const handleShare = async () => {
-    try {
-      await Share.share({
-        message: `Check out this ${job.title} job on Dodorez — ${job.rate}.`,
-      });
-    } catch (error) {
-      // Most rejections here are just the user dismissing the share sheet,
-      // not a real failure — log for visibility, no alert needed.
-      console.error('Share failed:', error);
-    }
-  };
-
   const handleApply = () => {
     if (feasibility?.status === 'NOT_FEASIBLE') {
       showDialog('Conflict Detected', 'This job overlaps with your existing bookings.');
@@ -757,11 +745,8 @@ export default function JobDetailsScreen() {
           <ChevronLeft size={24} color={themeColors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Job Details</Text>
-        <View style={styles.headerRight}>
-          <TouchableOpacity onPress={handleShare} style={styles.headerButton}>
-            <Share2 size={22} color={themeColors.text} />
-          </TouchableOpacity>
-        </View>
+        {/* Same width as the back button, so the title stays centred. */}
+        <View style={styles.headerButton} />
       </View>
 
       <ScrollView refreshControl={refreshControl} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -1383,9 +1368,6 @@ function makeStyles(t: typeof Colors.light) { return StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 20,
-  },
-  headerRight: {
-    flexDirection: 'row',
   },
   scrollContent: {
     padding: 16,
