@@ -220,6 +220,8 @@ function JobMap({ job, userLocation, toJob, tripRoad, styles, full = false }: {
       fittedWithYou.current = true;
       fitAll();
     }
+    // Only your location's arrival matters; `full` never changes for a map.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userLocation]);
 
   return (
@@ -1190,7 +1192,7 @@ export default function JobDetailsScreen() {
 
       {/* The map, full screen — still inside the app, with what the trip is. */}
       {job.coordinates.latitude != null && job.coordinates.longitude != null && (
-        <Popup closeOn="back" visible={mapFull} animationType="slide" onClose={() => setMapFull(false)} statusBarTranslucent>
+        <Popup closeOn="back" visible={mapFull} animationType="slide" onClose={() => setMapFull(false)} statusBarTranslucent navigationBarTranslucent>
           <View style={[styles.mapFullScreen, { backgroundColor: themeColors.background }]}>
             {/* The map fills what the card leaves — the card never covers it
                 (nor Google's logo in its corner). */}
