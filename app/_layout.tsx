@@ -21,7 +21,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AppProvider } from '@/context/AppContext';
 import { clearPushForSignOut, initCallManager, registerFcmToken } from '@/services/callManager';
 import { startAppConfigSocket } from '@/services/app-config-socket';
-import { TokenStore, staleSessionCleared, setSessionExpiredHandler } from '@/services/api';
+import { staleSessionCleared, setSessionExpiredHandler, storedAccessToken } from '@/services/api';
 import { clearDashboardCache } from '@/services/homeCache';
 import { NetworkStatusBanner } from '@/components/network-status-banner';
 import AppLockGate from '@/components/app-lock-gate';
@@ -81,7 +81,7 @@ export default function RootLayout() {
     staleSessionCleared.then(() => {
       initCallManager();
       startAppConfigSocket();
-      TokenStore.getAccessToken().then(token => {
+      storedAccessToken().then(token => {
         if (token) registerFcmToken();
       });
     });

@@ -1,11 +1,9 @@
 import * as Location from 'expo-location';
-import * as SecureStore from 'expo-secure-store';
 import * as TaskManager from 'expo-task-manager';
 import { API_BASE_URL } from './api-config';
+import { getFreshAccessToken } from './api';
 
 export const LOCATION_TASK_NAME = 'skofy-background-location';
-
-const TOKEN_KEY = 'skofy_access_token';
 
 // Registered at module level so it's available before any component mounts.
 // This file MUST be imported in the root _layout.tsx before anything renders.
@@ -14,10 +12,12 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
   const location = (data as any)?.locations?.[0];
   if (!location) return;
 
-  const token = await SecureStore.getItemAsync(TOKEN_KEY);
-  if (!token) return;
-
   try {
+    // Renewed when it's about to lapse (tokens last 15 minutes): reading the
+    // stored one as-is had every update refused a quarter of an hour into a
+    // trip, and the customer's live tracking stopped with the phone locked.
+    const token = await getFreshAccessToken();
+    if (!token) return;
     // Must be PATCH — matches the backend endpoint PATCH /providers/me/location
     await fetch(`${API_BASE_URL}/providers/me/location`, {
       method: 'PATCH',
@@ -25,7 +25,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
       body: JSON.stringify({ lat: location.coords.latitude, lng: location.coords.longitude }),
     });
   } catch {
-    // Network blip — next GPS tick will retry
+    // Network blip or a keychain still shut — next GPS tick will retry
   }
 });
 

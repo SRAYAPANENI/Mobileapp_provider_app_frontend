@@ -10,6 +10,9 @@ export interface MySkill { skill_id: string; name: string; is_verified: boolean 
 interface Props {
   /** The open jobs the provider can browse (All Jobs, before filtering). */
   jobs: { skills?: string[]; skillRefs?: SkillRef[] }[];
+  /** The whole feed counted on the server — it's read a page at a time, so
+   * the jobs on the phone undercount. Until it arrives, `jobs` are counted. */
+  counts?: { total: number; skills: { skill_id: string; name: string; count: number }[] };
   mySkills: MySkill[];
   selected: string | null;
   onSelect: (skill: string | null) => void;
@@ -37,13 +40,20 @@ type Item =
 const keyOf = (it: Item) =>
   it.kind === 'skill' ? `s:${it.name}` : it.kind === 'locked' ? `l:${it.ref.skill_id}` : it.kind;
 
-export const SkillFilterBar = React.memo(function SkillFilterBar({ jobs, mySkills, selected, onSelect, onLockedPress, alertCount, onAlertsPress }: Props) {
+export const SkillFilterBar = React.memo(function SkillFilterBar({ jobs, counts, mySkills, selected, onSelect, onLockedPress, alertCount, onAlertsPress }: Props) {
   const { verified, locked } = useMemo(() => {
     const countBySkill = new Map<string, number>();
     const refByName = new Map<string, SkillRef>();
-    for (const job of jobs) {
-      for (const name of new Set(job.skills ?? [])) countBySkill.set(name, (countBySkill.get(name) ?? 0) + 1);
-      for (const ref of job.skillRefs ?? []) refByName.set(ref.name, ref);
+    if (counts) {
+      for (const sk of counts.skills) {
+        countBySkill.set(sk.name, sk.count);
+        refByName.set(sk.name, { skill_id: sk.skill_id, name: sk.name });
+      }
+    } else {
+      for (const job of jobs) {
+        for (const name of new Set(job.skills ?? [])) countBySkill.set(name, (countBySkill.get(name) ?? 0) + 1);
+        for (const ref of job.skillRefs ?? []) refByName.set(ref.name, ref);
+      }
     }
     const verifiedNames = new Set(mySkills.filter(s => s.is_verified).map(s => s.name));
     const verified = [...verifiedNames]
@@ -54,7 +64,7 @@ export const SkillFilterBar = React.memo(function SkillFilterBar({ jobs, mySkill
       .map(([name, count]) => ({ ref: refByName.get(name)!, count }))
       .sort((a, b) => b.count - a.count);
     return { verified, locked };
-  }, [jobs, mySkills]);
+  }, [jobs, counts, mySkills]);
 
   const items = useMemo<Item[]>(() => [
     { kind: 'bell' }, { kind: 'all' },
@@ -78,7 +88,7 @@ export const SkillFilterBar = React.memo(function SkillFilterBar({ jobs, mySkill
           </TouchableOpacity>
         );
       case 'all':
-        return <Chip label="All" count={jobs.length} active={selected === null} onPress={() => onSelect(null)} />;
+        return <Chip label="All" count={counts?.total ?? jobs.length} active={selected === null} onPress={() => onSelect(null)} />;
       case 'skill':
         return (
           <Chip
@@ -108,7 +118,7 @@ export const SkillFilterBar = React.memo(function SkillFilterBar({ jobs, mySkill
         data={items}
         keyExtractor={keyOf}
         renderItem={renderItem}
-        extraData={`${selected}|${alertCount}|${jobs.length}`}
+        extraData={`${selected}|${alertCount}|${counts?.total ?? jobs.length}`}
         ItemSeparatorComponent={Gap}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={s.row}

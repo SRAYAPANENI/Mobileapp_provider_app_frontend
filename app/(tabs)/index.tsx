@@ -15,7 +15,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { onServiceRoomRequest, takePendingServiceRoom } from '@/services/service-room';
 import { useRefreshOnFocus } from '@/hooks/use-refresh-on-focus';
-import { useActiveJobs, useInboundJobs } from '@/services/queries/jobs';
+import { useActiveJobs, useInboundFeed, useInboundSkillCounts } from '@/services/queries/jobs';
 import { NoInternetState } from '@/components/no-internet-state';
 import { useOfflinePage } from '@/components/offline-gate';
 import { useJobAlerts, useMySkills, useProviderProfile } from '@/services/queries/provider';
@@ -215,7 +215,9 @@ const JobFeedCard = React.memo(function JobFeedCard({
   return (
     <Animated.View
       key={job.id}
-      entering={FadeInUp.delay(200 * index)}
+      // Only the first few are staggered: the feed is read a page at a time,
+      // and the 20th card used to wait 4 s to appear (the 40th, 8 s).
+      entering={FadeInUp.delay(200 * Math.min(index, 4))}
       style={[
         styles.jobCard,
         {
@@ -504,12 +506,31 @@ export default function DashboardScreen() {
   const feedPolling = homeInView && !showManageModal ? 15_000 : false;
   // Nor do they refresh on coming back to the app (from the sheet's camera,
   // say) while it's open — closing it reloads them.
-  const inboundQuery = useInboundJobs(feedPolling, !showManageModal);
+  // All Jobs narrowed to one skill (null = every job), remembered between
+  // visits (SKILL_FILTER_KEY below) — and their skills, which name its id.
+  const [skillFilter, setSkillFilter] = useState<string | null>(null);
+  const [mySkills, setMySkills] = useState<MySkill[]>([]);
+  // The server reads the feed for that skill, a page at a time — searching
+  // only the jobs already on the phone missed every older one.
+  const feedSkillId = React.useMemo(
+    () => (skillFilter ? mySkills.find(sk => sk.name === skillFilter && sk.is_verified)?.skill_id ?? null : null),
+    [skillFilter, mySkills],
+  );
+  const inboundFeed = useInboundFeed<any>(feedPolling, !showManageModal, feedSkillId);
+  const inboundQuery = inboundFeed.query;
+  // The chips' counts: every job in the feed, not just the pages read.
+  const skillCountsQuery = useInboundSkillCounts(feedPolling, !showManageModal);
   const activeQuery = useActiveJobs(feedPolling, true, !showManageModal);
   const loadJobs = React.useCallback(async () => {
-    await Promise.all([inboundQuery.refetch(), activeQuery.refetch()]);
+    await Promise.all([inboundQuery.refetch(), activeQuery.refetch(), skillCountsQuery.refetch()]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // The next page of the feed, on scrolling near the end of the list.
+  const loadMoreFeed = React.useCallback(() => {
+    if (inboundQuery.hasNextPage && !inboundQuery.isFetchingNextPage && !inboundQuery.isFetching) {
+      void inboundQuery.fetchNextPage();
+    }
+  }, [inboundQuery]);
 
   // While the sheet is open, a GPS move updates the ref (actions read it) but
   // not the screen — it would redraw all of Home under the sheet every few
@@ -691,13 +712,13 @@ export default function DashboardScreen() {
   }, []);
 
   useEffect(() => {
-    if (inboundQuery.data && activeQuery.data) {
-      applyJobs(inboundQuery.data, activeQuery.data);
+    if (inboundFeed.jobs && activeQuery.data) {
+      applyJobs(inboundFeed.jobs, activeQuery.data);
       setIsLoading(false);
     } else if (inboundQuery.isError || activeQuery.isError) {
       setIsLoading(false);           // the cached feed (if any) stays; pull to retry
     }
-  }, [inboundQuery.data, activeQuery.data, inboundQuery.isError, activeQuery.isError, applyJobs]);
+  }, [inboundFeed.jobs, activeQuery.data, inboundQuery.isError, activeQuery.isError, applyJobs]);
 
   const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
@@ -710,8 +731,6 @@ export default function DashboardScreen() {
   const [activeTab, setActiveTab] = useState(0); // 0: All, 1: Ongoing, 2: Booked, 3: Applied
   // All Jobs narrowed to one skill (null = every job), remembered between visits.
   const SKILL_FILTER_KEY = 'dodorez_jobs_skill_filter';
-  const [skillFilter, setSkillFilter] = useState<string | null>(null);
-  const [mySkills, setMySkills] = useState<MySkill[]>([]);
   // Skills "New job" alerts are limited to ([] = all), and its sheet.
   const [alertSkillIds, setAlertSkillIds] = useState<string[]>([]);
   const [alertsSheetOpen, setAlertsSheetOpen] = useState(false);
@@ -1371,7 +1390,7 @@ export default function DashboardScreen() {
   // fight with that.
   // Coming back to Home: refresh the feed if it's out of date (the poll above
   // runs only while Home is in view).
-  useRefreshOnFocus(inboundQuery, activeQuery);
+  useRefreshOnFocus(inboundQuery, activeQuery, skillCountsQuery);
 
   const tabs = ['All Jobs', 'Ongoing', 'Booked Slots', 'Applied'];
   const tabWidth = (width - 40) / 3;
@@ -1480,6 +1499,17 @@ const filteredJobs = jobs.filter((job) => {
     const rank = (j: any) => (j.isDirectRequest ? 0 : j.isRepeatCustomer ? 1 : 2);
     return rank(a) - rank(b);
   });
+
+  // All Jobs and Applied are both read from the feed. A tab with only a few
+  // of a page's jobs (Applied, say) is too short to scroll to its end, so
+  // more pages are read until it has some — or there are none left.
+  // (All Jobs is empty on purpose while unavailable: nothing to read for.)
+  const feedTab = !teamMode && ((activeTab === 0 && isAvailable) || activeTab === 3);
+  const feedHasMore = feedTab && !!inboundQuery.hasNextPage;
+  useEffect(() => {
+    if (feedHasMore && filteredJobs.length < 10) loadMoreFeed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedHasMore, filteredJobs.length, inboundQuery.isFetching]);
 
   // Open requests from repeat customers (they live in All Jobs).
   const repeatRequestCount = jobs.filter((j: any) => j.isRepeatCustomer && !j.isOngoing && j.applicationId == null).length;
@@ -2221,6 +2251,7 @@ const filteredJobs = jobs.filter((job) => {
           <View style={teamMode || activeTab !== 0 ? { display: 'none' } : undefined}>
             <SkillFilterBar
               jobs={browsableJobs}
+              counts={skillCountsQuery.data}
               mySkills={mySkills}
               selected={skillFilter}
               onSelect={onFilterSelect}
@@ -2243,6 +2274,13 @@ const filteredJobs = jobs.filter((job) => {
         style={styles.jobsList}
         contentContainerStyle={padBottom(styles.jobsListContent, bottomInset + FAB_CLEARANCE)}
         showsVerticalScrollIndicator={false}
+        // Near the end of All Jobs or Applied (both read from the feed): the
+        // next page. The other tabs are their own, whole lists.
+        scrollEventThrottle={200}
+        onScroll={({ nativeEvent: { layoutMeasurement, contentOffset, contentSize } }) => {
+          if (!feedTab) return;
+          if (layoutMeasurement.height + contentOffset.y >= contentSize.height - 600) loadMoreFeed();
+        }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -2279,6 +2317,9 @@ const filteredJobs = jobs.filter((job) => {
               </View>
             ))}
           </View>
+        ) : filteredJobs.length === 0 && feedHasMore ? (
+          // Older pages are still being read for this tab: not "empty" yet.
+          <ActivityIndicator color="#FFCE48" style={{ paddingVertical: 40 }} />
         ) : filteredJobs.length === 0 ? (
           <View style={styles.emptyContainer}>
             <ThemedText style={styles.emptyText}>
@@ -2297,14 +2338,19 @@ const filteredJobs = jobs.filter((job) => {
             </ThemedText>
           </View>
         ) : (
-          filteredJobs.map((job, i) => (
-            <JobFeedCard
-              key={job.id} job={job} index={i} userCoords={userCoords} activeJobId={activeJobId}
-              hasSkills={mySkills.length > 0} verifiedSkillNames={verifiedSkillNames} themeColors={themeColors}
-              acceptButtonStyle={acceptButtonStyle} urgentBadgeStyle={urgentBadgeStyle}
-              isTeamJob={!job.isOngoing && !!myBusiness.teamJob(job.id)} onManage={onManageCard} onApply={onApplyCard}
-            />
-          ))
+          <>
+            {filteredJobs.map((job, i) => (
+              <JobFeedCard
+                key={job.id} job={job} index={i} userCoords={userCoords} activeJobId={activeJobId}
+                hasSkills={mySkills.length > 0} verifiedSkillNames={verifiedSkillNames} themeColors={themeColors}
+                acceptButtonStyle={acceptButtonStyle} urgentBadgeStyle={urgentBadgeStyle}
+                isTeamJob={!job.isOngoing && !!myBusiness.teamJob(job.id)} onManage={onManageCard} onApply={onApplyCard}
+              />
+            ))}
+            {feedTab && inboundQuery.isFetchingNextPage && (
+              <ActivityIndicator color="#FFCE48" style={{ paddingVertical: 20 }} />
+            )}
+          </>
         )}
       </ScrollView>
 

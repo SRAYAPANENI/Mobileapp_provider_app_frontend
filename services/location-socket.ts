@@ -48,6 +48,8 @@ export async function connectLocationSocket(jobId: string): Promise<void> {
   if (_jobId === jobId && _socket?.readyState === WebSocket.OPEN) return;
   _jobId = jobId;
   _reconnectDelay = 1000;
+  // A retry still pending (for this job or the last) would open a second one.
+  if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
   await _connect();
 }
 
@@ -58,10 +60,30 @@ export function disconnectLocationSocket(): void {
   _reconnectDelay = 1000;
 }
 
+// Tried again with the same back-off as a dropped connection: 1s → 30s max.
+function _scheduleReconnect(): void {
+  if (!_jobId) return;
+  if (_reconnectTimer) clearTimeout(_reconnectTimer);
+  _reconnectTimer = setTimeout(() => {
+    _reconnectTimer = null;
+    _reconnectDelay = Math.min(_reconnectDelay * 2, 30000);
+    void _connect();
+  }, _reconnectDelay);
+}
+
 async function _connect(): Promise<void> {
   if (!_jobId) return;
-  const token = await getFreshAccessToken();
-  if (!token) return;
+  let token: string | null;
+  try {
+    token = await getFreshAccessToken();
+  } catch {
+    // The token couldn't be read (phone locked since a restart): tried again
+    // shortly. Giving up here ended live tracking for the rest of the trip.
+    _scheduleReconnect();
+    return;
+  }
+  // None: signed out — nothing to send the location as.
+  if (!token || !_jobId) return;
 
   // A prior socket can still be open or mid-handshake if this fires again
   // before that one settled (e.g. the active-job effect re-running) —
@@ -89,12 +111,7 @@ async function _connect(): Promise<void> {
 
   ws.onclose = () => {
     if (_socket === ws) _socket = null;
-    if (!_jobId) return;
-    // Exponential backoff: 1s → 2s → 4s … 30s max
-    _reconnectTimer = setTimeout(() => {
-      _reconnectDelay = Math.min(_reconnectDelay * 2, 30000);
-      _connect();
-    }, _reconnectDelay);
+    _scheduleReconnect();
   };
 
   ws.onerror = () => {

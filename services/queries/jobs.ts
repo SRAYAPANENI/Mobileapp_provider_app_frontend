@@ -1,4 +1,5 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { SkoFyApi } from '@/services/api';
 import { qk } from './keys';
 
@@ -19,10 +20,56 @@ export function useActiveJobs<T = any>(pollMs: number | false = false, enabled =
   });
 }
 
-/** Jobs offered to this provider — the Home feed. */
-export function useInboundJobs<T = any>(pollMs: number | false = false, refetchOnFocus = true) {
+/** Jobs read per page of the Home feed. */
+export const INBOUND_PAGE_SIZE = 20;
+
+/**
+ * Jobs offered to this provider — the Home feed — narrowed to one skill or
+ * not, read a page at a time: the server used to send only the newest 20,
+ * and a skill filter on the phone could only ever search those.
+ *
+ * A refresh (the poll, coming back) reads every page shown again, in order,
+ * each starting after the fresh one before it — so new jobs arriving can't
+ * push older ones into a gap between pages.
+ *
+ * `jobs`: every page read, in order (undefined until the first arrives).
+ */
+export function useInboundFeed<T extends { job_id?: string; id?: string; created_at: string }>(
+  pollMs: number | false, refetchOnFocus: boolean, skillId: string | null,
+) {
+  const query = useInfiniteQuery({
+    queryKey: qk.jobs.inboundFeed(skillId),
+    queryFn: async ({ pageParam }) => asList<T>(await SkoFyApi.jobs.getInbound({
+      skillId, limit: INBOUND_PAGE_SIZE, after: pageParam,
+    })),
+    initialPageParam: undefined as { created_at: string; id: string } | undefined,
+    getNextPageParam: (last) => {
+      if (last.length < INBOUND_PAGE_SIZE) return undefined;
+      const job = last[last.length - 1];
+      return { created_at: job.created_at, id: String(job.job_id ?? job.id) };
+    },
+    refetchInterval: pollMs,
+    refetchOnWindowFocus: refetchOnFocus,
+  });
+  const jobs = useMemo(() => {
+    if (!query.data) return undefined;
+    const seen = new Set<string>();
+    return query.data.pages.flat().filter(j => {
+      const id = String(j.job_id ?? j.id);
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  }, [query.data]);
+  return { jobs, query };
+}
+
+/** The feed counted, in all and per skill (its filter chips). */
+export function useInboundSkillCounts(pollMs: number | false, refetchOnFocus: boolean) {
   return useQuery({
-    queryKey: qk.jobs.inbound, queryFn: async () => asList<T>(await SkoFyApi.jobs.getInbound()), refetchInterval: pollMs,
+    queryKey: qk.jobs.inboundCounts,
+    queryFn: () => SkoFyApi.jobs.getInboundSkillCounts(),
+    refetchInterval: pollMs,
     refetchOnWindowFocus: refetchOnFocus,
   });
 }

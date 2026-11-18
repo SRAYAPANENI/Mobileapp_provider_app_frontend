@@ -14,7 +14,7 @@
  *   Production             → https://api.skofy.com/v1
  */
 
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { reportReachable, setHealthCheck } from '@/services/server-status';
 import { queryClient } from '@/services/query-client';
@@ -27,6 +27,12 @@ import { API_BASE_URL } from './api-config';
 // URL is defined once in api-config.ts — background-location.ts imports the
 // same constant so both always stay in sync.
 const BASE_URL = API_BASE_URL;
+
+/** A provider's All Jobs feed (jobs they can still apply to), counted. */
+export interface InboundSkillCounts {
+  total: number;
+  skills: { skill_id: string; name: string; count: number }[];
+}
 
 // ─── TOKEN STORAGE ───────────────────────────────────────────────────────────
 const TOKEN_KEY = 'skofy_access_token';
@@ -44,23 +50,52 @@ export interface FeePreview {
   standard_keep?: number;
 }
 
+// iOS keeps a keychain entry shut while the phone is locked unless it says
+// otherwise — and this app is woken with the phone locked (a call's VoIP
+// push, a notification). Every token read then failed, and a renewal in that
+// moment was taken for "signed out". Readable once the phone has been
+// unlocked after a restart; never copied to another phone by a backup.
+const KEYCHAIN: SecureStore.SecureStoreOptions = {
+  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+};
+
+// The keychain couldn't be read (iOS: the phone hasn't been unlocked since
+// it restarted). Says nothing about the login — it's still there.
+const KEYCHAIN_LOCKED: ApiError = {
+  success: false,
+  error_code: 'KEYCHAIN_LOCKED',
+  message: 'Unlock your phone and try again.',
+  details: {},
+};
+
+async function readSecure(key: string): Promise<string | null> {
+  // Start-up may be moving the login to KEYCHAIN (openKeychainWhileLocked):
+  // read in that instant it isn't there, and the app would sign itself out.
+  await staleSessionCleared;
+  try {
+    return await SecureStore.getItemAsync(key);
+  } catch {
+    throw KEYCHAIN_LOCKED;
+  }
+}
+
 export const TokenStore = {
   async setTokens(access: string, refresh: string) {
     signedOutOnPurpose = false;          // a new login (endSession)
-    await SecureStore.setItemAsync(TOKEN_KEY, access);
-    await SecureStore.setItemAsync(REFRESH_KEY, refresh);
+    await SecureStore.setItemAsync(TOKEN_KEY, access, KEYCHAIN);
+    await SecureStore.setItemAsync(REFRESH_KEY, refresh, KEYCHAIN);
   },
   async getAccessToken(): Promise<string | null> {
-    return SecureStore.getItemAsync(TOKEN_KEY);
+    return readSecure(TOKEN_KEY);
   },
   async getRefreshToken(): Promise<string | null> {
-    return SecureStore.getItemAsync(REFRESH_KEY);
+    return readSecure(REFRESH_KEY);
   },
   async setUser(user: AuthUser) {
-    await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
+    await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user), KEYCHAIN);
   },
   async getUser(): Promise<AuthUser | null> {
-    const raw = await SecureStore.getItemAsync(USER_KEY);
+    const raw = await readSecure(USER_KEY);
     return raw ? JSON.parse(raw) : null;
   },
   // Verifying the number on Register creates a blank account and signs it in.
@@ -113,9 +148,11 @@ async function clearStaleSessionAfterReinstall(): Promise<void> {
     // A registration left unfinished last time (see TokenStore.markRegistering).
     if (await SecureStore.getItemAsync(REGISTERING_KEY)) await TokenStore.clear();
     const marker = getInstallMarkerFile();
-    if (!marker || marker.exists) return;
-    await TokenStore.clear();
-    marker.write('1');
+    if (marker && !marker.exists) {
+      await TokenStore.clear();
+      marker.write('1');
+    }
+    await openKeychainWhileLocked();
   } catch {
     // Best-effort — worst case a stale session survives one extra launch
     // and gets caught by the normal "Signed Out" rejection instead.
@@ -132,6 +169,41 @@ async function clearStaleSessionAfterReinstall(): Promise<void> {
 // Keychain, that race was sometimes lost, surfacing an unprompted
 // "Signed Out" right as someone opened Register.
 export const staleSessionCleared: Promise<void> = clearStaleSessionAfterReinstall();
+
+// A login saved before KEYCHAIN existed stays shut while the phone is locked:
+// writing over an entry keeps how it was first stored, so each one is moved
+// once — read, removed, written again. Locked right now: tried next launch.
+const KEYCHAIN_MOVED_KEY = 'skofy_keychain_after_unlock';
+async function openKeychainWhileLocked(): Promise<void> {
+  if (Platform.OS !== 'ios') return;
+  if (await SecureStore.getItemAsync(KEYCHAIN_MOVED_KEY)) return;
+  for (const key of [TOKEN_KEY, REFRESH_KEY, USER_KEY]) {
+    const value = await SecureStore.getItemAsync(key);
+    if (value === null) continue;
+    await SecureStore.deleteItemAsync(key);
+    await SecureStore.setItemAsync(key, value, KEYCHAIN);
+  }
+  await SecureStore.setItemAsync(KEYCHAIN_MOVED_KEY, '1', KEYCHAIN);
+}
+
+// The stored login, for deciding where the app opens. Woken with the phone
+// locked after a restart, the keychain can't be read yet: this waits until
+// the app is in front and asks again, instead of failing — which left the
+// splash screen standing for good.
+export async function storedAccessToken(): Promise<string | null> {
+  await staleSessionCleared;
+  for (;;) {
+    try {
+      return await TokenStore.getAccessToken();
+    } catch {
+      await new Promise<void>(resolve => {
+        const retry = setTimeout(done, 2_000);
+        const sub = AppState.addEventListener('change', state => { if (state === 'active') done(); });
+        function done() { clearTimeout(retry); sub.remove(); resolve(); }
+      });
+    }
+  }
+}
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 export interface AuthUser {
@@ -305,6 +377,7 @@ async function request<T = any>(
     if (newToken) {
       headers['Authorization'] = `Bearer ${newToken}`;
       const retried = await timedFetch(`${BASE_URL}${endpoint}`, { ...fetchOptions, headers }, limit);
+      await endSessionIfRefused(retried);
       const retriedResult = await _parseResponse<T>(retried);
       afterWrite(endpoint, fetchOptions.method);
       return retriedResult;
@@ -322,6 +395,19 @@ async function request<T = any>(
   // A write refreshes the cached reads it changes (services/queries/invalidate.ts).
   afterWrite(endpoint, fetchOptions.method);
   return result;
+}
+
+// A token renewed a moment ago and still refused: the login is over. Left
+// alone, the app looked signed in while every screen failed to load, and only
+// logging out and in again got out of it. Only the token's own refusals
+// count — a wrong password is a 401 too.
+const SESSION_REFUSED = new Set(['INVALID_TOKEN', 'TOKEN_REVOKED']);
+async function endSessionIfRefused(response: Response): Promise<void> {
+  if (response.status !== 401) return;
+  const body = await response.clone().json().catch(() => null);
+  if (!SESSION_REFUSED.has(body?.error_code)) return;
+  await endSession();
+  throw { success: false, error_code: 'SESSION_EXPIRED', message: 'Please log in again.' } as ApiError;
 }
 
 async function _parseResponse<T>(response: Response): Promise<T> {
@@ -370,6 +456,7 @@ async function requestMultipart<T = any>(endpoint: string, formData: FormData): 
     if (newToken) {
       headers['Authorization'] = `Bearer ${newToken}`;
       const retried = await timedFetch(`${BASE_URL}${endpoint}`, { method: 'POST', headers, body: formData }, UPLOAD_TIMEOUT_MS);
+      await endSessionIfRefused(retried);
       return _parseResponse<T>(retried);
     }
     await endSession();
@@ -411,15 +498,19 @@ async function _refreshAccessToken(): Promise<string | null> {
       // stolen-token signal and revokes every session for this role.
       const newRefreshToken: string | undefined = json.data?.refresh_token;
       if (newToken) {
-        await SecureStore.setItemAsync(TOKEN_KEY, newToken);
+        await SecureStore.setItemAsync(TOKEN_KEY, newToken, KEYCHAIN);
       }
       if (newRefreshToken) {
-        await SecureStore.setItemAsync(REFRESH_KEY, newRefreshToken);
+        await SecureStore.setItemAsync(REFRESH_KEY, newRefreshToken, KEYCHAIN);
       }
       return newToken ?? null;
     } catch (err: any) {
-      // No answer (offline, timed out) isn't a refusal either: keep the tokens.
-      if (err?.error_code === 'TIMEOUT' || err?.error_code === 'NETWORK_ERROR') throw err;
+      // No answer (offline, timed out) isn't a refusal either: keep the
+      // tokens. Nor is a keychain that's shut, or one that wouldn't take the
+      // renewed pair: the server hands it over again when the old refresh
+      // token comes back (app/domain/refresh_reuse.py).
+      if (['TIMEOUT', 'NETWORK_ERROR', 'KEYCHAIN_LOCKED'].includes(err?.error_code)) throw err;
+      if (!err?.error_code) throw KEYCHAIN_LOCKED;
       return null;
     } finally {
       isRefreshing = false;
@@ -1304,8 +1395,25 @@ export const SkoFyApi = {
      * Jobs that the Distribution Agent has sent to this provider.
      * These are inbound notifications awaiting a bid.
      */
-    getInbound: async () =>
-      request('/jobs/inbound'),
+    getInbound: async (opts: {
+      /** Only jobs needing this skill — those already applied to come regardless. */
+      skillId?: string | null;
+      limit?: number;
+      /** The next page: after the last job shown — its created_at exactly as
+       * the server sent it (a JS Date would round it and skip or repeat one). */
+      after?: { created_at: string; id: string };
+    } = {}) => {
+      const q = new URLSearchParams();
+      if (opts.skillId) q.set('skill_id', opts.skillId);
+      if (opts.limit) q.set('limit', String(opts.limit));
+      if (opts.after) { q.set('before_created_at', opts.after.created_at); q.set('before_id', opts.after.id); }
+      const query = q.toString();
+      return request(`/jobs/inbound${query ? `?${query}` : ''}`);
+    },
+
+    /** The All Jobs feed counted, in all and per skill — for the filter chips. */
+    getInboundSkillCounts: async (): Promise<InboundSkillCounts> =>
+      request('/jobs/inbound/skill-counts'),
 
     getActive: async () =>
       request('/jobs/active'),

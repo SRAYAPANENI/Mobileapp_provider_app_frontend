@@ -3,7 +3,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { TokenStore } from '@/services/api';
+import { storedAccessToken } from '@/services/api';
 import { useActiveJobs } from '@/services/queries/jobs';
 import { useAppConfig } from '@/services/queries/app-config';
 import { Wrench } from 'lucide-react-native';
@@ -30,7 +30,7 @@ export default function MaintenanceGate({ children }: { children: React.ReactNod
   // global "Signed Out" handler (services/api.ts endSession) for someone
   // who was never logged in to begin with.
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
-  useEffect(() => { TokenStore.getAccessToken().then((t) => setLoggedIn(!!t)); }, []);
+  useEffect(() => { storedAccessToken().then((t) => setLoggedIn(!!t)); }, []);
   const { data: activeJobs } = useActiveJobs<{ id: string }>(false, loggedIn === true);
 
   const hasActiveWork = loggedIn === true && (activeJobs?.length ?? 0) > 0;

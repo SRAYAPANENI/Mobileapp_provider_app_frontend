@@ -119,7 +119,9 @@ const JobCard = React.memo(function JobCard({
 
   return (
     <Animated.View
-      entering={FadeInDown.delay(index * 70)}
+      // Only the first few are staggered: history is read a page at a time,
+      // and a card far down used to wait seconds to appear.
+      entering={FadeInDown.delay(Math.min(index, 5) * 70)}
       style={[styles.card, { backgroundColor: themeColors.background }]}
     >
       {/* Top badges */}

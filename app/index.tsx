@@ -4,7 +4,7 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { TokenStore, staleSessionCleared } from '@/services/api';
+import { storedAccessToken } from '@/services/api';
 import { handleInitialCallAction, handleInitialNotification } from '@/services/callManager';
 import { prefetchDashboardEssentials } from '@/services/homeCache';
 import { Dimensions, StyleSheet, View } from 'react-native';
@@ -50,7 +50,7 @@ export default function SplashScreen() {
   useFocusEffect(useCallback(() => {
     focusedRef.current = true;
     if (leftRef.current || handledRef.current) {
-      staleSessionCleared.then(() => TokenStore.getAccessToken()).then(token => {
+      storedAccessToken().then(token => {
         router.replace((token ? '/(tabs)' : '/login') as any);
       });
     }
@@ -77,7 +77,7 @@ export default function SplashScreen() {
     // profile prefetch, not the jobs list itself: loadJobs() does real
     // feasibility-scoring work against the provider's other bookings that
     // doesn't belong duplicated here.
-    staleSessionCleared.then(() => TokenStore.getAccessToken()).then(token => {
+    storedAccessToken().then(token => {
       if (token) prefetchDashboardEssentials();
     });
 
@@ -100,7 +100,7 @@ export default function SplashScreen() {
     // even with a perfectly valid stored session — meaning killing the app and
     // reopening it (or tapping a notification, before the fix above) always
     // demanded a fresh login. Now it actually checks for one first.
-    staleSessionCleared.then(() => TokenStore.getAccessToken()).then(token => {
+    storedAccessToken().then(token => {
       router.replace((token ? '/(tabs)' : '/login') as any);
     });
   };

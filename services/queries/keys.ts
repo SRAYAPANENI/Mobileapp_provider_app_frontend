@@ -16,6 +16,9 @@ export const qk = {
     all: ['jobs'] as const,
     active: ['jobs', 'active'] as const,
     inbound: ['jobs', 'inbound'] as const,
+    /** The feed narrowed to one skill (or every one), read a page at a time. */
+    inboundFeed: (skillId: string | null) => ['jobs', 'inbound', skillId ?? 'all'] as const,
+    inboundCounts: ['jobs', 'inbound-counts'] as const,
     history: ['jobs', 'history'] as const,
     pendingRatings: ['jobs', 'pending-ratings'] as const,
   },
