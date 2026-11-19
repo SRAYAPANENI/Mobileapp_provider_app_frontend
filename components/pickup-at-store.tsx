@@ -1,7 +1,7 @@
 import { Text } from '@/components/scaled-text';
 import { Fonts } from '@/constants/theme';
 import { IF_UNAVAILABLE_LABELS, PickupDetails, ShoppingItem } from '@/services/pickupDelivery';
-import { CheckSquare, Phone, Square, Store } from 'lucide-react-native';
+import { CheckSquare, Lock, Phone, Square, Store } from 'lucide-react-native';
 import React, { useState } from 'react';
 import { Linking, StyleSheet, TouchableOpacity, View } from 'react-native';
 
@@ -25,7 +25,8 @@ export function PickupAtStore({ details, items, buyForMe, moneyHeld }: Props) {
   const [ticked, setTicked] = useState<Set<number>>(new Set());
   const list = items ?? [];
   const rows = DETAIL_LABELS.filter(([k]) => details?.[k]);
-  if (!buyForMe && rows.length === 0 && !details?.store_contact) return null;
+  const codeAtStore = !!details?.pickup_code_at_store;
+  if (!buyForMe && rows.length === 0 && !details?.store_contact && !codeAtStore) return null;
 
   const toggle = (i: number) => setTicked(prev => {
     const next = new Set(prev);
@@ -46,6 +47,17 @@ export function PickupAtStore({ details, items, buyForMe, moneyHeld }: Props) {
           <Text style={[s.detailValue, k === 'pickup_code' && s.code]} selectable>{details![k]}</Text>
         </View>
       ))}
+      {/* The code is sent only once they're at the store (anyone with it
+          could collect the order): said here until then. */}
+      {codeAtStore && (
+        <View style={s.detailRow}>
+          <Text style={s.detailLabel}>Store pickup code</Text>
+          <View style={s.locked}>
+            <Lock size={12} color="#92400E" />
+            <Text style={s.lockedText}>Shows at the store — tap “I’m here”</Text>
+          </View>
+        </View>
+      )}
       {!!details?.store_contact && (
         <TouchableOpacity style={s.call} onPress={() => Linking.openURL(`tel:${details.store_contact}`)}>
           <Phone size={14} color="#2563EB" />
@@ -94,4 +106,6 @@ const s = StyleSheet.create({
   itemName: { fontSize: 13.5, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: '#111827' },
   itemDone: { color: '#9CA3AF', textDecorationLine: 'line-through' },
   itemHint: { fontSize: 11.5, lineHeight: 16, fontFamily: Fonts.poppins, color: '#6B7280' },
+  locked: { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1, backgroundColor: '#FFFBEB', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  lockedText: { flexShrink: 1, fontSize: 12, lineHeight: 17, fontFamily: Fonts.poppinsSemiBold, color: '#92400E' },
 });

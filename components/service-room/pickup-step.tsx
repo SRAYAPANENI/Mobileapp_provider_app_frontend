@@ -1,6 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
-import { Camera, CheckCircle } from 'lucide-react-native';
+import { Camera, CheckCircle, Lock } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, TextInput, TouchableOpacity, View } from 'react-native';
 import { showDialog } from '@/components/alert-host';
@@ -53,7 +53,10 @@ export function PickupStep({ job, detail, onArrived, onCollected, onRefused, onC
   useEffect(() => { setChecked(false); setPhoto(null); setGoodsText(''); setPaidWith(null); }, [job.id]);
 
   const goodsError = buying ? goodsAmountError(goodsText, detail?.purchase_limit) : null;
-  const blocked = tripUnpaid || !photo || confirming || (buying && (!goodsHeld || !!goodsError)) || (fromPerson && !checked);
+  // At the pickup first: "I'm here" (checked within 500 m) unlocks the photo —
+  // as the store's code shows only then (the server sends it only then).
+  const arrived = !!detail?.arrived_at;
+  const blocked = !arrived || tripUnpaid || !photo || confirming || (buying && (!goodsHeld || !!goodsError)) || (fromPerson && !checked);
 
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -211,10 +214,23 @@ export function PickupStep({ job, detail, onArrived, onCollected, onRefused, onC
         </>
       )}
       {photo && <Image source={{ uri: photo.uri }} style={s.photoPreview} contentFit="cover" />}
-      <TouchableOpacity style={[s.photoBtn, preparing && { opacity: 0.6 }]} onPress={takePhoto} disabled={preparing || confirming}>
-        {preparing ? <ActivityIndicator size="small" color="#111827" /> : <Camera size={18} color="#111827" />}
-        <ThemedText style={s.photoBtnText}>{preparing ? 'Preparing photo…' : photo ? 'Retake Photo' : 'Take Photo'}</ThemedText>
+      <TouchableOpacity
+        style={[s.photoBtn, (preparing || !arrived) && { opacity: 0.6 }]}
+        onPress={takePhoto}
+        disabled={!arrived || preparing || confirming}
+        accessibilityState={{ disabled: !arrived }}
+      >
+        {preparing ? <ActivityIndicator size="small" color="#111827" />
+          : arrived ? <Camera size={18} color="#111827" /> : <Lock size={18} color="#6B7280" />}
+        <ThemedText style={s.photoBtnText}>
+          {!arrived ? 'Take Photo — tap “I’m here” first' : preparing ? 'Preparing photo…' : photo ? 'Retake Photo' : 'Take Photo'}
+        </ThemedText>
       </TouchableOpacity>
+      {!arrived && (
+        <ThemedText style={s.note}>
+          The photo and the store’s pickup code unlock once you’re at the pickup — tap “I’m here” when you arrive.
+        </ThemedText>
+      )}
       {tripUnpaid && (
         <ThemedText style={[s.note, s.noteWarn]}>Waiting for the customer to book and pay your fare — collect it once they have.</ThemedText>
       )}

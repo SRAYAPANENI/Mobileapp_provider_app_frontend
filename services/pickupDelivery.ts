@@ -19,6 +19,9 @@ type DetailLike = {
  * provider, and drops the store code once the order is collected. */
 export type PickupDetails = {
   order_name?: string; order_number?: string; pickup_code?: string; store_contact?: string;
+  /** There's a store pickup code, held back until "I'm here" at the store
+   * (skofy-backend app/domain/pickup.pickup_details_for). */
+  pickup_code_at_store?: boolean;
   /** From a person: who hands the item over; sent by the customer, who receives it. */
   handover_name?: string; handover_phone?: string;
   recipient_name?: string; recipient_phone?: string;
