@@ -61,6 +61,13 @@ export function isScreenInFront(route: string, key: string | null | undefined): 
 /** Opens a job's or ticket's screen: nothing if it's already in front, back to
  * it if it's open further down, a new screen only if it isn't open at all. */
 export function openScreen(route: string, key: string, params: Record<string, unknown>) {
+  // The dashboard (a job update's tap): back to the one that's open. Pushing
+  // '/' opened the splash, which replaced itself with a fresh dashboard — a
+  // second whole dashboard stacked over the first, on every such tap.
+  if (route === '/' || route === '/(tabs)') {
+    router.dismissTo('/(tabs)' as any);
+    return;
+  }
   // Going back reaches the newest screen of this route, so only that one can be reused.
   const newest = [...openScreens].reverse().find(s => s.route === route);
   if (newest && newest.key === key) {
