@@ -52,15 +52,11 @@ export function toRoomJob(d: any): RoomJob {
   };
 }
 
-/** Steps where the customer can act at any moment (accept, counter, pay,
- * cancel) — watched every few seconds. A delivery underway too: the drop-off
- * code comes from the customer's side. */
-function isWatched(status: string | undefined, jobKind: string | undefined): boolean {
-  return ['ACCEPTED', 'INSPECTING', 'INVOICE_PENDING'].includes(status ?? '')
-    || (status === 'IN_PROGRESS' && jobKind === 'PICKUP_DROPOFF');
-}
-
-/** Still the provider's to work on (the active list's statuses). */
+/** Still the provider's to work on (the active list's statuses). Watched the
+ * whole time: the customer can act at any step — accept, counter, pay, cancel,
+ * answer added work, give the drop-off code, mark it done — and asking is
+ * cheap (a few bytes unless something changed). It used to stop once the
+ * work was underway, so a customer finishing it went unseen. */
 const ACTIVE = ['ACCEPTED', 'INSPECTING', 'INVOICE_PENDING', 'IN_PROGRESS', 'DISPUTED'];
 
 const WATCH_EVERY_MS = 3000;
@@ -137,7 +133,9 @@ export function useServiceRoomJob(jobId: string | undefined) {
   /** Set from a step's own answer (no read needed). */
   const setDetail = useCallback((next: any) => apply(next), [apply]);
 
-  // First read.
+  // First read — again on "Try again" when it failed (offline on opening).
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
   useEffect(() => {
     if (!jobId) { setLoading(false); setFailed(true); return; }
     let cancelled = false;
@@ -147,13 +145,13 @@ export function useServiceRoomJob(jobId: string | undefined) {
       .catch(() => { if (!cancelled) setFailed(true); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [jobId, apply]);
+  }, [jobId, apply, attempt]);
 
-  // Watched while the customer can act. Every 3 s the job's stamp — a few
+  // Watched while it's active. Every 3 s the job's stamp — a few
   // bytes — and the whole job only when it changed, plus every 30 s anyway
   // (server: JobRepository.change_stamp). One request at a time; none while
   // the app is in the background.
-  const watched = isWatched(detail?.status, detail?.job_type);
+  const watched = ACTIVE.includes(detail?.status);
   useEffect(() => {
     if (!jobId || !watched) return;
     let cancelled = false;
@@ -186,5 +184,5 @@ export function useServiceRoomJob(jobId: string | undefined) {
 
   const job = detail ? toRoomJob(detail) : null;
   const active = !!detail && ACTIVE.includes(detail.status);
-  return { job, detail, loading, failed, ended, active, refresh, setDetail };
+  return { job, detail, loading, failed, ended, active, refresh, setDetail, retry };
 }

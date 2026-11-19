@@ -26,7 +26,7 @@ import { SkoFyApi } from '@/services/api';
 import { callTapAllowed } from '@/services/callManager';
 import { currentPosition } from '@/services/live-position';
 import { isBuyForMe, isDelivered, isDelivery, isOrderCollected, navigationTarget, purchaseSummary } from '@/services/pickupDelivery';
-import { emitRoomEvent, setOpenServiceRoom } from '@/services/service-room';
+import { emitRoomEvent, markServiceRoomOpen } from '@/services/service-room';
 
 // A hired job's room: who it's for, where, and the one step to do now —
 // arrive, check in, inspect, invoice, collect, deliver, complete.
@@ -44,16 +44,12 @@ export default function ServiceRoomScreen() {
   const { jobId } = useLocalSearchParams<{ jobId: string }>();
   const insets = useSafeAreaInsets();
   const bottomInset = useBottomInset();
-  const { job, detail, loading, failed, ended, active, refresh, setDetail } = useServiceRoomJob(jobId);
+  const { job, detail, loading, failed, ended, active, refresh, setDetail, retry } = useServiceRoomJob(jobId);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
 
   // Known as open, so a second "open this room" (from the map, a chat) comes back to it.
-  useEffect(() => {
-    if (!jobId) return;
-    setOpenServiceRoom(jobId);
-    return () => setOpenServiceRoom(null);
-  }, [jobId]);
+  useEffect(() => (jobId ? markServiceRoomOpen(jobId) : undefined), [jobId]);
 
   // Once only: the room's own action and the job-ended signal can both ask.
   const closedRef = useRef(false);
@@ -143,9 +139,16 @@ export default function ServiceRoomScreen() {
               ? "This job couldn't be loaded. Check your connection and try again."
               : "This job isn't active anymore — it may have already been completed or cancelled."}
           </ThemedText>
-          <TouchableOpacity style={st.goneBtn} onPress={close}>
-            <ThemedText style={st.goneBtnText}>Close</ThemedText>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            {failed && !detail && (
+              <TouchableOpacity style={[st.goneBtn, st.goneBtnQuiet]} onPress={retry}>
+                <ThemedText style={st.goneBtnText}>Try again</ThemedText>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={st.goneBtn} onPress={close}>
+              <ThemedText style={st.goneBtnText}>Close</ThemedText>
+            </TouchableOpacity>
+          </View>
         </View>
       ) : (
         <KeyboardAwareScrollView
@@ -549,6 +552,7 @@ const st = StyleSheet.create({
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 },
   goneText: { fontSize: 15, lineHeight: 22, color: '#6B7280', textAlign: 'center', fontFamily: Fonts.poppins },
   goneBtn: { backgroundColor: '#FFCE48', paddingHorizontal: 24, paddingVertical: 10, borderRadius: 20 },
+  goneBtnQuiet: { backgroundColor: '#F3F4F6' },
   goneBtnText: { fontFamily: Fonts.poppinsBold, color: '#111827' },
   banner: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 20 },
   bannerDot: { width: 14, height: 14, borderRadius: 7, borderWidth: 2 },

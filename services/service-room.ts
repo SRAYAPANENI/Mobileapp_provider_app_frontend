@@ -10,15 +10,23 @@ import { router } from 'expo-router';
 // Patching each cause one by one never held; a screen of its own can't be
 // redrawn by the dashboard at all.
 
-/** The job whose room is open now (the screen says, while mounted). */
-let openJobId: string | null = null;
+/** Rooms on the stack now, by job (each screen says while mounted). A count,
+ * not one id: a second room can sit over the first, and closing it mustn't
+ * forget the one underneath. */
+const openRooms = new Map<string, number>();
 
-export function setOpenServiceRoom(jobId: string | null): void {
-  openJobId = jobId;
+/** The room screen, mounting: returns its unmount. */
+export function markServiceRoomOpen(jobId: string): () => void {
+  openRooms.set(jobId, (openRooms.get(jobId) ?? 0) + 1);
+  return () => {
+    const n = (openRooms.get(jobId) ?? 1) - 1;
+    if (n <= 0) openRooms.delete(jobId);
+    else openRooms.set(jobId, n);
+  };
 }
 
 export function openServiceRoom(jobId: string): void {
-  if (openJobId === jobId) {
+  if (openRooms.has(jobId)) {
     // Already open under this screen (the map, a chat): back to it rather
     // than a second copy of the same room on top.
     router.dismissTo({ pathname: '/service-room', params: { jobId } } as any);
