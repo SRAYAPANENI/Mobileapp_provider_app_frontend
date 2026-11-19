@@ -438,6 +438,17 @@ function StepPanel({ job, detail, refresh, setDetail, onComplete, onCustomerAbse
     );
   }
 
+  if (status === 'ACCEPTED' && detail?.shape?.venue === 'PROVIDER_PLACE') {
+    // At the provider's own place: they're home — no "I'm here"; the customer
+    // comes and shows their code (the server's check-in code for a quoted job).
+    return (
+      <>
+        <InspectionCode jobId={job.id} onVerified={onRefresh} arrived atYourPlace />
+        {cancelButton}
+      </>
+    );
+  }
+
   if (status === 'ACCEPTED') {
     return (
       <>

@@ -10,11 +10,13 @@ import { roomStyles as s } from './styles';
 // At the customer's place: ask for the 4-digit code on their screen, enter it,
 // and the inspection starts — checked against where the provider is.
 
-export function InspectionCode({ jobId, onVerified, arrived }: {
+export function InspectionCode({ jobId, onVerified, arrived, atYourPlace = false }: {
   jobId: string;
   onVerified: () => void;
   /** "I'm here" recorded at the customer's: the code is asked for only then (the server too). */
   arrived: boolean;
+  /** The job is at the provider's own place: the customer comes, and shows the code there. */
+  atYourPlace?: boolean;
 }) {
   const [code, setCode] = useState('');
   const [requesting, setRequesting] = useState(false);
@@ -59,7 +61,9 @@ export function InspectionCode({ jobId, onVerified, arrived }: {
   return (
     <View>
       <ThemedText style={s.note}>
-        Once you’ve arrived, ask the customer for the 4-digit code on their screen to start inspecting.
+        {atYourPlace
+          ? 'When the customer arrives at your place, ask for the 4-digit code on their screen to start inspecting.'
+          : 'Once you’ve arrived, ask the customer for the 4-digit code on their screen to start inspecting.'}
       </ThemedText>
       <TouchableOpacity
         style={[s.primaryBtn, (requesting || !arrived) && { opacity: 0.5 }]}
