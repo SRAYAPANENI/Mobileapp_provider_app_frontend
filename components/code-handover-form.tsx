@@ -20,13 +20,15 @@ export interface CodeHandoverFormProps {
   onRequest: () => Promise<unknown>;
   onVerify: (code: string, lat: number, lng: number) => Promise<unknown>;
   onDone: () => void;
+  /** Set: asking for the code waits (e.g. "Tap “I’m here” first") — the server refuses it until then. */
+  lockedReason?: string | null;
 }
 
 // Ask for the customer's 4-digit code, type it in, done — checked by the
 // server against the code and where the phone is. Used for a delivery's
 // drop-off, a check-in and a hand-back alike.
 export function CodeHandoverForm({
-  title, body, requestLabel, confirmLabel, requestedMessage, placeName, onRequest, onVerify, onDone,
+  title, body, requestLabel, confirmLabel, requestedMessage, placeName, onRequest, onVerify, onDone, lockedReason,
 }: CodeHandoverFormProps) {
   const appAlert = useAppAlert();
   const inputRef = useRef<TextInput>(null);
@@ -78,8 +80,8 @@ export function CodeHandoverForm({
       </View>
       <Text style={s.body}>{body}</Text>
 
-      <TouchableOpacity style={[s.secondary, requesting && s.dim]} onPress={requestCode} disabled={requesting}>
-        <Text style={s.secondaryText}>{requesting ? 'Sending…' : requestLabel}</Text>
+      <TouchableOpacity style={[s.secondary, (requesting || !!lockedReason) && s.dim]} onPress={requestCode} disabled={requesting || !!lockedReason}>
+        <Text style={s.secondaryText}>{lockedReason || (requesting ? 'Sending…' : requestLabel)}</Text>
       </TouchableOpacity>
 
       <Pressable style={s.boxes} onPress={() => inputRef.current?.focus()}>

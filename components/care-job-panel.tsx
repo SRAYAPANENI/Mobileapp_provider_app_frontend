@@ -85,6 +85,8 @@ function CareJobSteps({ job, getCoords, onChanged, onComplete, onCustomerAbsent,
         requestedMessage="The customer now sees a 4-digit code in their app."
         placeName={venue === 'PROVIDER_PLACE' ? 'your place' : 'the job'}
         onRequest={() => SkoFyApi.jobs.requestCheckInCode(job.id)}
+        // At the customer's: the code shows on their screen only once you're there.
+        lockedReason={venue === 'CUSTOMER_PLACE' && !job.arrived_at ? 'Tap “I’m here” first' : null}
         onVerify={(code, lat, lng) => SkoFyApi.jobs.checkIn(job.id, code, lat, lng)}
         onDone={onChanged}
       />
