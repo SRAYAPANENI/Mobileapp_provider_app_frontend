@@ -1,19 +1,15 @@
-import { LabourHelper } from '@/components/labour-helper';
 import AnimatedBrandMark from '@/components/animated-brand-mark';
 import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react';
-import { AppState, BackHandler, StyleSheet, View, ScrollView, TouchableOpacity, Switch, Platform, SafeAreaView, ActivityIndicator, PanResponder, Animated as RNAnimated, useWindowDimensions, Linking, RefreshControl, Pressable } from 'react-native';
+import { AppState, BackHandler, StyleSheet, View, ScrollView, TouchableOpacity, Switch, Platform, SafeAreaView, ActivityIndicator, useWindowDimensions, RefreshControl } from 'react-native';
 import { Text, TextInput as RNTextInput } from '@/components/scaled-text';
-import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { AppAlert, useAppAlert } from '@/components/app-alert';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { shrinkPhoto } from '@/services/photo';
-import { callTapAllowed } from '@/services/callManager';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useIsFocused, useNavigation } from '@react-navigation/native';
-import { onServiceRoomRequest, takePendingServiceRoom } from '@/services/service-room';
+import { router, useFocusEffect } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
+import { onRoomEvent, openServiceRoom as openServiceRoom_ } from '@/services/service-room';
+import { setLivePosition } from '@/services/live-position';
 import { useRefreshOnFocus } from '@/hooks/use-refresh-on-focus';
 import { useActiveJobs, useInboundFeed, useInboundSkillCounts } from '@/services/queries/jobs';
 import { NoInternetState } from '@/components/no-internet-state';
@@ -35,39 +31,17 @@ import {
   CheckCircle2,
   Check,
   Zap,
-  Phone,
   MessageSquare,
-  Navigation as NavIcon,
-  CheckCircle,
   Star,
-  XCircle,
   X as XIcon,
   Package,
-  AlertTriangle,
-  Camera,
   Repeat as RepeatIcon,
   Lock,
 } from 'lucide-react-native';
-import { VehicleIcon } from '@/components/vehicles/vehicle-icon';
 import { PriceTag } from '@/components/price-tag';
 import * as SecureStore from 'expo-secure-store';
 import { SkillFilterBar, type MySkill, type SkillRef } from '@/components/skill-filter-bar';
 import { JobAlertsSheet } from '@/components/job-alerts-sheet';
-import { DeliveryHandover } from '@/components/delivery-handover';
-import {
-  goodsAmountError, isBuyForMe, isDelivered, isDelivery, isOrderCollected, navigationTarget, parseGoodsAmount,
-  purchaseSummary,
-} from '@/services/pickupDelivery';
-import { PickupAtStore } from '@/components/pickup-at-store';
-import { PickupFromPerson } from '@/components/pickup-from-person';
-import { ArrivalPanel, WaitResult } from '@/components/arrival-panel';
-import { CareJobPanel } from '@/components/care-job-panel';
-import { InspectionReportForm } from '@/components/inspection-report-form';
-import { InspectionStatus } from '@/components/inspection-status';
-import { KeepPreview } from '@/components/keep-preview';
-import { ExtraWorkPanel } from '@/components/extra-work-panel';
-import { ReportIssueModal } from '@/components/report-issue-modal';
-import { useGoodsHoldHeld } from '@/hooks/use-goods-hold';
 import { useMyBusiness } from '@/hooks/use-my-business';
 import { BusinessHomeCard } from '@/components/business/business-home-card';
 import { SkillTestPrompt } from '@/components/skill-test-prompt';
@@ -456,8 +430,6 @@ const JobFeedCard = React.memo(function JobFeedCard({
 export default function DashboardScreen() {
   const bottomInset = useBottomInset();
   const { width } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const { openServiceRoom, jobId: paramJobId } = useLocalSearchParams<{ openServiceRoom?: string; jobId?: string }>();
   const colorScheme = useColorScheme() ?? 'light';
   const themeColors = Colors[colorScheme];
 
@@ -502,12 +474,9 @@ export default function DashboardScreen() {
   // poll with nothing new no longer redraws Home, and a failed poll keeps the
   // jobs shown instead of emptying the feed.
   const homeInView = useIsFocused();
-  // The Service Room sheet. While it's open the feed behind it isn't seen,
-  // so its polling pauses: each poll that changed something redrew all of
-  // Home — the sheet included — mid-scroll, and the sheet stuck. It has its
-  // own 3-second poll of its job; the lists refresh when it closes.
-  const [showManageModal, setShowManageModal] = useState(false);
-  const feedPolling = homeInView && !showManageModal ? 15_000 : false;
+  // Polled only while Home is the screen in view — not under the Service
+  // Room (a screen of its own now), a chat or job details.
+  const feedPolling = homeInView ? 15_000 : false;
   // Nor do they refresh on coming back to the app (from the sheet's camera,
   // say) while it's open — closing it reloads them.
   // All Jobs narrowed to one skill (null = every job), remembered between
@@ -520,11 +489,11 @@ export default function DashboardScreen() {
     () => (skillFilter ? mySkills.find(sk => sk.name === skillFilter && sk.is_verified)?.skill_id ?? null : null),
     [skillFilter, mySkills],
   );
-  const inboundFeed = useInboundFeed<any>(feedPolling, !showManageModal, feedSkillId);
+  const inboundFeed = useInboundFeed<any>(feedPolling, homeInView, feedSkillId);
   const inboundQuery = inboundFeed.query;
   // The chips' counts: every job in the feed, not just the pages read.
-  const skillCountsQuery = useInboundSkillCounts(feedPolling, !showManageModal);
-  const activeQuery = useActiveJobs(feedPolling, true, !showManageModal);
+  const skillCountsQuery = useInboundSkillCounts(feedPolling, homeInView);
+  const activeQuery = useActiveJobs(feedPolling, true, homeInView);
   const loadJobs = React.useCallback(async () => {
     await Promise.all([inboundQuery.refetch(), activeQuery.refetch(), skillCountsQuery.refetch()]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -536,23 +505,18 @@ export default function DashboardScreen() {
     }
   }, [inboundQuery]);
 
-  // While the sheet is open, a GPS move updates the ref (actions read it) but
-  // not the screen — it would redraw all of Home under the sheet every few
-  // seconds while driving. On closing: the latest position, and fresh lists.
+  // While Home is out of view (the Service Room, a chat over it), a GPS move
+  // updates the ref (and the live position the room reads) but not the
+  // screen — it would redraw all of Home, unseen, every few seconds while
+  // driving. On coming back: the latest position.
   const sheetOpenRef = useRef(false);
-  // A move went unshown while the sheet was open.
+  // A move went unshown while Home was out of view.
   const movedUnderSheetRef = useRef(false);
   useEffect(() => {
-    const wasOpen = sheetOpenRef.current;
-    sheetOpenRef.current = showManageModal;
-    if (wasOpen && !showManageModal) {
-      // The live position (the ref has every fix), not an older held one.
-      if (movedUnderSheetRef.current && userCoordsRef.current) setUserCoords(userCoordsRef.current);
-      movedUnderSheetRef.current = false;
-      void loadJobs();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showManageModal]);
+    sheetOpenRef.current = !homeInView;
+    if (homeInView && movedUnderSheetRef.current && userCoordsRef.current) setUserCoords(userCoordsRef.current);
+    if (homeInView) movedUnderSheetRef.current = false;
+  }, [homeInView]);
 
   const applyJobs = React.useCallback((inbound: any[], active: any[]) => {
     try {
@@ -760,7 +724,6 @@ export default function DashboardScreen() {
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [isLocating, setIsLocating] = useState(true);
   const [userCoords, setUserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [showLocationModal, setShowLocationModal] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   // The location-watch effect below runs once on mount, so it reads this ref
   // (not the state directly) to always see the current active job without restarting GPS watching.
@@ -776,7 +739,7 @@ export default function DashboardScreen() {
       disconnectLocationSocket();
     }
   }, [activeJobId]);
-  useEffect(() => { userCoordsRef.current = userCoords; }, [userCoords]);
+  useEffect(() => { userCoordsRef.current = userCoords; if (userCoords) setLivePosition(userCoords); }, [userCoords]);
   // Online and free: the server follows them every ~500 m, app open or not,
   // so jobs reach them as they come near and leave as they go. Offline, or
   // on a job (its own closer tracking above), it stops.
@@ -799,6 +762,7 @@ export default function DashboardScreen() {
         // sheet twice. The ref always has it (actions read that).
         const show = (c: { latitude: number; longitude: number }) => {
           userCoordsRef.current = c;
+          setLivePosition(c);
           if (sheetOpenRef.current) movedUnderSheetRef.current = true;
           else setUserCoords(c);
         };
@@ -863,7 +827,6 @@ export default function DashboardScreen() {
   // reminder (not straight after completing a job) — names the customer and
   // skips the "Job Completed!" celebration, which wouldn't make sense then.
   const [ratingReminder, setRatingReminder] = useState<{ customerName: string } | null>(null);
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [jobs, setJobs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   // Opened offline with nothing cached: the shared page. (The feed's queries
@@ -871,415 +834,6 @@ export default function DashboardScreen() {
   const offline = useOfflinePage(!isLoading, () => { void onRefresh(); });
   const [isSubmittingRating, setIsSubmittingRating] = useState(false);
 
-  const selectedJob = jobs.find(j => j.id === (selectedJobId || activeJobId));
-
-  // On-site inspection + invoice — bidding is retired, price is only ever
-  // set after inspecting the job in person. /jobs/active doesn't carry this
-  // detail, so the full job is fetched separately while the modal is open.
-  const [manageJobDetail, setManageJobDetail] = useState<any>(null);
-  // The job's status as of the last reload of its detail — the list's copy
-  // only catches up on the next poll, so deciding the panel from it showed
-  // the previous step for a moment (a trip's invoice form right after
-  // "Confirm pickup", before IN_PROGRESS arrived).
-  const liveStatus: string | undefined =
-    selectedJob && manageJobDetail?.id === selectedJob.id && manageJobDetail?.status
-      ? manageJobDetail.status : selectedJob?.status;
-  const [otpInput, setOtpInput] = useState('');
-  const [requestingOtp, setRequestingOtp] = useState(false);
-  const [verifyingOtp, setVerifyingOtp] = useState(false);
-  // The share paid when work starts — on a big quote, or for the parts listed (KeepPreview).
-  const [depositPercent, setDepositPercent] = useState(0);
-  // Pickup & Drop: proof-of-pickup photo — this job kind's equivalent of the
-  // OTP-gated inspection start above (the customer isn't at the pickup point
-  // to hand over a code, so a photo substitutes for it instead).
-  const [pickupPhoto, setPickupPhoto] = useState<{ uri: string; mimeType: string } | null>(null);
-  const [confirmingPickup, setConfirmingPickup] = useState(false);
-  // The pickup photo is being shrunk for upload (services/photo.ts).
-  const [preparingPhoto, setPreparingPhoto] = useState(false);
-  // Buy it for me: the receipt total, and whether the customer's money is held.
-  const [goodsAmountText, setGoodsAmountText] = useState('');
-  const buyingForCustomer = isDelivery(selectedJob) && isBuyForMe(manageJobDetail);
-  // A trip priced up front (Pickup & Delivery, skofy-backend app/domain/trip_fare.py)
-  // not booked and paid yet: nothing is collected until it is.
-  const tripUnpaid = manageJobDetail?.shape?.pricing_unit === 'TRIP'
-    && !['HELD', 'PAID'].includes(manageJobDetail?.payment_status);
-  const goodsHeld = useGoodsHoldHeld(
-    selectedJob?.id, buyingForCustomer && selectedJob?.status === 'ACCEPTED' && !manageJobDetail?.pickup_confirmed_at,
-  );
-  const goodsError = buyingForCustomer ? goodsAmountError(goodsAmountText, manageJobDetail?.purchase_limit) : null;
-  // A business's job: who paid the store is who's paid back — the member's
-  // own money comes back to them, the business's card to the business.
-  const businessShop = buyingForCustomer && !!(selectedJob as any)?.businessName;
-  const [paidWith, setPaidWith] = useState<'OWN' | 'COMPANY' | null>(null);
-  const orderCollected = isOrderCollected({ jobKind: selectedJob?.jobKind, pickup_confirmed_at: manageJobDetail?.pickup_confirmed_at });
-  // From a person (any address): the item must be checked before it's taken (PickupFromPerson).
-  const pickupFromPerson = manageJobDetail?.pickup_source === 'PERSON';
-  const [personItemChecked, setPersonItemChecked] = useState(false);
-  // Which wording of those checks was shown (kept word for word with the job).
-  const [personChecksVersion, setPersonChecksVersion] = useState<string | undefined>(undefined);
-  // Bumped when the server says the checks' wording changed: the card remounts,
-  // fetches the new wording and starts unticked.
-  const [personChecksRound, setPersonChecksRound] = useState(0);
-  // Checks belong to one job: another job starts unchecked (its panel remounts too).
-  useEffect(() => { setPersonItemChecked(false); }, [selectedJob?.id]);
-  const [showReportIssue, setShowReportIssue] = useState(false);
-  const [invoiceAmount, setInvoiceAmount] = useState('');
-  const [invoiceNotes, setInvoiceNotes] = useState('');
-  const [materials, setMaterials] = useState<Array<{ name: string; quantity: string; unit_cost: string }>>([]);
-  // What the listed parts cost — a small quote can have them paid when work starts.
-  const partsTotal = materials.reduce((sum, m) => sum + (parseFloat(m.quantity) || 0) * (parseFloat(m.unit_cost) || 0), 0);
-  const otpInputRef = useRef<RNTextInput>(null);
-  const [raisingInvoice, setRaisingInvoice] = useState(false);
-  const [respondingToCounter, setRespondingToCounter] = useState(false);
-
-  useEffect(() => {
-    if (!showManageModal || !selectedJob) return;
-    const deliveryOnItsWay = selectedJob.status === 'IN_PROGRESS' && isDelivery(selectedJob);
-    if (!['ACCEPTED', 'INSPECTING', 'INVOICE_PENDING'].includes(selectedJob.status) && !deliveryOnItsWay) return;
-    let cancelled = false;
-    // Every 3 s: one request at a time (a slow network used to stack them),
-    // and no redraw when nothing changed — each one redrew all of Home, which
-    // is what made the Service Room stutter and feel stuck.
-    //
-    // What's asked every 3 s is the job's stamp — one small query, a few
-    // bytes — and the whole job (about ten queries, kilobytes) only when it
-    // changed. A full reload every 30 s anyway covers anything the stamp
-    // doesn't (server: JobRepository.change_stamp).
-    let inFlight = false;
-    let lastSeen = '';
-    let lastStamp = '';
-    let lastFullAt = 0;
-    const FULL_EVERY_MS = 30_000;
-    const poll = async () => {
-      if (inFlight) return;
-      inFlight = true;
-      try {
-        // Read before the job, so a change made in between shows as a new
-        // stamp next time rather than slipping by. Unreadable (a server
-        // without it yet, a blip): the whole job, as before.
-        const stamp = await SkoFyApi.jobs.stamp(selectedJob.id).then((r) => r?.stamp ?? null).catch(() => null);
-        if (cancelled) return;
-        const due = Date.now() - lastFullAt >= FULL_EVERY_MS;
-        if (stamp !== null && stamp === lastStamp && !due) return;
-        const detail = await SkoFyApi.jobs.get(selectedJob.id);
-        if (stamp !== null) lastStamp = stamp;
-        lastFullAt = Date.now();
-        if (cancelled) return;
-        const seen = JSON.stringify(detail);
-        if (seen === lastSeen) return;
-        lastSeen = seen;
-        setManageJobDetail(detail);
-        // The outer branch logic below keys off selectedJob.status, which
-        // comes from the /jobs/active list — only refreshed on mount/tab-
-        // focus, never while this modal is open. Without this, a customer
-        // rejecting the invoice (or the counter) mid-negotiation would leave
-        // the provider stuck looking at a stale "waiting" screen forever,
-        // since this poll's own fresher status was never fed back in.
-        if (detail?.status && detail.status !== selectedJob.status) {
-          if (detail.status === 'CANCELLED') {
-            // Said as it happened (server: app/domain/cancellation.py CancelCause)
-            // — a refusal still uploading when this poll saw it, a no-show, or
-            // the provider's own cancel are not "the customer cancelled".
-            const cause: string | undefined = detail.cancel_cause;
-            if (cause === 'PICKUP_REFUSED') {
-              appAlert.show('success', 'Item Refused', 'The job is cancelled and your trip fee is kept. Thanks for checking.');
-            } else if (cause === 'CUSTOMER_NO_SHOW') {
-              appAlert.show('success', 'Job Cancelled', "The customer wasn't there — the visiting fee is yours.");
-            } else if (cause === 'NO_SHOW') {
-              appAlert.show('warning', 'Job Cancelled', "This job was cancelled because you hadn't set off in time.");
-            } else if (cause === 'PROVIDER') {
-              appAlert.show('warning', 'Job Cancelled', 'This job was cancelled.');
-            } else {
-              appAlert.show(
-                'warning', 'Job Cancelled',
-                detail.cancellation_reason ? `The customer cancelled this job. Reason: ${detail.cancellation_reason}` : 'The customer cancelled this job.',
-              );
-            }
-            setPersonItemChecked(false);
-            setPickupPhoto(null);
-            setShowManageModal(false);
-            // Unlock the dashboard the same way handleCompleteJob does —
-            // this job is dead, no reason to keep it "locked in" as active.
-            setActiveJobId(null);
-          }
-          // Disputed by the customer: under review, not active work any more.
-          if (detail.status === 'DISPUTED') setActiveJobId(null);
-          setJobs(prev => prev.map(j => j.id === selectedJob.id ? { ...j, status: detail.status } : j));
-        }
-      } catch {
-        // transient — keep showing last known values
-      } finally {
-        inFlight = false;
-      }
-    };
-    poll();
-    const interval = setInterval(poll, 3000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [showManageModal, selectedJob?.id, selectedJob?.status]);
-
-  // The opened job's detail, once — whatever its status (the poll above only
-  // runs while it's moving), and never another job's left over from before.
-  // When that poll runs it loads the job at once itself — loading it here as
-  // well fetched it twice on opening and redrew all of Home twice.
-  useEffect(() => {
-    if (!showManageModal || !selectedJob?.id) return;
-    let cancelled = false;
-    setManageJobDetail((prev: any) => (prev?.id === selectedJob.id ? prev : null));
-    const polled = ['ACCEPTED', 'INSPECTING', 'INVOICE_PENDING'].includes(selectedJob.status)
-      || (selectedJob.status === 'IN_PROGRESS' && isDelivery(selectedJob));
-    if (polled) return;
-    SkoFyApi.jobs.get(selectedJob.id).then((detail) => { if (!cancelled) setManageJobDetail(detail); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [showManageModal, selectedJob?.id]);
-
-  const handleRequestInspectionOtp = async () => {
-    if (!selectedJob) return;
-    setRequestingOtp(true);
-    try {
-      await SkoFyApi.jobs.requestInspectionOtp(selectedJob.id);
-      appAlert.show('success', 'Code Sent', "Ask the customer for the 4-digit code on their screen.");
-    } catch (err: any) {
-      appAlert.show('error', 'Failed', err?.message ?? 'Could not request the inspection code. Please try again.');
-    } finally {
-      setRequestingOtp(false);
-    }
-  };
-
-  const handleVerifyInspectionOtp = async () => {
-    if (!selectedJob || otpInput.length !== 4) return;
-    // The live position (updated every GPS fix), not the shown one.
-    let coords = userCoordsRef.current ?? userCoords;
-    if (!coords) {
-      try {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        coords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-        setUserCoords(coords);
-      } catch {
-        appAlert.show('error', 'Location Required', 'Turn on location to start the inspection.');
-        return;
-      }
-    }
-    setVerifyingOtp(true);
-    try {
-      await SkoFyApi.jobs.verifyInspectionOtp(selectedJob.id, otpInput, coords.latitude, coords.longitude);
-      setOtpInput('');
-      setJobs(prev => prev.map(j => j.id === selectedJob.id ? { ...j, status: 'INSPECTING' } : j));
-    } catch (err: any) {
-      if (err?.error_code === 'NOT_AT_LOCATION') {
-        appAlert.show('warning', 'Too Far From Job Site', err.message ?? 'You need to be at the customer\'s location.');
-      } else {
-        appAlert.show('error', 'Invalid Code', err?.message ?? 'That code is incorrect or expired.');
-      }
-    } finally {
-      setVerifyingOtp(false);
-    }
-  };
-
-  const handlePickPickupPhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      appAlert.show('warning', 'Camera Permission Required', 'Please allow camera access in your device settings to confirm pickup.');
-      return;
-    }
-    // Full quality from the camera; shrunk once, here (services/photo.ts).
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
-    if (!result.canceled && result.assets[0]) {
-      // About a second on a slower phone: the button says so and can't reopen the camera.
-      setPreparingPhoto(true);
-      try {
-        setPickupPhoto(await shrinkPhoto(result.assets[0]));
-      } finally {
-        setPreparingPhoto(false);
-      }
-    }
-  };
-
-  const currentCoords = async (): Promise<{ latitude: number; longitude: number } | null> => {
-    // The live position (every GPS fix), not the shown one — that lags, and
-    // is held back entirely while the Service Room is open.
-    const live = userCoordsRef.current ?? userCoords;
-    if (live) return live;
-    try {
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      const coords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-      setUserCoords(coords);
-      return coords;
-    } catch {
-      return null;
-    }
-  };
-
-  const handleConfirmPickup = async () => {
-    if (!selectedJob || !pickupPhoto) return;
-    if (buyingForCustomer && (goodsError || !goodsHeld)) {
-      appAlert.show('warning', 'Not Yet', goodsError ?? "The customer hasn't put the shopping money on hold yet.");
-      return;
-    }
-    if (pickupFromPerson && !personItemChecked) {
-      appAlert.show('warning', 'Check the Item First', 'Tick the three checks — or tap "Can\'t take it".');
-      return;
-    }
-    if (businessShop && !paidWith) {
-      appAlert.show('warning', 'How Did You Pay?', "Choose your own money or the business's card — it's paid back to whoever paid.");
-      return;
-    }
-    const coords = await currentCoords();
-    if (!coords) {
-      appAlert.show('error', 'Location Required', 'Turn on location to confirm pickup.');
-      return;
-    }
-    const jobId = selectedJob.id;
-    // Collected: the job as it is now, and the form cleared.
-    const collected = (detail: any) => {
-      setManageJobDetail(detail);
-      // A trip goes IN_PROGRESS here — the list's copy too, now, not on the next poll.
-      if (detail?.status) setJobs(prev => prev.map(j => j.id === detail.id ? { ...j, status: detail.status } : j));
-      setPickupPhoto(null);
-      setGoodsAmountText('');
-      setPaidWith(null);
-      setPersonItemChecked(false);
-    };
-    setConfirmingPickup(true);
-    try {
-      await SkoFyApi.jobs.confirmPickup(
-        jobId, pickupPhoto.uri, pickupPhoto.mimeType, coords.latitude, coords.longitude,
-        buyingForCustomer ? parseGoodsAmount(goodsAmountText) : undefined,
-        pickupFromPerson && personItemChecked,
-        pickupFromPerson ? personChecksVersion : undefined,
-        businessShop ? paidWith ?? undefined : undefined,
-      );
-    } catch (err: any) {
-      // A photo upload on a weak signal can time out after the server saved
-      // it (or a retry meets "already confirmed"): the server says whether
-      // it's collected — never "Could not confirm" for a pickup that was.
-      // Not asked when the server's refusal is final (too far, new wording):
-      // on a weak signal that read alone could hold the message back 30 s.
-      const final = err?.error_code === 'NOT_AT_LOCATION' || err?.error_code === 'DECLARATION_CHANGED';
-      const now = final ? null : await SkoFyApi.jobs.get(jobId).catch(() => null);
-      if (now?.pickup_confirmed_at) {
-        collected(now);
-      } else if (err?.error_code === 'NOT_AT_LOCATION') {
-        appAlert.show('warning', 'Too Far From Pickup Location', err.message ?? 'You need to be at the pickup location.');
-      } else if (err?.error_code === 'DECLARATION_CHANGED') {
-        setPersonItemChecked(false);
-        setPersonChecksRound((n) => n + 1);
-        appAlert.show('warning', 'Check the Item Again', err.message ?? 'The checks have been updated — tick them again.');
-      } else {
-        appAlert.show('error', 'Could Not Confirm Pickup', err?.message ?? 'Please try again.');
-      }
-      setConfirmingPickup(false);
-      return;
-    }
-    // Confirmed. Reading the job back can fail on a weak signal — that's no
-    // failure of the pickup: the photo is cleared (so it can't be sent
-    // twice) and the sheet's own 3-second poll brings the next step.
-    const detail = await SkoFyApi.jobs.get(jobId).catch(() => null);
-    if (detail) collected(detail);
-    else setPickupPhoto(null);
-    setConfirmingPickup(false);
-  };
-
-  const handlePickupRefused = () => {
-    const refusedId = selectedJob?.id;
-    setJobs(prevJobs => prevJobs.filter(job => job.id !== refusedId));
-    setShowManageModal(false);
-    setActiveJobId(null);
-    setPersonItemChecked(false);
-    setPickupPhoto(null);
-    appAlert.show('success', 'Item Refused', 'The job is cancelled and your trip fee is kept. Thanks for checking.');
-  };
-
-  // The job as the server has it now — after a report, a check-in, a code.
-  const refreshManageDetail = async () => {
-    if (!selectedJob) return;
-    const detail = await SkoFyApi.jobs.get(selectedJob.id).catch(() => null);
-    if (detail) setManageJobDetail(detail);
-  };
-
-  // "Customer not here": the job is cancelled and the visiting fee is theirs.
-  const handleCustomerAbsent = (message?: string) => {
-    const goneId = selectedJob?.id;
-    setJobs(prevJobs => prevJobs.filter(job => job.id !== goneId));
-    setShowManageModal(false);
-    setActiveJobId(null);
-    appAlert.show('success', 'Job Cancelled', message ?? "The customer wasn't there — the visiting fee is yours.");
-  };
-
-  const handleRaiseInvoice = async () => {
-    if (!selectedJob) return;
-    const amount = parseFloat(invoiceAmount);
-    if (!invoiceAmount.trim() || isNaN(amount) || amount <= 0) {
-      appAlert.show('error', 'Invalid Amount', 'Enter a valid invoice amount greater than 0.');
-      return;
-    }
-    setRaisingInvoice(true);
-    try {
-      const materialLines = materials
-        .filter(m => m.name.trim())
-        .map(m => ({
-          name: m.name.trim(),
-          quantity: parseFloat(m.quantity) || 1,
-          unit_cost: parseFloat(m.unit_cost) || 0,
-        }));
-      await SkoFyApi.jobs.raiseInvoice(selectedJob.id, amount, materialLines, invoiceNotes.trim() || undefined, depositPercent);
-      setJobs(prev => prev.map(j => j.id === selectedJob.id ? { ...j, status: 'INVOICE_PENDING' } : j));
-      setInvoiceAmount('');
-      setInvoiceNotes('');
-      setMaterials([]);
-      setDepositPercent(0);
-    } catch (err: any) {
-      appAlert.show('error', 'Failed to Send Invoice', err?.message ?? 'Please try again.');
-    } finally {
-      setRaisingInvoice(false);
-    }
-  };
-
-  const handleRespondToCounter = async (accept: boolean) => {
-    if (!selectedJob) return;
-    setRespondingToCounter(true);
-    try {
-      await SkoFyApi.jobs.respondToCounter(selectedJob.id, accept);
-      // Rejecting the counter no longer cancels the job — the original
-      // invoice amount goes back on offer instead, and the job stays
-      // INVOICE_PENDING while the customer decides. Both branches now just
-      // re-fetch and keep the modal open, matching each other.
-      const detail = await SkoFyApi.jobs.get(selectedJob.id);
-      setManageJobDetail(detail);
-    } catch (err: any) {
-      appAlert.show('error', 'Failed', err?.message ?? 'Please try again.');
-    } finally {
-      setRespondingToCounter(false);
-    }
-  };
-
-  const panY = useRef(new RNAnimated.Value(0)).current;
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dy > 0) {
-          panY.setValue(gestureState.dy);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 150) {
-          setShowManageModal(false);
-          RNAnimated.timing(panY, {
-            toValue: 0,
-            duration: 200,
-            useNativeDriver: true,
-          }).start();
-        } else {
-          RNAnimated.timing(panY, {
-            toValue: 0,
-            duration: 200,
-            useNativeDriver: true,
-          }).start();
-        }
-      },
-    })
-  ).current;
 
 
   // Set the instant any of this screen's own live fetches (profile, jobs)
@@ -1621,178 +1175,23 @@ const filteredJobs = jobs.filter((job) => {
     setShowSuccessOverlay(true);
   };
 
-  const handleManageService = (jobId: string) => {
-    // Reset the shared invoice-form state on open — it only clears after a
-    // successful submit, so without this, switching to a different job's
-    // Service Room before submitting would carry over stale materials/amount.
-    setInvoiceAmount('');
-    setInvoiceNotes('');
-    setMaterials([]);
-    setPickupPhoto(null);
-    setGoodsAmountText('');
-    setSelectedJobId(jobId);
-    setShowManageModal(true);
-  };
-
-  // A screen opened from the Service Room — chat, a call, the map — comes
-  // back to it, not to the dashboard (it has to close first: a popup would sit
-  // over the next screen). Reopened as it was left: a half-typed invoice or a
-  // pickup photo already taken are kept (handleManageService clears them).
-  const returnToRoomRef = useRef<string | null>(null);
-  const leaveRoomFor = (open: () => void) => {
-    returnToRoomRef.current = selectedJob?.id ?? null;
-    setShowManageModal(false);
-    open();
-  };
-  useFocusEffect(React.useCallback(() => {
-    const id = returnToRoomRef.current;
-    if (!id) return;
-    returnToRoomRef.current = null;
-    // Gone meanwhile (finished, cancelled)? The room says so and offers Close.
-    setSelectedJobId(id);
-    setShowManageModal(true);
-  }, []));
-
-  // A room asked for elsewhere (services/service-room.ts): opened here, on
-  // this dashboard, once it's the screen in view — the app coming back to it,
-  // or the Home tab being switched to.
-  const navigation = useNavigation();
-  const manageRef = useRef(handleManageService);
-  manageRef.current = handleManageService;
-  useFocusEffect(React.useCallback(() => {
-    const id = takePendingServiceRoom();
-    if (id) manageRef.current(id);
-  }, []));
-  useEffect(() => onServiceRoomRequest(() => {
-    if (navigation.isFocused()) {
-      const id = takePendingServiceRoom();
-      if (id) manageRef.current(id);
+  // The Service Room is a screen of its own (app/service-room.tsx). It says
+  // here when a job moved on: the job lock, the list and the rating follow.
+  useEffect(() => onRoomEvent((event) => {
+    if (event.type === 'completed') {
+      setJobs(prev => prev.map(job => job.id === event.jobId ? { ...job, isOngoing: false, status: 'Completed' } : job));
+      setActiveJobId(prev => (prev === event.jobId ? null : prev));
+      setPendingRatingJobId(event.jobId);
+      // Once the room has closed and Home is back.
+      setTimeout(() => setShowRatingModal(true), 500);
+    } else if (event.type === 'ended') {
+      setJobs(prev => prev.filter(job => job.id !== event.jobId));
+      setActiveJobId(prev => (prev === event.jobId ? null : prev));
     } else {
-      // Another tab is showing: switch to Home, whose focus opens it.
-      navigation.navigate('index' as never);
+      setJobs(prev => prev.map(job => job.id === event.jobId ? { ...job, status: event.status } : job));
     }
-  }), [navigation]);
-
-  // Auto-open service room modal when navigated from job details
-  useEffect(() => {
-    if (openServiceRoom === 'true' && paramJobId) {
-      handleManageService(paramJobId);
-    }
-  }, [openServiceRoom, paramJobId]);
-
-  const handleStartJob = async () => {
-    if (!activeJobId) return;
-
-    let coords = userCoordsRef.current ?? userCoords;
-    if (!coords) {
-      // userCoords being null here used to be a dead end — a plain native
-      // alert with just "OK" that did nothing useful. It could mean the
-      // mount-time permission request is still pending, was denied once
-      // (still askable), or was permanently denied — each needs a different
-      // response, not the same unhelpful message every time.
-      try {
-        const current = await Location.getForegroundPermissionsAsync();
-        let granted = current.status === 'granted';
-        if (!granted) {
-          if (current.status === 'denied' && !current.canAskAgain) {
-            setShowLocationModal(true);
-            return;
-          }
-          const requested = await Location.requestForegroundPermissionsAsync();
-          granted = requested.status === 'granted';
-          if (!granted) {
-            setShowLocationModal(true);
-            return;
-          }
-        }
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        coords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-        setUserCoords(coords);
-      } catch (err) {
-        console.error('Failed to get location for starting job:', err);
-        setShowLocationModal(true);
-        return;
-      }
-    }
-
-    try {
-      await SkoFyApi.jobs.markStarted(activeJobId, coords.latitude, coords.longitude);
-      setJobs(prevJobs => prevJobs.map(job =>
-        job.id === activeJobId ? { ...job, status: 'IN_PROGRESS' } : job
-      ));
-    } catch (err: any) {
-      if (err?.error_code === 'NOT_AT_LOCATION') {
-        appAlert.show('warning', 'Too Far From Job Site', err.message ?? 'You need to be at the customer\'s location to start this job.');
-      } else {
-        appAlert.show('error', 'Could Not Start Job', err?.message ?? 'Could not start the job. Please try again.');
-      }
-    }
-  };
-
-  const handleCompleteJob = async () => {
-    if (!activeJobId) return;
-
-    const completedId = activeJobId;
-
-    try {
-      await SkoFyApi.jobs.markComplete(completedId);
-    } catch (err: any) {
-      const msg: string = err?.message ?? '';
-      // If the job is already COMPLETED (customer marked it first), the
-      // backend rejects with "Job must be IN_PROGRESS to complete." — still
-      // show the rating modal so the provider can rate the customer.
-      if (!msg.includes('IN_PROGRESS')) {
-        appAlert.show('error', 'Could Not Complete Job', msg || 'Could not mark the job as completed. Please try again.');
-        return;
-      }
-    }
-
-    setJobs(prevJobs => prevJobs.map(job =>
-      job.id === completedId ? { ...job, isOngoing: false, status: 'Completed' } : job
-    ));
-
-    setShowManageModal(false);
-    setActiveJobId(null);
-    setPendingRatingJobId(completedId);
-
-    setTimeout(() => {
-      setShowRatingModal(true);
-    }, 500);
-  };
-
-  const [showCancelJobModal, setShowCancelJobModal] = useState(false);
-  const [cancelJobReason, setCancelJobReason] = useState<string | null>(null);
-  const [otherCancelJobReason, setOtherCancelJobReason] = useState('');
-  const [cancellingJob, setCancellingJob] = useState(false);
-
-  const PROVIDER_CANCEL_REASONS = [
-    'Personal emergency',
-    'Vehicle breakdown',
-    'Can\'t reach the location',
-    'Unexpected schedule conflict',
-    'Customer not responding',
-    'Other',
-  ];
-
-  const handleConfirmCancelJob = async () => {
-    if (!activeJobId || cancellingJob) return;
-    const finalReason = cancelJobReason === 'Other' ? otherCancelJobReason.trim() : cancelJobReason;
-    if (!finalReason) return;
-    setCancellingJob(true);
-    try {
-      await SkoFyApi.jobs.cancelJob(activeJobId, finalReason);
-      setJobs(prevJobs => prevJobs.filter(job => job.id !== activeJobId));
-      setShowCancelJobModal(false);
-      setShowManageModal(false);
-      setActiveJobId(null);
-      setCancelJobReason(null);
-      setOtherCancelJobReason('');
-    } catch (err: any) {
-      appAlert.show('error', 'Cancel Failed', err?.message ?? 'Could not cancel this job. Please try again.');
-    } finally {
-      setCancellingJob(false);
-    }
-  };
+    void loadJobs();
+  }), [loadJobs]);
 
   const resetRatingForm = () => {
     setRatings({ behaviour: 0, negotiation: 0, payment: 0, environment: 0 });
@@ -1854,7 +1253,6 @@ const filteredJobs = jobs.filter((job) => {
       markRatingSubmitted(pendingRatingJobId);
       const fromReminder = !!ratingReminder;
       setPendingRatingJobId(null);
-      setSelectedJobId(null);
       setShowRatingModal(false);
       setRatingReminder(null);
       resetRatingForm();
@@ -1871,24 +1269,6 @@ const filteredJobs = jobs.filter((job) => {
       appAlert.show('error', 'Rating Failed', 'Failed to submit rating. Please try again.');
     } finally {
       setIsSubmittingRating(false);
-    }
-  };
-
-  const handleNavigateToSite = () => {
-    if (!selectedJob) return;
-    // A delivery goes to the store first, then to the customer's drop-off.
-    const target = navigationTarget(selectedJob, manageJobDetail);
-    if (target) {
-      leaveRoomFor(() => router.push({
-        pathname: '/navigate-to-site' as any,
-        params: {
-          lat: String(target.lat), lng: String(target.lng), title: target.title, jobId: selectedJob.id,
-          // Which stop "Arrived" there is (the pickup's endpoint refused the drop-off's).
-          stop: target.stop,
-          // Shown on the map screen's Call / Chat row.
-          customerName: selectedJob.employer?.name || 'Customer',
-        },
-      }));
     }
   };
 
@@ -1943,6 +1323,7 @@ const filteredJobs = jobs.filter((job) => {
           (newLocation) => {
             const here = { latitude: newLocation.coords.latitude, longitude: newLocation.coords.longitude };
             userCoordsRef.current = here;
+            setLivePosition(here);
             // GPS fires every few seconds. Each of these redraws all of Home, so
             // the distances shown follow only real moves (cards show 0.1 mi), and
             // the address — a lookup over the network — only every 150 m or 2 min.
@@ -2020,7 +1401,7 @@ const filteredJobs = jobs.filter((job) => {
   // architecture), the sheet included, so its scrolling caught and stuck —
   // worst on Pickup & Delivery, whose "now" trips are Urgent, so the provider's
   // own active card pulses under the sheet the whole trip.
-  const feedMoving = homeInView && !showManageModal;
+  const feedMoving = homeInView;
   useEffect(() => {
     feedClock.run(feedMoving);
     if (!feedMoving) {
@@ -2075,9 +1456,9 @@ const filteredJobs = jobs.filter((job) => {
   }));
 
   // Stable for the cards (JobFeedCard), so they redraw only for their own job.
-  const cardActionsRef = useRef({ handleManageService, handleApplyJob });
-  cardActionsRef.current = { handleManageService, handleApplyJob };
-  const onManageCard = React.useCallback((id: string) => cardActionsRef.current.handleManageService(id), []);
+  const cardActionsRef = useRef({ handleApplyJob });
+  cardActionsRef.current = { handleApplyJob };
+  const onManageCard = React.useCallback((id: string) => openServiceRoom_(id), []);
   const onApplyCard = React.useCallback((id: string) => cardActionsRef.current.handleApplyJob(id), []);
 
   return (
@@ -2085,7 +1466,7 @@ const filteredJobs = jobs.filter((job) => {
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View style={styles.centeredLogoRow}>
-            <AnimatedBrandMark size={32} nameSize={20} centered={false} pro paused={showManageModal} />
+            <AnimatedBrandMark size={32} nameSize={20} centered={false} pro paused={!homeInView} />
           </View>
 
           <View style={styles.headerActions}>
@@ -2390,7 +1771,7 @@ const filteredJobs = jobs.filter((job) => {
           <View style={{ flex: 1 }}>
             <ThemedText style={styles.chatNotifTitle}>New Message</ThemedText>
             <ThemedText style={styles.chatNotifSubtitle} numberOfLines={1}>
-              {selectedJob?.title || 'Job'} - Customer sent a message
+              {jobs.find(j => j.id === activeJobId)?.title || 'Job'} - Customer sent a message
             </ThemedText>
           </View>
         </View>
@@ -2398,873 +1779,6 @@ const filteredJobs = jobs.filter((job) => {
           <Check size={18} color="#9CA3AF" />
         </TouchableOpacity>
       </Animated.View>
-
-      {/* Service Room Modal */}
-      <Popup closeOn="outside"
-        visible={showManageModal}
-        transparent
-        animationType="slide"
-        onClose={() => setShowManageModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <RNAnimated.View onStartShouldSetResponder={() => true}
-            style={[styles.manageSheet, { paddingTop: insets.top + 24, transform: [{ translateY: panY }] }]}
-          >
-            {/* panHandlers scoped to just this handle, not the whole sheet —
-                it used to cover the entire sheet including the ScrollView
-                below, intercepting vertical drags meant for scrolling the
-                content instead of dismissing the modal. */}
-            <View style={styles.dragHandle} {...panResponder.panHandlers} />
-
-            {/* Title */}
-            <ThemedText style={styles.manageTitle}>Service Room</ThemedText>
-            {selectedJob && (
-              <ThemedText style={styles.manageSubtitle}>
-                Active Job ID: #{selectedJob.id.slice(0, 8).toUpperCase()}
-              </ThemedText>
-            )}
-
-            <View style={styles.manageDivider} />
-
-            {!selectedJob && showManageModal && !isLoading && (
-              // Deep-linked here (a "hired"/"job update" notification tap,
-              // or the job-details "Enter Service Room" button) for a job
-              // that isn't in the current active-jobs list anymore — it
-              // likely already completed/got cancelled elsewhere. Without
-              // this, the sheet just showed an empty title with nothing
-              // else, no explanation.
-              //
-              // Gated on !isLoading: a cold-started notification tap calls
-              // handleManageService() and opens this modal in the same tick
-              // as mount, before loadJobs()'s very first fetch has resolved
-              // — `jobs` is still an empty array at that instant, so
-              // selectedJob is briefly undefined even though the job is
-              // perfectly active, flashing this exact message before the
-              // fetch completes and the real content renders. Waiting for
-              // the first load to finish removes that false-positive flash.
-              <View style={{ paddingVertical: 32, paddingHorizontal: 16, alignItems: 'center', gap: 12 }}>
-                <ThemedText style={{ fontSize: 15, color: '#6B7280', textAlign: 'center' }}>
-                  This job isn't active anymore — it may have already been completed or cancelled.
-                </ThemedText>
-                <TouchableOpacity
-                  style={{ backgroundColor: '#FFCE48', paddingHorizontal: 24, paddingVertical: 10, borderRadius: 20 }}
-                  onPress={() => setShowManageModal(false)}
-                >
-                  <ThemedText style={{ fontWeight: '700', color: '#111827' }}>Close</ThemedText>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {selectedJob && (
-              <KeyboardAwareScrollView bottomOffset={24} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 + bottomInset }} keyboardShouldPersistTaps="handled">
-                {/* Live badge */}
-                <View style={styles.liveBadge}>
-                  <View style={styles.liveDot} />
-                  <ThemedText style={styles.liveBadgeText}>LIVE SERVICE IN PROGRESS</ThemedText>
-                </View>
-
-                {/* Requirement Details */}
-                <ThemedText style={styles.requirementLabel}>REQUIREMENT DETAILS</ThemedText>
-                <ThemedText style={styles.serviceJobTitle}>{selectedJob.title}</ThemedText>
-                {!!(selectedJob as any).businessName && (
-                  <ThemedText style={styles.serviceJobDesc}>For {(selectedJob as any).businessName}</ThemedText>
-                )}
-                <ThemedText style={styles.serviceJobDesc}>{selectedJob.description}</ThemedText>
-
-                {/* Customer card */}
-                <View style={styles.customerCard}>
-                  <View style={styles.customerAvatar}>
-                    {selectedJob.employer?.image ? (
-                      <Image source={{ uri: selectedJob.employer.image }} style={styles.customerAvatarImg} contentFit="cover" />
-                    ) : (
-                      <User size={24} color="#9CA3AF" />
-                    )}
-                  </View>
-                  <View style={styles.customerInfo}>
-                    <ThemedText style={styles.customerName}>
-                      {selectedJob.employer?.name || 'Customer'} (Customer)
-                    </ThemedText>
-                    <ThemedText style={styles.customerBadge}>Verified Dodorez Silver User</ThemedText>
-                  </View>
-                  <View style={styles.customerContactBtns}>
-                    <TouchableOpacity
-                      style={[styles.contactBtn, { backgroundColor: '#DCFCE7' }]}
-                      onPress={() => {
-                        // This used to dial the customer's raw phone number through
-                        // the device's native dialer — switched to the in-app VoIP
-                        // call so it actually goes through our calling system
-                        // (push notifications, call logs, etc.) like everywhere else.
-                        if (!callTapAllowed()) return;
-                        leaveRoomFor(() => router.push({
-                          pathname: '/chat' as any,
-                          params: {
-                            jobId: selectedJob.id,
-                            name: selectedJob.employer?.name || 'Customer',
-                            jobTitle: selectedJob.title,
-                            autoCall: 'true',
-                          },
-                        }));
-                      }}
-                    >
-                      <Phone size={18} color="#16A34A" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.contactBtn, { backgroundColor: '#DBEAFE' }]}
-                      onPress={() => {
-                        leaveRoomFor(() => router.push({
-                          pathname: '/chat' as any,
-                          params: {
-                            jobId: selectedJob.id,
-                            name: selectedJob.employer?.name || 'Customer',
-                            jobTitle: selectedJob.title,
-                          },
-                        }));
-                      }}
-                    >
-                      <MessageSquare size={18} color="#2563EB" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Navigate button — a remote job has no physical site to
-                    navigate to at all. */}
-                {isDelivery(selectedJob) && manageJobDetail && (
-                  <View style={styles.deliveryInfo}>
-                    {!!purchaseSummary(manageJobDetail) && (
-                      <ThemedText style={styles.deliveryInfoStrong}>{purchaseSummary(manageJobDetail)}</ThemedText>
-                    )}
-                    {!!manageJobDetail.pickup_address && (
-                      <ThemedText style={styles.deliveryInfoText}>Pick up at: {manageJobDetail.pickup_address}</ThemedText>
-                    )}
-                    {!!manageJobDetail.dropoff_address && (
-                      <ThemedText style={styles.deliveryInfoText}>Deliver to: {manageJobDetail.dropoff_address}</ThemedText>
-                    )}
-                    {!!manageJobDetail.pickup_details?.recipient_name && (
-                      <TouchableOpacity
-                        disabled={!manageJobDetail.pickup_details?.recipient_phone}
-                        onPress={() => Linking.openURL(`tel:${manageJobDetail.pickup_details.recipient_phone}`)}
-                      >
-                        <ThemedText style={styles.deliveryInfoText}>
-                          Hand it to: {manageJobDetail.pickup_details.recipient_name}
-                          {manageJobDetail.pickup_details?.recipient_phone ? ` · call ${manageJobDetail.pickup_details.recipient_phone}` : ''}
-                          {' '}— they have the drop-off code
-                        </ThemedText>
-                      </TouchableOpacity>
-                    )}
-                    {!!manageJobDetail.dropoff_notes && (
-                      <ThemedText style={styles.deliveryInfoText}>Instructions: {manageJobDetail.dropoff_notes}</ThemedText>
-                    )}
-                  </View>
-                )}
-                {selectedJob.serviceMode !== 'REMOTE' && manageJobDetail?.shape?.venue !== 'PROVIDER_PLACE' && (
-                  <TouchableOpacity style={styles.navigateBtn} onPress={handleNavigateToSite}>
-                    <NavIcon size={20} color="#fff" />
-                    <ThemedText style={styles.navigateBtnText}>
-                      {navigationTarget(selectedJob, manageJobDetail)?.title === 'Drop-off'
-                        ? 'Navigate to Drop-off (Maps)'
-                        : 'Navigate to Site (Maps)'}
-                    </ThemedText>
-                  </TouchableOpacity>
-                )}
-
-                {/* Mark as Completed only becomes reachable once the job is
-                    actually IN_PROGRESS (i.e. Start Job's location check has
-                    passed) — until then this is a Start Job button instead,
-                    so completing a job you never actually started/reached is
-                    no longer possible from this screen. */}
-                {liveStatus === 'DISPUTED' ? (
-                  // Either side can now dispute before the work starts (a
-                  // collected delivery) — without this the sheet fell through
-                  // to the last branch and offered "Start Job".
-                  <ThemedText style={styles.completeDisclaimer}>
-                    This job is under review. Our team will get back to you within 24 hours.
-                  </ThemedText>
-                ) : manageJobDetail?.steps?.includes('PAY_UPFRONT') && !manageJobDetail?.steps?.includes('PICKUP_PROOF') ? (
-                  // Priced up front — booked and paid, then check-in, hand-over,
-                  // updates and hand-back (docs/JOB_SHAPE_DESIGN.md phase 4).
-                  <CareJobPanel
-                    job={manageJobDetail}
-                    getCoords={currentCoords}
-                    onChanged={refreshManageDetail}
-                    onComplete={handleCompleteJob}
-                    onCustomerAbsent={handleCustomerAbsent}
-                    onMessage={(kind, title, message) => appAlert.show(kind, title, message)}
-                  />
-                ) : liveStatus === 'IN_PROGRESS' && isDelivery(selectedJob) && !isDelivered(manageJobDetail) ? (
-                  <>
-                    {/* "I'm at the drop-off": tells the customer, and starts the
-                        waiting clock there when waiting was agreed (trip_wait.py). */}
-                    <ArrivalPanel
-                      jobId={selectedJob.id}
-                      stop="dropoff"
-                      arrivedAt={manageJobDetail?.dropoff_arrived_at}
-                      customerExpected={false}
-                      wait={manageJobDetail?.trip_wait}
-                      getCoords={currentCoords}
-                      onArrived={refreshManageDetail}
-                      onCustomerAbsent={handleCustomerAbsent}
-                      onError={(title, message) => appAlert.show('error', title, message)}
-                    />
-                    <DeliveryHandover
-                      key={selectedJob.id}
-                      jobId={selectedJob.id}
-                      onDelivered={() => { setManageJobDetail((prev: any) => ({ ...prev, delivered_at: new Date().toISOString() })); refreshManageDetail(); }}
-                      recipientName={manageJobDetail?.pickup_details?.recipient_name}
-                      photoUrl={manageJobDetail?.dropoff_photo_url}
-                      onPhotoSaved={refreshManageDetail}
-                    />
-                  </>
-                ) : liveStatus === 'IN_PROGRESS' ? (
-                  <>
-                    {/* A delivered trip: what waiting paid, now no clock is running. */}
-                    <WaitResult wait={manageJobDetail?.trip_wait} />
-                    <ExtraWorkPanel jobId={selectedJob.id} onMessage={(kind, title, message) => appAlert.show(kind, title, message)} />
-                    <ThemedText style={styles.completeDisclaimer}>
-                      Please ensure you have finished all tasks before marking as completed.
-                    </ThemedText>
-                    <TouchableOpacity style={styles.completeJobBtn} onPress={handleCompleteJob}>
-                      <CheckCircle size={20} color="#fff" />
-                      <ThemedText style={styles.completeJobText}>Mark as Completed</ThemedText>
-                    </TouchableOpacity>
-                  </>
-                ) : liveStatus === 'ACCEPTED' && selectedJob.serviceMode === 'REMOTE' ? (
-                  // A remote job has no physical presence to verify — skip
-                  // the OTP/inspection step entirely and go straight to the
-                  // same materials+invoice form ON_SITE jobs reach after
-                  // completing inspection. Matches raise_invoice()'s
-                  // ACCEPTED-status allowance for REMOTE jobs server-side.
-                  <>
-                    <ThemedText style={styles.completeDisclaimer}>
-                      This is a remote engagement — no on-site inspection needed. Send the customer your invoice when ready.
-                    </ThemedText>
-                    {materials.map((m, idx) => (
-                      <View key={idx} style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
-                        <RNTextInput
-                          style={[styles.otpEntryInput, { flex: 2 }]}
-                          placeholder="Material"
-                          placeholderTextColor="#9CA3AF"
-                          value={m.name}
-                          onChangeText={(v) => setMaterials(prev => prev.map((mm, i) => i === idx ? { ...mm, name: v } : mm))}
-                        />
-                        <RNTextInput
-                          style={[styles.otpEntryInput, { flex: 1 }]}
-                          placeholder="Qty"
-                          placeholderTextColor="#9CA3AF"
-                          keyboardType="numeric"
-                          value={m.quantity}
-                          onChangeText={(v) => setMaterials(prev => prev.map((mm, i) => i === idx ? { ...mm, quantity: v } : mm))}
-                        />
-                        <RNTextInput
-                          style={[styles.otpEntryInput, { flex: 1 }]}
-                          placeholder="$/ea"
-                          placeholderTextColor="#9CA3AF"
-                          keyboardType="numeric"
-                          value={m.unit_cost}
-                          onChangeText={(v) => setMaterials(prev => prev.map((mm, i) => i === idx ? { ...mm, unit_cost: v } : mm))}
-                        />
-                      </View>
-                    ))}
-                    <TouchableOpacity
-                      style={styles.cancelJobBtn}
-                      onPress={() => setMaterials(prev => [...prev, { name: '', quantity: '', unit_cost: '' }])}
-                    >
-                      <ThemedText style={styles.cancelJobBtnText}>+ Add Material</ThemedText>
-                    </TouchableOpacity>
-                    <LabourHelper partsTotal={partsTotal} onUse={setInvoiceAmount} />
-                    <RNTextInput
-                      style={[styles.otpEntryInput, { fontSize: 17, fontWeight: '700' }]}
-                      placeholder="Invoice amount ($)"
-                      placeholderTextColor="#9CA3AF"
-                      keyboardType="numeric"
-                      value={invoiceAmount}
-                      onChangeText={setInvoiceAmount}
-                    />
-                    <KeepPreview
-                      jobId={selectedJob.id}
-                      amount={parseFloat(invoiceAmount) || 0}
-                      partsTotal={partsTotal}
-                      depositPercent={depositPercent}
-                      onDepositChange={setDepositPercent}
-                    />
-                    <RNTextInput
-                      style={styles.otpEntryInput}
-                      placeholder="What did you do? (optional)"
-                      placeholderTextColor="#9CA3AF"
-                      value={invoiceNotes}
-                      onChangeText={setInvoiceNotes}
-                    />
-                    <TouchableOpacity
-                      style={[styles.completeJobBtn, raisingInvoice && { opacity: 0.7 }]}
-                      onPress={handleRaiseInvoice}
-                      disabled={raisingInvoice}
-                    >
-                      <ThemedText style={styles.completeJobText}>
-                        {raisingInvoice ? 'Sending…' : 'Send Invoice'}
-                      </ThemedText>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.cancelJobBtn}
-                      onPress={() => setShowCancelJobModal(true)}
-                    >
-                      <XCircle size={18} color="#EF4444" />
-                      <ThemedText style={styles.cancelJobBtnText}>Cancel This Job</ThemedText>
-                    </TouchableOpacity>
-                  </>
-                ) : liveStatus === 'ACCEPTED' && selectedJob.jobKind === 'PICKUP_DROPOFF' && manageJobDetail?.pickup_confirmed_at
-                    // Only a quoted pickup is invoiced — a trip's fare was paid at booking.
-                    && !manageJobDetail?.steps?.includes('PAY_UPFRONT') ? (
-                  // Pickup already confirmed with a photo — same materials+
-                  // invoice form as the REMOTE case above, just a different
-                  // disclaimer. Matches raise_invoice()'s PICKUP_DROPOFF
-                  // branch server-side (gated on pickup_confirmed_at, not
-                  // inspection_completed_at).
-                  <>
-                    <ThemedText style={styles.completeDisclaimer}>
-                      {buyingForCustomer
-                        ? `Pickup confirmed. The items${manageJobDetail?.goods_amount != null ? ` ($${Number(manageJobDetail.goods_amount).toFixed(2)})` : ''} are paid back to you from the customer's held shopping money — invoice only your delivery charge.`
-                        : 'Pickup confirmed. Add any items/costs, then send the customer your invoice.'}
-                    </ThemedText>
-                    {!buyingForCustomer && materials.map((m, idx) => (
-                      <View key={idx} style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
-                        <RNTextInput
-                          style={[styles.otpEntryInput, { flex: 2 }]}
-                          placeholder="Item"
-                          placeholderTextColor="#9CA3AF"
-                          value={m.name}
-                          onChangeText={(v) => setMaterials(prev => prev.map((mm, i) => i === idx ? { ...mm, name: v } : mm))}
-                        />
-                        <RNTextInput
-                          style={[styles.otpEntryInput, { flex: 1 }]}
-                          placeholder="Qty"
-                          placeholderTextColor="#9CA3AF"
-                          keyboardType="numeric"
-                          value={m.quantity}
-                          onChangeText={(v) => setMaterials(prev => prev.map((mm, i) => i === idx ? { ...mm, quantity: v } : mm))}
-                        />
-                        <RNTextInput
-                          style={[styles.otpEntryInput, { flex: 1 }]}
-                          placeholder="$/ea"
-                          placeholderTextColor="#9CA3AF"
-                          keyboardType="numeric"
-                          value={m.unit_cost}
-                          onChangeText={(v) => setMaterials(prev => prev.map((mm, i) => i === idx ? { ...mm, unit_cost: v } : mm))}
-                        />
-                      </View>
-                    ))}
-                    {!buyingForCustomer && (
-                      <TouchableOpacity
-                        style={styles.cancelJobBtn}
-                        onPress={() => setMaterials(prev => [...prev, { name: '', quantity: '', unit_cost: '' }])}
-                      >
-                        <ThemedText style={styles.cancelJobBtnText}>+ Add Item</ThemedText>
-                      </TouchableOpacity>
-                    )}
-                    <RNTextInput
-                      style={[styles.otpEntryInput, { fontSize: 17, fontWeight: '700' }]}
-                      placeholder={buyingForCustomer ? 'Delivery charge ($)' : 'Invoice amount ($)'}
-                      placeholderTextColor="#9CA3AF"
-                      keyboardType="numeric"
-                      value={invoiceAmount}
-                      onChangeText={setInvoiceAmount}
-                    />
-                    <KeepPreview
-                      jobId={selectedJob.id}
-                      amount={parseFloat(invoiceAmount) || 0}
-                      partsTotal={partsTotal}
-                      depositPercent={depositPercent}
-                      onDepositChange={setDepositPercent}
-                    />
-                    <RNTextInput
-                      style={styles.otpEntryInput}
-                      placeholder="What did you do? (optional)"
-                      placeholderTextColor="#9CA3AF"
-                      value={invoiceNotes}
-                      onChangeText={setInvoiceNotes}
-                    />
-                    <TouchableOpacity
-                      style={[styles.completeJobBtn, raisingInvoice && { opacity: 0.7 }]}
-                      onPress={handleRaiseInvoice}
-                      disabled={raisingInvoice}
-                    >
-                      <ThemedText style={styles.completeJobText}>
-                        {raisingInvoice ? 'Sending…' : 'Send Invoice'}
-                      </ThemedText>
-                    </TouchableOpacity>
-                    {/* Once the order is collected the server refuses a cancel (it would
-                        be left with the provider) — a dispute instead. */}
-                    <TouchableOpacity
-                      style={styles.cancelJobBtn}
-                      onPress={() => (orderCollected ? setShowReportIssue(true) : setShowCancelJobModal(true))}
-                    >
-                      {orderCollected ? <AlertTriangle size={18} color="#EF4444" /> : <XCircle size={18} color="#EF4444" />}
-                      <ThemedText style={styles.cancelJobBtnText}>{orderCollected ? 'Report an Issue' : 'Cancel This Job'}</ThemedText>
-                    </TouchableOpacity>
-                  </>
-                ) : liveStatus === 'ACCEPTED' && selectedJob.jobKind === 'PICKUP_DROPOFF' ? (
-                  // The customer isn't physically at the pickup point (it's a
-                  // store), so the OTP-gated flow below can't apply — a
-                  // geofence-checked photo of what was picked up substitutes
-                  // for it instead.
-                  <>
-                    {/* A car-trunk or van load: the vehicle the customer was told is coming. */}
-                    {manageJobDetail?.vehicle && !manageJobDetail?.arrived_at && (
-                      <View style={styles.vehicleNote}>
-                        <VehicleIcon type={manageJobDetail.vehicle.vehicle_type} size={16} color="#1D4ED8" />
-                        <ThemedText style={styles.vehicleNoteText}>
-                          Come in your {manageJobDetail.vehicle.description}
-                          {manageJobDetail.vehicle.plate ? ` (${manageJobDetail.vehicle.plate})` : ''} — the customer was told it's the one coming.
-                        </ThemedText>
-                      </View>
-                    )}
-                    {/* "I'm here" at the pickup tells the customer, and starts
-                        the waiting clock when waiting was agreed (trip_wait.py). */}
-                    <ArrivalPanel
-                      jobId={selectedJob.id}
-                      arrivedAt={manageJobDetail?.arrived_at}
-                      customerExpected={false}
-                      wait={manageJobDetail?.trip_wait}
-                      getCoords={currentCoords}
-                      onArrived={refreshManageDetail}
-                      onCustomerAbsent={handleCustomerAbsent}
-                      onError={(title, message) => appAlert.show('error', title, message)}
-                    />
-                    {/* Store or person isn't known until the job's details are
-                        in: the store card drawn meanwhile was swapped out under
-                        the provider's finger. */}
-                    {!manageJobDetail ? (
-                      <ActivityIndicator style={{ marginVertical: 16 }} color="#9CA3AF" />
-                    ) : pickupFromPerson ? (
-                      <PickupFromPerson
-                        key={`${selectedJob.id}-${personChecksRound}`}
-                        jobId={selectedJob.id}
-                        item={manageJobDetail?.pickup_item}
-                        value={manageJobDetail?.item_value}
-                        details={manageJobDetail?.pickup_details}
-                        onCheckedChange={(checked, version) => { setPersonItemChecked(checked); setPersonChecksVersion(version); }}
-                        getCoords={currentCoords}
-                        onRefused={handlePickupRefused}
-                        onError={(title, message) => appAlert.show('error', title, message)}
-                      />
-                    ) : (
-                      <PickupAtStore
-                        details={manageJobDetail?.pickup_details}
-                        items={manageJobDetail?.shopping_list}
-                        buyForMe={buyingForCustomer}
-                        moneyHeld={goodsHeld}
-                      />
-                    )}
-                    <ThemedText style={styles.completeDisclaimer}>
-                      {buyingForCustomer
-                        ? 'Once you have the items, enter the receipt total and take a photo of the items with the receipt.'
-                        : pickupFromPerson
-                          ? 'Once you\'ve checked it, take a photo of the item to confirm pickup.'
-                          : "Once you've got everything, take a photo of the order to confirm pickup."}
-                    </ThemedText>
-                    {buyingForCustomer && (
-                      <>
-                        <RNTextInput
-                          style={[styles.otpEntryInput, { fontSize: 17, fontWeight: '700' }]}
-                          placeholder={`Paid at the store ($, up to ${Number(manageJobDetail?.purchase_limit ?? 0).toFixed(2)})`}
-                          placeholderTextColor="#9CA3AF"
-                          keyboardType="decimal-pad"
-                          value={goodsAmountText}
-                          onChangeText={setGoodsAmountText}
-                          editable={goodsHeld}
-                        />
-                        {!!goodsAmountText && !!goodsError && (
-                          <ThemedText style={[styles.completeDisclaimer, { color: '#B45309' }]}>{goodsError}</ThemedText>
-                        )}
-                        {businessShop && (
-                          <View style={styles.paidWithRow}>
-                            {([['OWN', 'My own money'], ['COMPANY', "The business's card"]] as const).map(([key, label]) => (
-                              <TouchableOpacity
-                                key={key}
-                                style={[styles.paidWithChip, paidWith === key && styles.paidWithChipOn]}
-                                onPress={() => setPaidWith(key)}
-                              >
-                                <ThemedText style={[styles.paidWithText, paidWith === key && styles.paidWithTextOn]}>{label}</ThemedText>
-                              </TouchableOpacity>
-                            ))}
-                          </View>
-                        )}
-                        {businessShop && paidWith && (
-                          <ThemedText style={styles.completeDisclaimer}>
-                            {paidWith === 'OWN'
-                              ? 'Paid back to you, with the shopping fee, when the delivery is done.'
-                              : `Paid back to ${(selectedJob as any).businessName}, with the shopping fee.`}
-                          </ThemedText>
-                        )}
-                      </>
-                    )}
-                    {pickupPhoto ? (
-                      <Image source={{ uri: pickupPhoto.uri }} style={styles.pickupPhotoPreview} contentFit="cover" />
-                    ) : null}
-                    <TouchableOpacity
-                      style={[styles.pickupPhotoBtn, preparingPhoto && { opacity: 0.6 }]}
-                      onPress={handlePickPickupPhoto}
-                      disabled={preparingPhoto || confirmingPickup}
-                    >
-                      {preparingPhoto ? <ActivityIndicator size="small" color="#111827" /> : <Camera size={18} color="#111827" />}
-                      <ThemedText style={styles.pickupPhotoBtnText}>
-                        {preparingPhoto ? 'Preparing photo…' : pickupPhoto ? 'Retake Photo' : 'Take Photo'}
-                      </ThemedText>
-                    </TouchableOpacity>
-                    {tripUnpaid && (
-                      <ThemedText style={[styles.completeDisclaimer, { color: '#B45309' }]}>
-                        Waiting for the customer to book and pay your fare — collect it once they have.
-                      </ThemedText>
-                    )}
-                    <TouchableOpacity
-                      style={[styles.completeJobBtn, (tripUnpaid || !pickupPhoto || confirmingPickup || (buyingForCustomer && (!goodsHeld || !!goodsError)) || (pickupFromPerson && !personItemChecked)) && { opacity: 0.5 }]}
-                      onPress={handleConfirmPickup}
-                      disabled={tripUnpaid || !pickupPhoto || confirmingPickup || (buyingForCustomer && (!goodsHeld || !!goodsError)) || (pickupFromPerson && !personItemChecked)}
-                    >
-                      <CheckCircle size={20} color="#fff" />
-                      <ThemedText style={styles.completeJobText}>
-                        {confirmingPickup ? 'Confirming…' : 'Confirm Pickup'}
-                      </ThemedText>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.cancelJobBtn}
-                      onPress={() => setShowCancelJobModal(true)}
-                    >
-                      <XCircle size={18} color="#EF4444" />
-                      <ThemedText style={styles.cancelJobBtnText}>Cancel This Job</ThemedText>
-                    </TouchableOpacity>
-                  </>
-                ) : liveStatus === 'ACCEPTED' ? (
-                  <>
-                    <ArrivalPanel
-                      jobId={selectedJob.id}
-                      arrivedAt={manageJobDetail?.arrived_at}
-                      customerExpected={(manageJobDetail?.shape?.venue ?? 'CUSTOMER_PLACE') === 'CUSTOMER_PLACE'}
-                      getCoords={currentCoords}
-                      onArrived={refreshManageDetail}
-                      onCustomerAbsent={handleCustomerAbsent}
-                      onError={(title, message) => appAlert.show('error', title, message)}
-                    />
-                    <ThemedText style={styles.completeDisclaimer}>
-                      Once you've arrived, ask the customer for the 4-digit code on their screen to start inspecting.
-                    </ThemedText>
-                    <TouchableOpacity
-                      style={[styles.completeJobBtn, requestingOtp && { opacity: 0.7 }]}
-                      onPress={handleRequestInspectionOtp}
-                      disabled={requestingOtp}
-                    >
-                      <MapPin size={20} color="#fff" />
-                      <ThemedText style={styles.completeJobText}>
-                        {requestingOtp ? 'Sending…' : 'Request Inspection Code'}
-                      </ThemedText>
-                    </TouchableOpacity>
-                    <ThemedText style={styles.otpEntryLabel}>Enter the 4-digit code</ThemedText>
-                    <View style={styles.otpContainer}>
-                      <Pressable onPress={() => otpInputRef.current?.focus()} style={styles.otpBoxesRow}>
-                        {[0, 1, 2, 3].map((idx) => {
-                          const digit = otpInput[idx] || '';
-                          const isFocused = otpInput.length === idx || (otpInput.length === 4 && idx === 3);
-                          return (
-                            <View
-                              key={idx}
-                              style={[
-                                styles.otpBox,
-                                digit ? styles.otpBoxFilled : null,
-                                isFocused ? styles.otpBoxFocused : null,
-                              ]}
-                            >
-                              <ThemedText style={[styles.otpDigit, digit ? styles.otpDigitFilled : null]}>
-                                {digit}
-                              </ThemedText>
-                            </View>
-                          );
-                        })}
-                      </Pressable>
-                      <RNTextInput
-                        ref={otpInputRef}
-                        style={styles.hiddenOtpInput}
-                        keyboardType="number-pad"
-                        maxLength={4}
-                        value={otpInput}
-                        onChangeText={(text) => setOtpInput(text.replace(/[^0-9]/g, ''))}
-                        caretHidden
-                      />
-                    </View>
-                    <TouchableOpacity
-                      style={[styles.completeJobBtn, (verifyingOtp || otpInput.length !== 4) && { opacity: 0.5 }]}
-                      onPress={handleVerifyInspectionOtp}
-                      disabled={verifyingOtp || otpInput.length !== 4}
-                    >
-                      <ThemedText style={styles.completeJobText}>
-                        {verifyingOtp ? 'Verifying…' : 'Verify & Start Inspection'}
-                      </ThemedText>
-                    </TouchableOpacity>
-                    {/* Cancel is only offered before starting — once
-                        IN_PROGRESS, the job must go through completion or a
-                        dispute instead, same boundary the backend enforces. */}
-                    <TouchableOpacity
-                      style={styles.cancelJobBtn}
-                      onPress={() => setShowCancelJobModal(true)}
-                    >
-                      <XCircle size={18} color="#EF4444" />
-                      <ThemedText style={styles.cancelJobBtnText}>Cancel This Job</ThemedText>
-                    </TouchableOpacity>
-                  </>
-                ) : liveStatus === 'INSPECTING' && !manageJobDetail?.inspection_completed_at ? (
-                  <>
-                    <InspectionReportForm
-                      jobId={selectedJob.id}
-                      getCoords={currentCoords}
-                      onSubmitted={refreshManageDetail}
-                      onError={(title, message) => appAlert.show('error', title, message)}
-                    />
-                    <TouchableOpacity
-                      style={styles.cancelJobBtn}
-                      onPress={() => setShowCancelJobModal(true)}
-                    >
-                      <XCircle size={18} color="#EF4444" />
-                      <ThemedText style={styles.cancelJobBtnText}>Cancel This Job</ThemedText>
-                    </TouchableOpacity>
-                  </>
-                ) : liveStatus === 'INSPECTING' && manageJobDetail?.inspection_completed_at ? (
-                  <>
-                    <InspectionStatus
-                      jobId={selectedJob.id}
-                      confidence={manageJobDetail?.inspection_confidence}
-                      disputed={!!manageJobDetail?.inspection_disputed_at}
-                      onChanged={refreshManageDetail}
-                      onError={(title, message) => appAlert.show('error', title, message)}
-                    />
-                    <ThemedText style={styles.completeDisclaimer}>
-                      Add any raw materials needed, then send the customer your invoice.
-                    </ThemedText>
-                    {materials.map((m, idx) => (
-                      <View key={idx} style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
-                        <RNTextInput
-                          style={[styles.otpEntryInput, { flex: 2 }]}
-                          placeholder="Material"
-                          placeholderTextColor="#9CA3AF"
-                          value={m.name}
-                          onChangeText={(v) => setMaterials(prev => prev.map((mm, i) => i === idx ? { ...mm, name: v } : mm))}
-                        />
-                        <RNTextInput
-                          style={[styles.otpEntryInput, { flex: 1 }]}
-                          placeholder="Qty"
-                          placeholderTextColor="#9CA3AF"
-                          keyboardType="numeric"
-                          value={m.quantity}
-                          onChangeText={(v) => setMaterials(prev => prev.map((mm, i) => i === idx ? { ...mm, quantity: v } : mm))}
-                        />
-                        <RNTextInput
-                          style={[styles.otpEntryInput, { flex: 1 }]}
-                          placeholder="$/ea"
-                          placeholderTextColor="#9CA3AF"
-                          keyboardType="numeric"
-                          value={m.unit_cost}
-                          onChangeText={(v) => setMaterials(prev => prev.map((mm, i) => i === idx ? { ...mm, unit_cost: v } : mm))}
-                        />
-                      </View>
-                    ))}
-                    <TouchableOpacity
-                      style={styles.cancelJobBtn}
-                      onPress={() => setMaterials(prev => [...prev, { name: '', quantity: '', unit_cost: '' }])}
-                    >
-                      <ThemedText style={styles.cancelJobBtnText}>+ Add Material</ThemedText>
-                    </TouchableOpacity>
-                    <LabourHelper partsTotal={partsTotal} onUse={setInvoiceAmount} />
-                    <RNTextInput
-                      style={[styles.otpEntryInput, { fontSize: 17, fontWeight: '700' }]}
-                      placeholder="Invoice amount ($)"
-                      placeholderTextColor="#9CA3AF"
-                      keyboardType="numeric"
-                      value={invoiceAmount}
-                      onChangeText={setInvoiceAmount}
-                    />
-                    <KeepPreview
-                      jobId={selectedJob.id}
-                      amount={parseFloat(invoiceAmount) || 0}
-                      partsTotal={partsTotal}
-                      depositPercent={depositPercent}
-                      onDepositChange={setDepositPercent}
-                    />
-                    <RNTextInput
-                      style={styles.otpEntryInput}
-                      placeholder="What did you inspect? (optional)"
-                      placeholderTextColor="#9CA3AF"
-                      value={invoiceNotes}
-                      onChangeText={setInvoiceNotes}
-                    />
-                    <TouchableOpacity
-                      style={[styles.completeJobBtn, raisingInvoice && { opacity: 0.7 }]}
-                      onPress={handleRaiseInvoice}
-                      disabled={raisingInvoice}
-                    >
-                      <ThemedText style={styles.completeJobText}>
-                        {raisingInvoice ? 'Sending…' : 'Send Invoice'}
-                      </ThemedText>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.cancelJobBtn}
-                      onPress={() => setShowCancelJobModal(true)}
-                    >
-                      <XCircle size={18} color="#EF4444" />
-                      <ThemedText style={styles.cancelJobBtnText}>Cancel This Job</ThemedText>
-                    </TouchableOpacity>
-                  </>
-                ) : liveStatus === 'INVOICE_PENDING' ? (
-                  <>
-                    {manageJobDetail?.inspection_completed_at && manageJobDetail?.inspection_confidence !== 'CONFIRMED' && (
-                      <InspectionStatus
-                        jobId={selectedJob.id}
-                        confidence={manageJobDetail?.inspection_confidence}
-                        disputed={!!manageJobDetail?.inspection_disputed_at}
-                        onChanged={refreshManageDetail}
-                        onError={(title, message) => appAlert.show('error', title, message)}
-                      />
-                    )}
-                    {manageJobDetail?.invoice?.status === 'COUNTERED' ? (
-                      <>
-                        <ThemedText style={styles.completeDisclaimer}>
-                          Customer countered with ${manageJobDetail.invoice.counter_amount} — accept or reject.
-                        </ThemedText>
-                        <TouchableOpacity
-                          style={[styles.completeJobBtn, respondingToCounter && { opacity: 0.7 }]}
-                          onPress={() => handleRespondToCounter(true)}
-                          disabled={respondingToCounter}
-                        >
-                          <ThemedText style={styles.completeJobText}>Accept ${manageJobDetail.invoice.counter_amount}</ThemedText>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.cancelJobBtn}
-                          onPress={() => handleRespondToCounter(false)}
-                          disabled={respondingToCounter}
-                        >
-                          <ThemedText style={styles.cancelJobBtnText}>Reject — Offer Original Price</ThemedText>
-                        </TouchableOpacity>
-                      </>
-                    ) : (
-                      <>
-                        <ThemedText style={styles.completeDisclaimer}>
-                          {manageJobDetail?.invoice?.status === 'ACCEPTED'
-                            ? 'Invoice accepted — waiting for the customer to pay.'
-                            : manageJobDetail?.invoice?.status === 'COUNTER_REJECTED'
-                            ? `You declined their offer — waiting for the customer to accept the original $${manageJobDetail.invoice.amount}${orderCollected ? '' : ' or cancel'}.`
-                            : 'Invoice sent — waiting for the customer to respond.'}
-                        </ThemedText>
-                        {/* Once the order is collected the server refuses a cancel (it would
-                            be left with the provider) — a dispute instead. */}
-                        <TouchableOpacity
-                          style={styles.cancelJobBtn}
-                          onPress={() => (orderCollected ? setShowReportIssue(true) : setShowCancelJobModal(true))}
-                        >
-                          {orderCollected ? <AlertTriangle size={18} color="#EF4444" /> : <XCircle size={18} color="#EF4444" />}
-                          <ThemedText style={styles.cancelJobBtnText}>{orderCollected ? 'Report an Issue' : 'Cancel This Job'}</ThemedText>
-                        </TouchableOpacity>
-                      </>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <ThemedText style={styles.completeDisclaimer}>
-                      Start the job once you've arrived at the customer's location.
-                    </ThemedText>
-                    <TouchableOpacity style={styles.completeJobBtn} onPress={handleStartJob}>
-                      <MapPin size={20} color="#fff" />
-                      <ThemedText style={styles.completeJobText}>Start Job (Arrived at Site)</ThemedText>
-                    </TouchableOpacity>
-                  </>
-                )}
-
-                {/* Close */}
-                <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShowManageModal(false)}>
-                  <ThemedText style={styles.closeModalText}>Close</ThemedText>
-                </TouchableOpacity>
-              </KeyboardAwareScrollView>
-            )}
-          </RNAnimated.View>
-        </View>
-      </Popup>
-
-      {/* Cancel Job Reason Modal */}
-      <ReportIssueModal
-        jobId={selectedJob?.id ?? null}
-        visible={showReportIssue}
-        onClose={() => setShowReportIssue(false)}
-        onFiled={() => {
-          // A disputed job leaves the active list (get_active_for_provider).
-          const id = selectedJob?.id;
-          setShowManageModal(false);
-          if (id) {
-            setJobs(prev => prev.filter(j => j.id !== id));
-            setActiveJobId(prev => (prev === id ? null : prev));
-          }
-        }}
-      />
-      <Popup closeOn={cancellingJob ? 'none' : 'back'}
-        visible={showCancelJobModal}
-        transparent
-        animationType="fade"
-        onClose={() => setShowCancelJobModal(false)}
-      >
-        <View style={styles.cancelJobOverlay}>
-          <View style={styles.cancelJobModalCard}>
-            <ThemedText style={styles.cancelJobModalTitle}>Withdraw from Job</ThemedText>
-            <ThemedText style={styles.cancelJobModalSubtitle}>
-              The customer will be notified. This may affect your reliability score.
-            </ThemedText>
-
-            <View style={{ gap: 8, marginTop: 16 }}>
-              {PROVIDER_CANCEL_REASONS.map((reason) => (
-                <TouchableOpacity
-                  key={reason}
-                  style={[
-                    styles.cancelReasonChip,
-                    cancelJobReason === reason && styles.cancelReasonChipActive,
-                  ]}
-                  onPress={() => setCancelJobReason(reason)}
-                >
-                  <ThemedText style={[
-                    styles.cancelReasonChipText,
-                    cancelJobReason === reason && styles.cancelReasonChipTextActive,
-                  ]}>
-                    {reason}
-                  </ThemedText>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {cancelJobReason === 'Other' && (
-              <RNTextInput
-                style={styles.cancelOtherInput}
-                placeholder="Please describe the reason"
-                placeholderTextColor="#9CA3AF"
-                value={otherCancelJobReason}
-                onChangeText={setOtherCancelJobReason}
-                multiline
-              />
-            )}
-
-            <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
-              <TouchableOpacity
-                style={styles.cancelJobModalSecondaryBtn}
-                onPress={() => setShowCancelJobModal(false)}
-              >
-                <ThemedText style={styles.cancelJobModalSecondaryBtnText}>Go Back</ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.cancelJobModalPrimaryBtn,
-                  (!cancelJobReason || (cancelJobReason === 'Other' && !otherCancelJobReason.trim()) || cancellingJob) && { opacity: 0.5 },
-                ]}
-                disabled={!cancelJobReason || (cancelJobReason === 'Other' && !otherCancelJobReason.trim()) || cancellingJob}
-                onPress={handleConfirmCancelJob}
-              >
-                <ThemedText style={styles.cancelJobModalPrimaryBtnText}>
-                  {cancellingJob ? 'Cancelling...' : 'Confirm Cancel'}
-                </ThemedText>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Popup>
 
       {/* Exit App Modal — double-back-press to exit, matching the customer
           app's Home/Login screens */}
@@ -3280,19 +1794,6 @@ const filteredJobs = jobs.filter((job) => {
         buttons={[
           { text: 'Stay', variant: 'secondary' },
           { text: 'Exit', onPress: () => BackHandler.exitApp() },
-        ]}
-      />
-
-      {/* Location is off: the shared dialog, straight to Settings. */}
-      <AppAlert
-        visible={showLocationModal}
-        type="info"
-        title="Location Access Needed"
-        message="We need to confirm you've reached the site before starting this job. Enable location access for Dodorez in your phone's settings, then come back and try again."
-        onDismiss={() => setShowLocationModal(false)}
-        buttons={[
-          { text: 'Cancel', variant: 'secondary' },
-          { text: 'Open Settings', onPress: () => Linking.openSettings() },
         ]}
       />
 
@@ -3417,17 +1918,6 @@ const styles = StyleSheet.create({
   },
   notifNudgeBtnText: { fontSize: 12, fontFamily: Fonts.poppinsBold, color: '#111827' },
   notifNudgeDismiss: { padding: 4 },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 80,
-  },
-  loadingText: {
-    marginTop: 10,
-    fontFamily: Fonts.poppins,
-    color: '#6B7280',
-  },
   header: {
     paddingHorizontal: 20,
     paddingBottom: 0,
@@ -3769,9 +2259,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.poppinsMedium,
     color: '#92400E',
   },
-  deliveryInfo: { backgroundColor: '#F0F9FF', borderRadius: 14, padding: 12, gap: 4, marginBottom: 10 },
-  deliveryInfoStrong: { fontSize: 13, lineHeight: 18, fontFamily: Fonts.poppinsSemiBold, color: '#0C4A6E' },
-  deliveryInfoText: { fontSize: 13, lineHeight: 18, fontFamily: Fonts.poppins, color: '#0F172A' },
   skillBadgeLocked: { backgroundColor: '#F9FAFB', borderColor: '#E5E7EB' },
   skillTextLocked: { color: '#9CA3AF' },
   matchLine: { fontSize: 12, lineHeight: 16, fontFamily: Fonts.poppinsSemiBold, color: '#B45309', marginTop: -4, marginBottom: 10 },
@@ -3944,184 +2431,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
-  cancelJobOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  cancelJobModalCard: {
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    padding: 24,
-    width: '100%',
-    maxWidth: 400,
-  },
-  cancelJobModalTitle: {
-    fontSize: 18,
-    lineHeight: 24,
-    fontFamily: Fonts.poppinsBold,
-    color: '#111827',
-  },
-  cancelJobModalSubtitle: {
-    fontSize: 13,
-    lineHeight: 19,
-    fontFamily: Fonts.poppins,
-    color: '#6B7280',
-    marginTop: 4,
-  },
-  cancelReasonChip: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
-  },
-  cancelReasonChipActive: {
-    borderColor: '#EF4444',
-    backgroundColor: '#FEF2F2',
-  },
-  cancelReasonChipText: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontFamily: Fonts.poppinsSemiBold,
-    color: '#374151',
-  },
-  cancelReasonChipTextActive: {
-    color: '#EF4444',
-  },
-  cancelOtherInput: {
-    marginTop: 8,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    borderRadius: 14,
-    padding: 12,
-    minHeight: 70,
-    textAlignVertical: 'top',
-    fontFamily: Fonts.poppins,
-    fontSize: 14,
-    color: '#111827',
-  },
-  cancelJobModalSecondaryBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 16,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-  },
-  cancelJobModalSecondaryBtnText: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontFamily: Fonts.poppinsBold,
-    color: '#374151',
-  },
-  cancelJobModalPrimaryBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 16,
-    backgroundColor: '#EF4444',
-    alignItems: 'center',
-  },
-  cancelJobModalPrimaryBtnText: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontFamily: Fonts.poppinsBold,
-    color: '#fff',
-  },
 
   // Exit App modal
-  exitModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  exitModalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 32,
-    padding: 32,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 5,
-  },
-  exitIconContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#FFFBEB',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  exitTitle: {
-    fontSize: 22,
-    lineHeight: 28,
-    fontFamily: Fonts.poppinsBold,
-    color: '#111827',
-    marginBottom: 8,
-  },
-  exitMessage: {
-    fontSize: 15,
-    fontFamily: Fonts.poppins,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 28,
-  },
-  exitActionRow: {
-    flexDirection: 'row',
-    gap: 16,
-    width: '100%',
-  },
-  exitButton: {
-    flex: 1,
-    height: 56,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 8,
-  },
-  exitCancelButton: {
-    backgroundColor: '#F3F4F6',
-  },
-  exitCancelText: {
-    fontSize: 16,
-    lineHeight: 22,
-    fontFamily: Fonts.poppinsBold,
-    color: '#6B7280',
-  },
-  exitConfirmButton: {
-    backgroundColor: '#111827',
-  },
-  exitConfirmText: {
-    fontSize: 16,
-    lineHeight: 22,
-    fontFamily: Fonts.poppinsBold,
-    color: '#fff',
-  },
 
   // Service Room manage sheet
-  manageSheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: 24,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
-    // Full-screen instead of a partial (maxHeight 90%) bottom sheet — the
-    // Service Room's content (materials list, invoice fields, timer) could
-    // run long enough to feel cramped in a partial sheet, and "sometimes
-    // scroll doesn't move things up" traced to the drag-to-dismiss
-    // PanResponder below covering the ENTIRE sheet (including the inner
-    // ScrollView), fighting it for vertical touch gestures — scoping that
-    // gesture to just the drag handle (see dragHandle below) needed the
-    // extra room a full-height sheet gives that handle to live in on its own.
-    height: '100%',
-  },
   dragHandle: {
     width: 40,
     height: 4,
@@ -4129,302 +2442,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#D1D5DB',
     alignSelf: 'center',
     marginBottom: 16,
-  },
-  manageTitle: {
-    fontSize: 22,
-    lineHeight: 28,
-    fontFamily: Fonts.poppinsBold,
-    color: '#111827',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  manageSubtitle: {
-    fontSize: 13,
-    lineHeight: 19,
-    fontFamily: Fonts.poppins,
-    color: '#9CA3AF',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  manageDivider: {
-    height: 1,
-    backgroundColor: '#F3F4F6',
-    marginBottom: 16,
-  },
-  liveBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#FEF2F2',
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 20,
-  },
-  liveDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: '#EF4444',
-  },
-  liveBadgeText: {
-    fontSize: 13,
-    lineHeight: 19,
-    fontFamily: Fonts.poppinsBold,
-    color: '#EF4444',
-    letterSpacing: 0.5,
-  },
-  requirementLabel: {
-    fontSize: 11,
-    lineHeight: 17,
-    fontFamily: Fonts.poppinsBold,
-    color: '#9CA3AF',
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  serviceJobTitle: {
-    fontSize: 22,
-    lineHeight: 28,
-    fontFamily: Fonts.poppinsBold,
-    color: '#111827',
-    marginBottom: 8,
-  },
-  serviceJobDesc: {
-    fontSize: 14,
-    fontFamily: Fonts.poppins,
-    color: '#6B7280',
-    lineHeight: 22,
-    marginBottom: 20,
-  },
-  customerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 20,
-    gap: 12,
-  },
-  customerAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#E5E7EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  customerAvatarImg: {
-    width: '100%',
-    height: '100%',
-  },
-  customerInfo: {
-    flex: 1,
-  },
-  customerName: {
-    fontSize: 15,
-    lineHeight: 21,
-    fontFamily: Fonts.poppinsBold,
-    color: '#111827',
-    marginBottom: 2,
-  },
-  customerBadge: {
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: Fonts.poppinsSemiBold,
-    color: '#16A34A',
-  },
-  customerContactBtns: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  contactBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  navigateBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: '#2563EB',
-    paddingVertical: 16,
-    borderRadius: 16,
-    marginBottom: 16,
-  },
-  navigateBtnText: {
-    fontSize: 15,
-    lineHeight: 21,
-    fontFamily: Fonts.poppinsBold,
-    color: '#fff',
-  },
-  completeDisclaimer: {
-    fontSize: 12,
-    fontFamily: Fonts.poppins,
-    color: '#9CA3AF',
-    textAlign: 'center',
-    marginBottom: 14,
-    lineHeight: 18,
-  },
-  vehicleNote: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 12, marginBottom: 10,
-    borderRadius: 14, backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE',
-  },
-  vehicleNoteText: { flex: 1, fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppinsSemiBold, color: '#1E3A8A' },
-  completeJobBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: '#16A34A',
-    paddingVertical: 16,
-    borderRadius: 16,
-    marginBottom: 14,
-  },
-  completeJobText: {
-    fontSize: 16,
-    lineHeight: 22,
-    fontFamily: Fonts.poppinsBold,
-    color: '#fff',
-  },
-  cancelJobBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: '#FEE2E2',
-    backgroundColor: '#FEF2F2',
-    marginBottom: 14,
-  },
-  cancelJobBtnText: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontFamily: Fonts.poppinsBold,
-    color: '#EF4444',
-  },
-  paidWithRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
-  paidWithChip: { flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center', backgroundColor: '#fff' },
-  paidWithChipOn: { backgroundColor: '#FFFBEB', borderColor: '#FFCE48' },
-  paidWithText: { fontSize: 13, lineHeight: 18, fontFamily: Fonts.poppins, color: '#374151' },
-  paidWithTextOn: { fontFamily: Fonts.poppinsBold, color: '#111827' },
-  pickupPhotoBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
-    marginBottom: 14,
-  },
-  pickupPhotoBtnText: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontFamily: Fonts.poppinsBold,
-    color: '#111827',
-  },
-  pickupPhotoPreview: {
-    width: '100%',
-    height: 160,
-    borderRadius: 16,
-    marginBottom: 14,
-    backgroundColor: '#F3F4F6',
-  },
-  otpEntryInput: {
-    height: 48,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    paddingHorizontal: 14,
-    marginBottom: 10,
-    fontSize: 14,
-    color: '#111827',
-    // No explicit background meant this picked up whatever the OS/native
-    // TextInput default was — on a device with system dark mode, Android's
-    // auto dark-theming for unstyled native inputs can wash the default-gray
-    // placeholder text down to near-invisible against it. Forcing white here
-    // and an explicit placeholderTextColor on each input below removes any
-    // dependency on OS theme defaults.
-    backgroundColor: '#fff',
-  },
-  otpEntryLabel: {
-    fontSize: 12,
-    fontFamily: Fonts.poppinsSemiBold,
-    color: '#9CA3AF',
-    textAlign: 'center',
-    marginTop: 12,
-  },
-  otpContainer: {
-    marginVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    height: 64,
-  },
-  otpBoxesRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-    width: '100%',
-  },
-  otpBox: {
-    width: 58,
-    height: 62,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  otpBoxFilled: {
-    borderColor: '#FDE68A',
-    backgroundColor: '#FFFBEB',
-  },
-  otpBoxFocused: {
-    borderColor: '#FFCE48',
-    borderWidth: 2,
-    backgroundColor: '#FFFFFF',
-  },
-  otpDigit: {
-    fontSize: 24,
-    lineHeight: 30,
-    fontFamily: Fonts.poppinsBold,
-    color: '#9CA3AF',
-    textAlign: 'center',
-    includeFontPadding: false,
-  },
-  otpDigitFilled: {
-    color: '#111827',
-  },
-  hiddenOtpInput: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    opacity: 0,
-    color: 'transparent',
-  },
-  closeModalBtn: {
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  closeModalText: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontFamily: Fonts.poppinsSemiBold,
-    color: '#9CA3AF',
   },
 
   // Rating modal
@@ -4505,104 +2522,4 @@ const styles = StyleSheet.create({
   },
 
   // Final success modal
-  finalSuccessCard: {
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    padding: 32,
-    alignItems: 'center',
-    width: '85%',
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  finalSuccessTitle: {
-    fontSize: 24,
-    lineHeight: 30,
-    fontFamily: Fonts.poppinsBold,
-    color: '#111827',
-    marginTop: 16,
-    textAlign: 'center',
-  },
-  finalSuccessSubtitle: {
-    fontSize: 14,
-    fontFamily: Fonts.poppins,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginTop: 10,
-    lineHeight: 21,
-  },
-  finalSuccessBtn: {
-    backgroundColor: '#FFCE48',
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-    borderRadius: 14,
-    marginTop: 24,
-  },
-  finalSuccessBtnText: {
-    fontSize: 15,
-    lineHeight: 21,
-    fontFamily: Fonts.poppinsBold,
-    color: '#111827',
-  },
-  locationModalCard: {
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    padding: 28,
-    alignItems: 'center',
-    width: '85%',
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  locationModalIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#FEF2F2',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  locationModalTitle: {
-    fontSize: 20,
-    lineHeight: 26,
-    fontFamily: Fonts.poppinsBold,
-    color: '#111827',
-    marginTop: 16,
-    textAlign: 'center',
-  },
-  locationModalSubtitle: {
-    fontSize: 14,
-    fontFamily: Fonts.poppins,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginTop: 10,
-    lineHeight: 21,
-  },
-  locationModalPrimaryBtn: {
-    backgroundColor: '#FFCE48',
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-    borderRadius: 14,
-    marginTop: 24,
-    width: '100%',
-    alignItems: 'center',
-  },
-  locationModalPrimaryBtnText: {
-    fontSize: 15,
-    lineHeight: 21,
-    fontFamily: Fonts.poppinsBold,
-    color: '#111827',
-  },
-  locationModalSecondaryBtn: {
-    paddingVertical: 12,
-    marginTop: 4,
-  },
-  locationModalSecondaryBtnText: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontFamily: Fonts.poppinsSemiBold,
-    color: '#9CA3AF',
-  },
 });

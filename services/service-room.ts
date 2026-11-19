@@ -1,48 +1,60 @@
 import { router } from 'expo-router';
 
-// Opening a job's Service Room from anywhere — job details, the Jobs tab, the
-// map, a notification (in the list or tapped on the phone).
+// Opening a job's Service Room from anywhere — the dashboard, job details,
+// the Jobs tab, the map, a notification (in the list or tapped on the phone).
 //
-// It's a sheet on the dashboard (Home). These places used to router.push
-// '/(tabs)' with an openServiceRoom param — and a push always adds a screen
-// (expo-router 6), so each one built a whole second dashboard over the one
-// already open: every tab, its GPS watch, its first loads. The sheet opened
-// inside that new dashboard while it was still starting up, and each load
-// landing redrew it all — the Service Room stuck, freed up, stuck again; and
-// every round trip stacked another dashboard underneath.
-//
-// Now: back to the dashboard that's open (dismissTo pops to it; from a tab
-// it's already there), and Home opens the sheet once it's in view.
+// It's a screen of its own (app/service-room.tsx). It used to be a sheet drawn
+// inside the dashboard, so everything the dashboard did — a GPS fix, a list
+// reload, a socket message — redrew the whole sheet, and every keystroke in
+// it redrew the dashboard: the room scrolled, stuck, freed up, stuck again.
+// Patching each cause one by one never held; a screen of its own can't be
+// redrawn by the dashboard at all.
 
-type Listener = (jobId: string) => void;
+/** The job whose room is open now (the screen says, while mounted). */
+let openJobId: string | null = null;
 
-let pending: string | null = null;
-const listeners = new Set<Listener>();
+export function setOpenServiceRoom(jobId: string | null): void {
+  openJobId = jobId;
+}
 
 export function openServiceRoom(jobId: string): void {
-  pending = jobId;
-  router.dismissTo('/(tabs)' as any);
-  listeners.forEach((l) => l(jobId));
+  if (openJobId === jobId) {
+    // Already open under this screen (the map, a chat): back to it rather
+    // than a second copy of the same room on top.
+    router.dismissTo({ pathname: '/service-room', params: { jobId } } as any);
+    return;
+  }
+  router.push({ pathname: '/service-room', params: { jobId } } as any);
 }
 
-/** The job whose room was asked for, once — Home opens it. */
-export function takePendingServiceRoom(): string | null {
-  const id = pending;
-  pending = null;
-  return id;
+// ── What happened in the room, for the dashboard ───────────────────────────
+// The dashboard keeps the provider's job lock, the GPS streaming for the job
+// underway and the rating sheet; it hears here when a job moved on.
+
+export type RoomEvent =
+  /** Done: the dashboard asks for the customer's rating. */
+  | { type: 'completed'; jobId: string }
+  /** Over without finishing — cancelled, refused, the customer not there, disputed. */
+  | { type: 'ended'; jobId: string }
+  /** Still going, at a new step (started, inspecting, invoiced, collected). */
+  | { type: 'changed'; jobId: string; status: string };
+
+type RoomListener = (event: RoomEvent) => void;
+const roomListeners = new Set<RoomListener>();
+
+export function emitRoomEvent(event: RoomEvent): void {
+  roomListeners.forEach((l) => l(event));
 }
 
-/** Home listens: a request while it's mounted (it may be behind another
- * screen, or another tab may be showing). */
-export function onServiceRoomRequest(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
+export function onRoomEvent(listener: RoomListener): () => void {
+  roomListeners.add(listener);
+  return () => { roomListeners.delete(listener); };
 }
 
 /** A tab of the dashboard (Profile's verification, say) from a screen over
  * it: back to the dashboard that's open, then the tab — pushing the tab's
- * path from outside built a second dashboard, as above. From inside the
- * dashboard, the tab switch is all there is to do. */
+ * path from outside built a second dashboard. From inside the dashboard, the
+ * tab switch is all there is to do. */
 export function openDashboardTab(href: { pathname: string; params?: Record<string, string> }): void {
   router.dismissTo('/(tabs)' as any);
   // Once the screens over the dashboard are gone, the tab's path is a tab

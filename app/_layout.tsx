@@ -157,6 +157,8 @@ export default function RootLayout() {
                     <Stack.Screen name="(tabs)" options={{ animation: 'slide_from_right' }} />
                     <Stack.Screen name="job-details" options={{ animation: 'slide_from_right' }} />
                     <Stack.Screen name="navigate-to-site" options={{ animation: 'slide_from_bottom' }} />
+                    {/* A hired job's room: its own screen, over whatever opened it (services/service-room.ts). */}
+                    <Stack.Screen name="service-room" options={{ animation: 'slide_from_bottom' }} />
                   </Stack>
                   <NetworkStatusBanner />
                 </AppLockGate>
