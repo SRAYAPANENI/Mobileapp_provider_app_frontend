@@ -1,4 +1,4 @@
-import { MapPin } from 'lucide-react-native';
+import { Lock, MapPin } from 'lucide-react-native';
 import React, { useRef, useState } from 'react';
 import { Pressable, TextInput, TouchableOpacity, View } from 'react-native';
 import { showDialog } from '@/components/alert-host';
@@ -10,7 +10,12 @@ import { roomStyles as s } from './styles';
 // At the customer's place: ask for the 4-digit code on their screen, enter it,
 // and the inspection starts — checked against where the provider is.
 
-export function InspectionCode({ jobId, onVerified }: { jobId: string; onVerified: () => void }) {
+export function InspectionCode({ jobId, onVerified, arrived }: {
+  jobId: string;
+  onVerified: () => void;
+  /** "I'm here" recorded at the customer's: the code is asked for only then (the server too). */
+  arrived: boolean;
+}) {
   const [code, setCode] = useState('');
   const [requesting, setRequesting] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -56,9 +61,15 @@ export function InspectionCode({ jobId, onVerified }: { jobId: string; onVerifie
       <ThemedText style={s.note}>
         Once you’ve arrived, ask the customer for the 4-digit code on their screen to start inspecting.
       </ThemedText>
-      <TouchableOpacity style={[s.primaryBtn, requesting && { opacity: 0.7 }]} onPress={request} disabled={requesting}>
-        <MapPin size={20} color="#fff" />
-        <ThemedText style={s.primaryBtnText}>{requesting ? 'Sending…' : 'Request Inspection Code'}</ThemedText>
+      <TouchableOpacity
+        style={[s.primaryBtn, (requesting || !arrived) && { opacity: 0.5 }]}
+        onPress={request}
+        disabled={requesting || !arrived}
+      >
+        {arrived ? <MapPin size={20} color="#fff" /> : <Lock size={20} color="#fff" />}
+        <ThemedText style={s.primaryBtnText}>
+          {!arrived ? 'Tap “I’m here” first' : requesting ? 'Sending…' : 'Request Inspection Code'}
+        </ThemedText>
       </TouchableOpacity>
 
       <ThemedText style={s.otpLabel}>Enter the 4-digit code</ThemedText>

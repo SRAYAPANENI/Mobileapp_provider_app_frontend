@@ -375,6 +375,7 @@ function StepPanel({ job, detail, refresh, setDetail, onComplete, onCustomerAbse
           recipientName={detail?.pickup_details?.recipient_name}
           photoUrl={detail?.dropoff_photo_url}
           onPhotoSaved={onRefresh}
+          arrived={!!detail?.dropoff_arrived_at}
         />
       </>
     );
@@ -449,7 +450,7 @@ function StepPanel({ job, detail, refresh, setDetail, onComplete, onCustomerAbse
           onCustomerAbsent={onCustomerAbsent}
           onError={showError}
         />
-        <InspectionCode jobId={job.id} onVerified={onRefresh} />
+        <InspectionCode jobId={job.id} onVerified={onRefresh} arrived={!!detail?.arrived_at} />
         {cancelButton}
       </>
     );

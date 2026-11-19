@@ -24,6 +24,8 @@ interface Props {
   getCoords: () => Promise<{ latitude: number; longitude: number } | null>;
   onRefused: () => void;
   onError: (title: string, message: string) => void;
+  /** "I'm here" recorded at the pickup: refusing waits for it (the server too). */
+  arrived?: boolean;
 }
 
 const DEFAULT_BANNED = 'alcohol, tobacco or vapes, cannabis, medication, weapons, cash, or anything illegal';
@@ -40,7 +42,7 @@ const DEFAULT_REASONS: Reason[] = [
 // over, what the customer said it is, and the check before taking it — see
 // it, it matches, it isn't on the list. Or refuse it: the job is cancelled
 // and the trip is still paid (server: JobService.refuse_pickup).
-export function PickupFromPerson({ jobId, item, value, details, onCheckedChange, getCoords, onRefused, onError }: Props) {
+export function PickupFromPerson({ jobId, item, value, details, onCheckedChange, getCoords, onRefused, onError, arrived = true }: Props) {
   const fit = useButtonRowFit();
   const [rules, setRules] = useState<{ banned: string; refusal_reasons: Reason[]; version?: string }>({ banned: DEFAULT_BANNED, refusal_reasons: DEFAULT_REASONS });
   const [checks, setChecks] = useState([false, false, false]);
@@ -171,9 +173,13 @@ export function PickupFromPerson({ jobId, item, value, details, onCheckedChange,
       ))}
       <Text style={s.hint}>A sealed box you can't check? You can refuse it.</Text>
 
-      <TouchableOpacity style={s.refuseBtn} onPress={() => { setReason(null); setNote(''); setPhoto(null); setRefusing(true); }}>
+      <TouchableOpacity
+        style={[s.refuseBtn, !arrived && { opacity: 0.5 }]}
+        disabled={!arrived}
+        onPress={() => { setReason(null); setNote(''); setPhoto(null); setRefusing(true); }}
+      >
         <Ban size={16} color="#B91C1C" />
-        <Text style={s.refuseText}>Can't take it</Text>
+        <Text style={s.refuseText}>{arrived ? "Can't take it" : 'Can’t take it — tap “I’m here” first'}</Text>
       </TouchableOpacity>
 
       <Popup closeOn={sending ? 'none' : 'back'} visible={refusing} transparent animationType="fade" onClose={() => setRefusing(false)}>

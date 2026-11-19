@@ -7,7 +7,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { shrinkPhoto } from '@/services/photo';
 import * as Location from 'expo-location';
-import { Camera, CheckCircle2 } from 'lucide-react-native';
+import { Camera, CheckCircle2, Lock } from 'lucide-react-native';
 import React, { useState } from 'react';
 import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-native';
 
@@ -16,7 +16,7 @@ import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-nat
 // photographed at the drop-off first — what was handed over, kept with the
 // job — then the customer's code, done. The server checks the code and that
 // the phone is at the right place (app/services/delivery_service.py).
-export function DeliveryHandover({ jobId, onDelivered, recipientName, kind = 'delivery', photoUrl, onPhotoSaved }: {
+export function DeliveryHandover({ jobId, onDelivered, recipientName, kind = 'delivery', photoUrl, onPhotoSaved, arrived = true }: {
   jobId: string; onDelivered: () => void;
   /** Sent by the customer: who receives it — the customer sends them the code. */
   recipientName?: string | null;
@@ -24,8 +24,12 @@ export function DeliveryHandover({ jobId, onDelivered, recipientName, kind = 'de
   /** A delivery: the drop-off photo already saved for this job, if any. */
   photoUrl?: string | null;
   onPhotoSaved?: () => void;
+  /** A delivery: "I'm at the drop-off" recorded. Until then the photo — and
+   * so the code, which comes after it — stay locked (the server refuses both). */
+  arrived?: boolean;
 }) {
   const care = kind === 'care';
+  const locked = !care && !arrived;
   const appAlert = useAppAlert();
   // What's shown: the photo just taken, else the one saved before (a reopened screen).
   const [taken, setTaken] = useState<string | null>(null);
@@ -77,11 +81,13 @@ export function DeliveryHandover({ jobId, onDelivered, recipientName, kind = 'de
           : 'At the drop-off, take a photo that shows the order as you hand it over. It’s kept with the job.'}
       </Text>
       {shown && <Image source={{ uri: shown }} style={s.preview} contentFit="cover" />}
-      <TouchableOpacity style={[s.secondary, saving && s.dim]} onPress={takePhoto} disabled={saving}>
+      <TouchableOpacity style={[s.secondary, (saving || locked) && s.dim]} onPress={takePhoto} disabled={saving || locked}>
         {saving ? <ActivityIndicator color="#111827" /> : (
           <>
-            <Camera size={18} color="#111827" />
-            <Text style={s.secondaryText}>{shown ? 'Retake Photo' : 'Take Photo'}</Text>
+            {locked ? <Lock size={18} color="#6B7280" /> : <Camera size={18} color="#111827" />}
+            <Text style={s.secondaryText}>
+              {locked ? 'Take Photo — tap “I’m at the drop-off” first' : shown ? 'Retake Photo' : 'Take Photo'}
+            </Text>
           </>
         )}
       </TouchableOpacity>
@@ -91,7 +97,7 @@ export function DeliveryHandover({ jobId, onDelivered, recipientName, kind = 'de
   return (
     <>
       {photoStep}
-      {(care || shown) && (
+      {(care || (shown && !locked)) && (
         <CodeHandoverForm
           title={care ? 'Hand it back' : 'Hand over the order'}
           body={care

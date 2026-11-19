@@ -172,6 +172,7 @@ export function PickupStep({ job, detail, onArrived, onCollected, onRefused, onC
           getCoords={currentPosition}
           onRefused={onRefused}
           onError={(title, message) => showDialog(title, message, undefined, { type: 'error' })}
+          arrived={arrived}
         />
       ) : (
         <PickupAtStore details={detail?.pickup_details} items={detail?.shopping_list} buyForMe={buying} moneyHeld={goodsHeld} />
