@@ -1,4 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { AlertTriangle, CheckCircle, ChevronLeft, MessageSquare, Navigation as NavIcon, Phone, Star, User, XCircle } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
@@ -51,12 +52,20 @@ export default function ServiceRoomScreen() {
   // Known as open, so a second "open this room" (from the map, a chat) comes back to it.
   useEffect(() => (jobId ? markServiceRoomOpen(jobId) : undefined), [jobId]);
 
-  // Once only: the room's own action and the job-ended signal can both ask.
+  // Closes this room and whatever is open over it (the map, a chat) — the job
+  // can end while another screen is on top, and a plain "back" would close
+  // that one and leave the dead room behind. Once only: the room's own action
+  // and the job-ended signal can both ask.
+  const navigation = useNavigation();
+  const route = useRoute();
   const closedRef = useRef(false);
   const close = () => {
     if (closedRef.current) return;
     closedRef.current = true;
-    if (router.canGoBack()) router.back();
+    const state = navigation.getState();
+    const at = state?.routes.findIndex((r) => r.key === route.key) ?? -1;
+    if (state && at > 0) router.dismiss(state.routes.length - at);
+    else if (router.canGoBack()) router.back();
     else router.replace('/(tabs)' as any);
   };
   // Over while open (cancelled, completed by the customer): it was said; close.

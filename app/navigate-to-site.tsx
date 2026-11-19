@@ -8,7 +8,7 @@ import { RouteFollower, haversineKm, type Progress } from '@/services/route';
 import { sendTripViaSocket, type TripFigures } from '@/services/location-socket';
 import { callTapAllowed } from '@/services/callManager';
 import { router, useLocalSearchParams } from 'expo-router';
-import { openServiceRoom } from '@/services/service-room';
+import { isServiceRoomOpen, openServiceRoom } from '@/services/service-room';
 import * as Location from 'expo-location';
 import { ChevronLeft, Navigation, MapPin, LocateFixed, MessageSquare, Phone } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
@@ -212,7 +212,10 @@ export default function NavigateToSiteScreen() {
   // Poll job status — if customer cancels while provider is navigating,
   // show a branded alert and redirect to dashboard.
   useEffect(() => {
-    if (!jobId) return;
+    // Opened from its Service Room (the usual way): the room, still open
+    // underneath, watches the job — says a cancel once and closes itself and
+    // this map. Watching here too said it twice.
+    if (!jobId || isServiceRoomOpen(jobId)) return;
     let cancelled = false;
     const check = async () => {
       try {
@@ -225,7 +228,8 @@ export default function NavigateToSiteScreen() {
             job.cancellation_reason
               ? `The customer cancelled this job.\n\nReason: ${job.cancellation_reason}`
               : 'The customer cancelled this job.',
-            [{ text: 'Go to Dashboard', onPress: () => router.replace('/(tabs)' as any) }],
+            // Back to the dashboard that's open — replace() stacked a second one.
+            [{ text: 'Go to Dashboard', onPress: () => router.dismissTo('/(tabs)' as any) }],
           );
           clearInterval(interval);
         }

@@ -153,8 +153,10 @@ export default function NotificationsScreen() {
       return;
     }
     // Dodorez lifted their pause: the dashboard, where new jobs show again.
+    // dismissTo, here and below: back to the dashboard that's open under this
+    // list — push() built a second whole dashboard over it each tap.
     if (item.notif_type === 'pause_lifted') {
-      router.push('/(tabs)');
+      router.dismissTo('/(tabs)' as any);
       return;
     }
     // A skill-test reminder: the skills to test, each with its test.
@@ -165,7 +167,7 @@ export default function NotificationsScreen() {
     if (!item.job_id) return;
     switch (item.notif_type) {
       case 'new_job':
-        router.push('/(tabs)');
+        router.dismissTo('/(tabs)' as any);
         break;
       case 'hired':
       // Invoice negotiation + payment confirmation all happen in the
@@ -193,7 +195,7 @@ export default function NotificationsScreen() {
         // Everything else opens where its push opens (services/callManager.ts).
         const route = updateRoute(item.notif_type);
         if (route && route !== '/') openScreen(route, item.job_id, { jobId: item.job_id });
-        else router.push('/(tabs)');
+        else router.dismissTo('/(tabs)' as any);
       }
     }
   };

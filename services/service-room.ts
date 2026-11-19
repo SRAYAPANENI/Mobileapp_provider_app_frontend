@@ -25,6 +25,11 @@ export function markServiceRoomOpen(jobId: string): () => void {
   };
 }
 
+/** A room for this job is open (on the stack, maybe under the current screen). */
+export function isServiceRoomOpen(jobId: string): boolean {
+  return openRooms.has(jobId);
+}
+
 /** `replaceCurrent`: a screen that's done once the room opens (the map after
  * "Arrived") — the room takes its place, so Back goes to where the provider
  * came from (job details), not to the map again. */
