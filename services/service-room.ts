@@ -25,14 +25,19 @@ export function markServiceRoomOpen(jobId: string): () => void {
   };
 }
 
-export function openServiceRoom(jobId: string): void {
+/** `replaceCurrent`: a screen that's done once the room opens (the map after
+ * "Arrived") — the room takes its place, so Back goes to where the provider
+ * came from (job details), not to the map again. */
+export function openServiceRoom(jobId: string, options?: { replaceCurrent?: boolean }): void {
+  const href = { pathname: '/service-room', params: { jobId } } as any;
   if (openRooms.has(jobId)) {
     // Already open under this screen (the map, a chat): back to it rather
     // than a second copy of the same room on top.
-    router.dismissTo({ pathname: '/service-room', params: { jobId } } as any);
+    router.dismissTo(href);
     return;
   }
-  router.push({ pathname: '/service-room', params: { jobId } } as any);
+  if (options?.replaceCurrent) router.replace(href);
+  else router.push(href);
 }
 
 // ── What happened in the room, for the dashboard ───────────────────────────

@@ -131,7 +131,7 @@ export default function NavigateToSiteScreen() {
     if (!jobId || arriving) return;
     const here = gpsLoc ?? currentPosRef.current;
     if (!here) {
-      openServiceRoom(jobId);
+      openServiceRoom(jobId, { replaceCurrent: true });
       return;
     }
     setArriving(true);
@@ -139,13 +139,13 @@ export default function NavigateToSiteScreen() {
       await (stop === 'dropoff'
         ? SkoFyApi.jobs.arrivedAtDropoff(jobId, here.latitude, here.longitude)
         : SkoFyApi.jobs.markArrived(jobId, here.latitude, here.longitude));
-      openServiceRoom(jobId);
+      openServiceRoom(jobId, { replaceCurrent: true });
     } catch (err: any) {
       appAlert.show(
         'warning',
         err?.error_code === 'NOT_AT_LOCATION' ? 'Not at the spot yet' : "Couldn't mark you arrived",
         `${err?.message ?? 'Please try again.'} Tap “I'm here” in the Service Room once you're there.`,
-        [{ text: 'OK', onPress: () => openServiceRoom(jobId) }],
+        [{ text: 'OK', onPress: () => openServiceRoom(jobId, { replaceCurrent: true }) }],
       );
     } finally {
       setArriving(false);
