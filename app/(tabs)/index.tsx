@@ -14,7 +14,7 @@ import { useRefreshOnFocus } from '@/hooks/use-refresh-on-focus';
 import { useActiveJobs, useInboundFeed, useInboundSkillCounts } from '@/services/queries/jobs';
 import { NoInternetState } from '@/components/no-internet-state';
 import { useOfflinePage } from '@/components/offline-gate';
-import { useJobAlerts, useMySkills, useProviderProfile } from '@/services/queries/provider';
+import { useAvailability, useJobAlerts, useMySkills, useProviderProfile, useSetAvailability } from '@/services/queries/provider';
 import { useAppConfig } from '@/services/queries/app-config';
 import TermsUpdatedBanner from '@/components/terms-updated-banner';
 import PausedBanner from '@/components/paused-banner';
@@ -438,6 +438,22 @@ export default function DashboardScreen() {
   // The server has said whether they're online: until then isAvailable is
   // only a guess (true), and online mode must not follow someone offline.
   const [availabilityKnown, setAvailabilityKnown] = useState(false);
+  // What they chose is shown — from last time (the cached copy) or the
+  // server. Until then the switch shows neither: it used to start on
+  // "online" (the guess above) and flip off a moment later for someone who'd
+  // gone offline — which looked like it turning itself off.
+  const [availabilityShown, setAvailabilityShown] = useState(false);
+  const setAvailability = useSetAvailability();
+  // Online or not: the server's, or the change being saved (the same as
+  // Profile shows — services/queries/provider.ts useAvailability).
+  const availability = useAvailability();
+  useEffect(() => {
+    if (availability.value === undefined) return;
+    setIsAvailable(availability.value);
+    setAvailabilityKnown(true);
+    setAvailabilityShown(true);
+    writeDashboardCache({ isAvailable: availability.value });
+  }, [availability.value]);
   const [refreshing, setRefreshing] = useState(false);
   // Only while notifications are really off (hooks/use-notification-nudge.ts).
   const notifNudge = useNotificationNudge();
@@ -855,7 +871,10 @@ export default function DashboardScreen() {
       if (!cached || liveDataArrivedRef.current) return;
       if (cached.userName) setUserName(cached.userName);
       if (cached.profileImageUrl) setProfileImageUrl(cached.profileImageUrl);
-      if (typeof cached.isAvailable === 'boolean') setIsAvailable(cached.isAvailable);
+      if (typeof cached.isAvailable === 'boolean') {
+        setIsAvailable(cached.isAvailable);
+        setAvailabilityShown(true);
+      }
       if (Array.isArray(cached.jobs) && cached.jobs.length > 0) {
         setJobs(cached.jobs as any[]);
         setIsLoading(false);
@@ -878,11 +897,6 @@ export default function DashboardScreen() {
     if (!profile) return;
     liveDataArrivedRef.current = true;
     if (profile.name) { setUserName(profile.name); writeDashboardCache({ userName: profile.name }); }
-    if (typeof profile.is_available === 'boolean') {
-      setIsAvailable(profile.is_available);
-      setAvailabilityKnown(true);
-      writeDashboardCache({ isAvailable: profile.is_available });
-    }
     // Removed in Profile: cleared here too, not only ever set.
     setProfileImageUrl(profile.profile_image_url || null);
     if (profile.profile_image_url) writeDashboardCache({ profileImageUrl: profile.profile_image_url });
@@ -1472,10 +1486,19 @@ const filteredJobs = jobs.filter((job) => {
           <View style={styles.headerActions}>
             <View style={styles.availabilityToggle}>
               <Switch
-                value={isAvailable}
+                value={availabilityShown && isAvailable}
+                // Not before their choice is shown, nor while a change is saving.
+                disabled={!availabilityShown || availability.saving}
                 onValueChange={async (val) => {
                   setIsAvailable(val);
-                  SkoFyApi.provider.setAvailability(val).catch(() => setIsAvailable(!val));
+                  setAvailability.mutate(val, {
+                    onError: (err: any) => {
+                      setIsAvailable(!val);
+                      // The server's reason when it gave one; else the connection.
+                      appAlert.show('error', val ? "Couldn't go online" : "Couldn't go offline",
+                        err?.error_code && err?.message ? err.message : "Your change wasn't saved. Check your connection and try again.");
+                    },
+                  });
                   // Push a GPS fix immediately when going online so the
                   // distribution agent has a location to match against.
                   if (val) {
@@ -1488,7 +1511,7 @@ const filteredJobs = jobs.filter((job) => {
                 thumbColor={Platform.OS === 'ios' ? '#fff' : isAvailable ? '#fff' : '#f4f3f4'}
                 ios_backgroundColor="#E5E7EB"
               />
-              <View style={[styles.statusIndicatorCircle, { backgroundColor: isAvailable ? '#10B981' : '#EF4444' }]} />
+              <View style={[styles.statusIndicatorCircle, { backgroundColor: !availabilityShown ? '#D1D5DB' : isAvailable ? '#10B981' : '#EF4444' }]} />
             </View>
             <TouchableOpacity style={styles.iconActionBtn} onPress={() => { setUnreadNotifCount(0); router.push('/notifications'); }}>
               <Bell size={22} color={themeColors.text} />

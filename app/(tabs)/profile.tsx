@@ -9,7 +9,7 @@ import { isValidPassword } from '@/services/password';
 import AnimatedBrandMark from '@/components/animated-brand-mark';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { fetchMySkills, fetchProviderProfile } from '@/services/queries/provider';
+import { fetchMySkills, fetchProviderProfile, useAvailability, useSetAvailability } from '@/services/queries/provider';
 import { SkillAssessmentList } from '@/components/skill-assessment-list';
 import { CustomerRatingSheet } from '@/components/customer-rating-sheet';
 import { RateCustomerButton } from '@/components/rate-customer-button';
@@ -280,7 +280,13 @@ export default function ProfileScreen() {
   const [providerPhone, setProviderPhone] = useState('');
   const [providerBio, setProviderBio] = useState('');
   const [yearsExperience, setYearsExperience] = useState(0);
-  const [isAvailable, setIsAvailable] = useState(false);
+  // Online or not: the same state as Home's — the profile everyone reads,
+  // changed through one write (services/queries/provider.ts). This screen
+  // used to keep its own copy, loaded once, and the two could disagree.
+  const availability = useAvailability();
+  const setAvailability = useSetAvailability();
+  const availabilityKnown = availability.value !== undefined;
+  const isAvailable = !!availability.value;
   const [isIdentityVerified, setIsIdentityVerified] = useState(false);
   const [pickupDropoffSaving, setPickupDropoffSaving] = useState(false);
   const [avgRating, setAvgRating] = useState(0);
@@ -381,7 +387,6 @@ export default function ProfileScreen() {
       setProviderPhone(profile?.phone || '');
       setProviderBio(bio);
       setYearsExperience(exp);
-      setIsAvailable(!!profile?.is_available);
       setIsIdentityVerified(!!profile?.is_identity_verified);
       setAvgRating(profile?.avg_rating ?? 0);
       setJobsCompleted(profile?.jobs_completed ?? 0);
@@ -1325,14 +1330,13 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleToggleAvailability = async () => {
+  const handleToggleAvailability = () => {
+    if (!availabilityKnown || availability.saving) return;
     const next = !isAvailable;
-    setIsAvailable(next);
-    try {
-      await SkoFyApi.provider.setAvailability(next);
-    } catch {
-      setIsAvailable(!next);
-    }
+    setAvailability.mutate(next, {
+      onError: (err: any) => showAlert('error', next ? "Couldn't go online" : "Couldn't go offline",
+        err?.error_code && err?.message ? err.message : "Your change wasn't saved. Check your connection and try again."),
+    });
   };
 
   const handleLogout = async () => {
@@ -1727,12 +1731,16 @@ export default function ProfileScreen() {
                 <ThemedText style={styles.profileRole}>{yearsExperience} {yearsExperience === 1 ? 'year' : 'years'} experience</ThemedText>
               )}
               {providerBio ? <ThemedText numberOfLines={2} style={{ fontSize: 11, lineHeight: 17, color: '#6B7280', fontFamily: Fonts.poppins, marginTop: 2 }}>{providerBio}</ThemedText> : null}
-              <TouchableOpacity style={[styles.availabilityBadge, !isAvailable && { backgroundColor: '#F3F4F6' }]} onPress={handleToggleAvailability}>
-                <View style={[styles.onlineDot, !isAvailable && { backgroundColor: '#9CA3AF' }]} />
-                <ThemedText style={[styles.availabilityText, !isAvailable && { color: '#6B7280' }]}>
-                  {isAvailable ? 'Available Now' : 'Unavailable'}
-                </ThemedText>
-              </TouchableOpacity>
+              {/* Not before their choice is known: "Unavailable" first, then
+                  "Available Now", looked like it switching by itself. */}
+              {availabilityKnown && (
+                <TouchableOpacity style={[styles.availabilityBadge, !isAvailable && { backgroundColor: '#F3F4F6' }]} onPress={handleToggleAvailability}>
+                  <View style={[styles.onlineDot, !isAvailable && { backgroundColor: '#9CA3AF' }]} />
+                  <ThemedText style={[styles.availabilityText, !isAvailable && { color: '#6B7280' }]}>
+                    {isAvailable ? 'Available Now' : 'Unavailable'}
+                  </ThemedText>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
 
@@ -1931,6 +1939,7 @@ export default function ProfileScreen() {
           </View>
           <Switch
             value={isAvailable}
+            disabled={!availabilityKnown || availability.saving}
             onValueChange={() => handleToggleAvailability()}
             trackColor={{ false: '#D1D5DB', true: '#FFCE48' }}
             thumbColor="#fff"

@@ -1,6 +1,7 @@
-import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, useMutation, useMutationState, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Hosting, HostingPrefs, ProviderRate, SkoFyApi } from '@/services/api';
 import { qk } from './keys';
+import { writeDashboardCache } from '@/services/homeCache';
 
 // The provider's own data: profile, skills, rate card and hosting.
 
@@ -41,6 +42,65 @@ export function useJobAlerts() {
 
 export function useHosting() {
   return useQuery({ queryKey: qk.provider.hosting, queryFn: () => SkoFyApi.hosting.mine() });
+}
+
+/** Online or offline — what the provider chose, kept by the server (no one
+ * else turns it off; closing the account does). One write for Home and
+ * Profile, applied to the profile everyone reads at once:
+ *   - a profile reload already on its way is stopped first — finishing after
+ *     the tap, it put the old value back ("it went off by itself");
+ *   - the cached copy shown on the next opening is updated too — it kept the
+ *     old value, shown until the server answered;
+ *   - not saved: put back, and the screen says so (it used to flip back with
+ *     no word). */
+const AVAILABILITY_KEY = ['provider', 'availability'] as const;
+
+export function useSetAvailability() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationKey: AVAILABILITY_KEY,
+    mutationFn: (next: boolean) => SkoFyApi.provider.setAvailability(next),
+    onMutate: async (next: boolean) => {
+      await client.cancelQueries({ queryKey: qk.provider.profile });
+      const before = client.getQueryData<any>(qk.provider.profile);
+      if (before) client.setQueryData(qk.provider.profile, { ...before, is_available: next });
+      void writeDashboardCache({ isAvailable: next });
+      return { before };
+    },
+    onError: (_err, next, ctx) => {
+      // Only the online value goes back — not the rest of the profile as it
+      // was at the tap, which would undo anything that changed since.
+      const was: boolean = typeof ctx?.before?.is_available === 'boolean' ? ctx.before.is_available : !next;
+      client.setQueryData<any>(qk.provider.profile, (now: any) => (now ? { ...now, is_available: was } : now));
+      void writeDashboardCache({ isAvailable: was });
+    },
+    // Saved: the value again, over any reload that landed meanwhile; then the
+    // profile is read back (services/queries/invalidate.ts) — now after it.
+    onSuccess: (res: any, next) => {
+      // The server answers with the profile as it now is: taken as it is.
+      if (res && typeof res.is_available === 'boolean') {
+        client.setQueryData(qk.provider.profile, res);
+        return;
+      }
+      client.setQueryData<any>(qk.provider.profile, (now: any) => (now ? { ...now, is_available: next } : now));
+    },
+  });
+}
+
+/** Online or not, as both screens show it: while a change is saving, the
+ * value being saved — whatever a profile reload says meanwhile (one could
+ * start after the tap, e.g. going online sends a location at once, and land
+ * the old value: the switch flipped back). Otherwise the profile's.
+ * undefined until known. */
+export function useAvailability(): { value: boolean | undefined; saving: boolean } {
+  const profile = useProviderProfile();
+  const pending = useMutationState({
+    filters: { mutationKey: AVAILABILITY_KEY, status: 'pending' },
+    select: (m) => m.state.variables as boolean,
+  });
+  const saving = pending.length > 0;
+  const value = saving ? pending[pending.length - 1] : (profile.data as any)?.is_available;
+  return { value: typeof value === 'boolean' ? value : undefined, saving };
 }
 
 /** The visiting fee and hourly rate for ordinary visits — both together. */
