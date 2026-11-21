@@ -69,6 +69,16 @@ export default function JoinRequestScreen() {
   const checkLabel = CHECK_LABELS[profile?.background_check_status ?? 'NOT_STARTED'] ?? CHECK_LABELS.NOT_STARTED;
   const offer = profile?.hours?.offer ?? null;
   const asked = offer?.from === 'MEMBER' ? offer : null;
+  // A server from before the summary sent only the list: counted from it.
+  const trades = profile?.trades ?? [];
+  const skillsTotal = profile?.skills_total ?? profile?.skills.length ?? 0;
+  const skillsVerified = profile?.skills_verified ?? profile?.skills.filter((k) => k.is_verified).length ?? 0;
+  // Never more than a dozen drawn, whatever the server sends: hundreds of rows
+  // held the app up for seconds (Back included) on a provider with every skill.
+  const strongest = (profile?.skills ?? [])
+    .slice()
+    .sort((a, b) => Number(b.is_verified) - Number(a.is_verified) || b.skill_o_meter - a.skill_o_meter)
+    .slice(0, 12);
   const offered = offer?.from === 'BUSINESS' ? offer : null;
 
   const decline = () => {
@@ -180,11 +190,28 @@ export default function JoinRequestScreen() {
               </Section>
             )}
 
-            <Section title={`Skills · ${profile.skills.length}`} flush>
-              {profile.skills.length === 0 ? (
+            {/* Their skills in brief — trades, then the strongest dozen — never
+                the whole list (a provider with every skill sent 1,400 rows). */}
+            {trades.length > 0 && (
+              <Section title="Trades">
+                <View style={s.trades}>
+                  {trades.map((t) => (
+                    <View key={t.name} style={[s.trade, t.verified > 0 && s.tradeProven]}>
+                      <ThemedText style={s.tradeName} numberOfLines={1}>{t.name}</ThemedText>
+                      <ThemedText style={u.muted} numberOfLines={1}>
+                        {t.verified > 0 ? `${t.verified} verified` : 'Not tested'}{t.total > t.verified ? ` · ${t.total} listed` : ''}
+                      </ThemedText>
+                    </View>
+                  ))}
+                </View>
+              </Section>
+            )}
+
+            <Section title={`Strongest skills · ${skillsVerified} of ${skillsTotal} verified`} flush>
+              {strongest.length === 0 ? (
                 <Row last title="No skills added yet" />
-              ) : profile.skills.map((skill, i) => (
-                <View key={`${skill.profession}-${skill.name}`} style={[s.skill, i < profile.skills.length - 1 && s.line]}>
+              ) : strongest.map((skill, i) => (
+                <View key={`${skill.profession}-${skill.name}`} style={[s.skill, i < strongest.length - 1 && s.line]}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <View style={{ flex: 1 }}>
                       <ThemedText style={u.label} numberOfLines={1}>{skill.name}</ThemedText>
@@ -282,6 +309,10 @@ const s = StyleSheet.create({
   statValue: { fontSize: 18, lineHeight: 24, fontFamily: Fonts.poppinsBold, color: C.ink },
   figure: { fontSize: 14, lineHeight: 19, fontFamily: Fonts.poppinsBold, color: C.ink },
   skill: { gap: 8, paddingVertical: 12 },
+  trades: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  trade: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: '#F1F5F9', maxWidth: '100%' },
+  tradeProven: { backgroundColor: C.okSoft },
+  tradeName: { fontSize: 13.5, lineHeight: 18, fontFamily: Fonts.poppinsSemiBold, color: C.ink },
   line: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E2E8F0' },
   privacy: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 },
   footer: { gap: 10, paddingHorizontal: 16, paddingTop: 12, backgroundColor: C.card, borderTopWidth: 1, borderTopColor: C.line },

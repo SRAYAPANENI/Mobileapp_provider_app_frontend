@@ -6,7 +6,7 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { AppAlert, useAppAlert } from '@/components/app-alert';
 import { Image } from 'expo-image';
 import * as Location from 'expo-location';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 import { onRoomEvent, openServiceRoom as openServiceRoom_ } from '@/services/service-room';
 import { setLivePosition } from '@/services/live-position';
@@ -476,6 +476,13 @@ export default function DashboardScreen() {
     setWorkspace(next);
     SecureStore.setItemAsync(WORKSPACE_KEY, next).catch(() => {});
   };
+  // "Overview" on a business page (business-tabs.tsx) comes back here to the
+  // business side, whichever side was showing.
+  const { workspace: askedWorkspace } = useLocalSearchParams<{ workspace?: string }>();
+  useEffect(() => {
+    if (askedWorkspace === 'team') chooseWorkspace('team');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askedWorkspace]);
   const teamMode = myBusiness.canDispatch && workspace === 'team';
   // In their work hours with a business right now: new jobs come through it
   // (docs/EMPLOYER_PARTNERS_DESIGN.md), so an empty feed says so.

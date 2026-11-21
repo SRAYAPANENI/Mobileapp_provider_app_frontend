@@ -26,11 +26,22 @@ export function TeamPanel({ state }: { state: MyBusinessState }) {
 
   return (
     <View style={{ gap: 20 }}>
-      <BusinessTabs badges={{ business: state.joinRequests.length }} />
+      <BusinessTabs current="overview" badges={{ business: state.joinRequests.length }} />
 
-      {/* Providers asking to join: seen here, decided on their profile. */}
-      {state.joinRequests.length > 0 && (
+      {/* Providers asking to join: always here for the owner (who answers
+          them), so there's one place to look — decided on their profile. */}
+      {state.data?.role === 'OWNER' && (
         <Section title={`Requests to join · ${state.joinRequests.length}`} flush>
+          {state.joinRequests.length === 0 && (
+            business.open_to_join_requests ? (
+              <Row last icon={<UserPlus size={18} color={C.muted} />} title="No requests right now"
+                detail="Providers near you see your business and can ask to join. They show here." />
+            ) : (
+              <Row last onPress={() => go('/business')} chevron icon={<UserPlus size={18} color={C.muted} />}
+                title="No requests right now"
+                detail="Turn on “Open to join requests” in Business so providers near you see you’re looking." />
+            )
+          )}
           {state.joinRequests.map((m, i) => (
             <Row key={m.id} last={i === state.joinRequests.length - 1}
               onPress={() => go('/join-request', { memberId: m.id })}

@@ -814,7 +814,12 @@ export interface JoinRequestProfile {
   ratings: { skill: number | null; punctuality: number | null; behaviour: number | null; communication: number | null };
   jobs_completed: number; jobs_cancelled: number; no_show_count: number;
   is_identity_verified: boolean; background_check_status: TeamMember['background_check_status'];
+  /** Their strongest skills (verified first, highest level first) — at most
+   * a dozen; the totals and trades below say the rest. */
   skills: { name: string; profession: string; is_verified: boolean; skill_o_meter: number }[];
+  skills_total: number; skills_verified: number;
+  /** Each trade with how many of its skills are verified, most proven first. */
+  trades: { name: string; total: number; verified: number }[];
   hours: HoursView;
 }
 /** A provider asked to join, not answered yet. */
