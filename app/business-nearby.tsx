@@ -1,41 +1,34 @@
-import { useAppAlert } from '@/components/app-alert';
 import { Badge, Button, C, Monogram, Section, u } from '@/components/business/ui';
-import { defaultHours, inMyZone, WorkHoursEditor } from '@/components/business/work-hours';
-import { Consent } from '@/components/business/business-invites';
+import { RecordLine, TradeChips, TrustBadges, milesAway } from '@/components/business/business-record';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { usePullRefresh } from '@/hooks/use-pull-refresh';
-import { NearbyBusiness, SkoFyApi, WorkHours } from '@/services/api';
-import { kmToMiles } from '@/services/schedulingEngine';
+import { NearbyBusiness, SkoFyApi } from '@/services/api';
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
-import { Building2, ChevronLeft, MapPin, MapPinOff, Radar, ShieldCheck, Users } from 'lucide-react-native';
-import React, { useCallback, useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { Building2, ChevronLeft, ChevronRight, MapPinOff, Radar } from 'lucide-react-native';
+import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
 
 // Businesses near you (docs/BUSINESS_DISCOVERY_DESIGN.md): the other
 // direction from an owner's invite. Every approved business within range
 // shows up, not only ones hiring — "Actively looking" is a badge an owner
-// set themselves, never a filter on who can be asked. Reached from the
-// Home banner and the Business screen, for someone with no business tie.
+// set themselves, never a filter on who can be asked. Each shows its record
+// (jobs done, rating, team size, kinds of work, insurance); tapping one opens
+// its page (app/business-profile.tsx), where you ask to join.
 // Said in miles (US launch); the server takes kilometres.
 const WIDE_RADIUS_MI = 30;
 const WIDE_RADIUS_KM = WIDE_RADIUS_MI * 1.609344;
-/** "0.4 mi away", "12 mi away" — tenths only while it's under 10. */
-const milesAway = (km: number) => {
-  const mi = kmToMiles(km);
-  return `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi away`;
-};
+
+const openBusiness = (b: NearbyBusiness) => router.push({ pathname: '/business-profile', params: { id: b.id } } as any);
 
 export default function BusinessNearbyScreen() {
   const bottomInset = useBottomInset();
-  const appAlert = useAppAlert();
   const [list, setList] = useState<NearbyBusiness[] | null>(null);
   const [radius, setRadius] = useState<number | undefined>(undefined);
   const [noLocation, setNoLocation] = useState(false);
-  const [requesting, setRequesting] = useState<string | null>(null);
 
   const load = useCallback((withRadius?: number) => {
     return SkoFyApi.business.nearby(withRadius)
@@ -45,34 +38,22 @@ export default function BusinessNearbyScreen() {
         setNoLocation(/location/i.test(err?.message ?? ''));
       });
   }, []);
-  useEffect(() => { load(radius); }, [load, radius]);
+  // Each time it's shown: back from a business's page after asking, its card says so.
+  useFocusEffect(useCallback(() => { load(radius); }, [load, radius]));
   const refreshControl = usePullRefresh(() => load(radius));
 
   const searchWider = () => setRadius(WIDE_RADIUS_KM);
-
-  const requestToJoin = async (business: NearbyBusiness, hours: WorkHours | undefined, agreed: boolean, authorized: boolean) => {
-    setRequesting(business.id);
-    try {
-      const { message } = await SkoFyApi.business.requestToJoin(business.id, hours, agreed, authorized);
-      appAlert.show('success', 'Request sent', message);
-      load(radius);
-    } catch (err: any) {
-      appAlert.show('error', 'Not sent', err?.message ?? 'Please try again.');
-    } finally {
-      setRequesting(null);
-    }
-  };
 
   return (
     <ThemedView style={s.container}>
       <StatusBar barStyle="dark-content" />
       <View style={s.header}>
-        <TouchableOpacity style={s.back} onPress={() => router.back()}>
+        <TouchableOpacity style={s.back} onPress={() => router.back()} accessibilityLabel="Back">
           <ChevronLeft size={22} color={C.ink} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <ThemedText style={s.headerTitle}>Businesses near you</ThemedText>
-          <ThemedText style={u.muted}>Ask to join — they decide, same as any invite</ThemedText>
+          <ThemedText style={u.muted}>See their record, then ask to join — they decide</ThemedText>
         </View>
       </View>
 
@@ -92,7 +73,7 @@ export default function BusinessNearbyScreen() {
                   {noLocation
                     ? 'Turn on location so we can find businesses near you.'
                     : radius === WIDE_RADIUS_KM
-                    ? "No approved businesses yet, even further out."
+                    ? 'No approved businesses yet, even further out.'
                     : 'No approved businesses within your usual radius yet.'}
                 </ThemedText>
                 {!noLocation && radius !== WIDE_RADIUS_KM && (
@@ -101,30 +82,18 @@ export default function BusinessNearbyScreen() {
               </View>
             </Section>
           }
-          renderItem={({ item }) => (
-            <BusinessCard business={item} busy={requesting === item.id}
-              onRequest={(hours, agreed, authorized) => requestToJoin(item, hours, agreed, authorized)} />
-          )}
+          renderItem={({ item }) => <BusinessCard business={item} />}
         />
       )}
-      {appAlert.element}
     </ThemedView>
   );
 }
 
-function BusinessCard({ business, busy, onRequest }: {
-  business: NearbyBusiness; busy: boolean; onRequest: (hours: WorkHours | undefined, agreed: boolean, authorized: boolean) => void;
-}) {
-  const [asking, setAsking] = useState(false);
-  const [hours, setHours] = useState<WorkHours>(inMyZone(defaultHours()));
-  // Once they accept you, you're on the team straight away: what that means
-  // is read and agreed now, as with an invite (business-invites.tsx).
-  const [agreed, setAgreed] = useState(false);
-  const [authorized, setAuthorized] = useState(false);
-  const ready = agreed && (!business.needs_check || authorized);
-
+function BusinessCard({ business }: { business: NearbyBusiness }) {
+  const away = milesAway(business.distance_km);
   return (
-    <View style={[u.card, s.card]}>
+    <TouchableOpacity style={[u.card, s.card]} activeOpacity={0.85} onPress={() => openBusiness(business)}
+      accessibilityRole="button" accessibilityLabel={`${business.name}. Open its page`}>
       <View style={s.head}>
         {business.logo_url
           ? <Image source={{ uri: business.logo_url }} style={s.logo} contentFit="cover" />
@@ -132,41 +101,27 @@ function BusinessCard({ business, busy, onRequest }: {
         <View style={{ flex: 1, gap: 3 }}>
           <ThemedText style={s.name} numberOfLines={1}>{business.name}</ThemedText>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <ThemedText style={u.muted}>{milesAway(Number(business.distance_km))}</ThemedText>
-            <Badge icon={<Users size={11} color={C.muted} />} label={`${business.team_size} on the team`} />
+            {!!away && <ThemedText style={u.muted}>{away}</ThemedText>}
             {business.open_to_join_requests && <Badge icon={<Radar size={11} color={C.brandInk} />} label="Actively looking" tone="brand" />}
           </View>
         </View>
+        <ChevronRight size={18} color={C.faint} />
       </View>
+
+      <RecordLine business={business} />
+      <TradeChips trades={business.trades} />
+      <TrustBadges business={business} />
 
       {business.my_status === 'ACTIVE' ? (
         <Badge label="You're on their team" tone="ok" />
       ) : business.my_status === 'INVITED' ? (
         <ThemedText style={u.muted}>
-          {business.my_requested_by === 'MEMBER' ? 'Your request is waiting for an answer' : 'They invited you'} — open Business to see it.
+          {business.my_requested_by === 'MEMBER' ? 'Your request is waiting for an answer' : 'They invited you — open Business to answer'}
         </ThemedText>
-      ) : asking ? (
-        <View style={{ gap: 10 }}>
-          <ThemedText style={u.label}>Hours you'd want with them</ThemedText>
-          <WorkHoursEditor value={hours} onChange={setHours} />
-          {business.needs_check && (
-            <ThemedText style={u.body}>Dodorez runs a background check if they accept you — at no cost to you.</ThemedText>
-          )}
-          <Consent icon={<MapPin size={16} color={C.warn} />} title="Your location" text={business.notice}
-            checked={agreed} onToggle={() => setAgreed((a) => !a)} label="I've read this and agree" />
-          {business.needs_check && business.check_disclosure && (
-            <Consent icon={<ShieldCheck size={16} color={C.warn} />} title="Background check" text={business.check_disclosure}
-              checked={authorized} onToggle={() => setAuthorized((a) => !a)} label="I authorise Dodorez to get this background check" />
-          )}
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Button kind="secondary" label="Cancel" onPress={() => setAsking(false)} disabled={busy} style={{ flex: 1 }} />
-            <Button label="Send request" busy={busy} disabled={!ready} onPress={() => onRequest(hours, agreed, authorized)} style={{ flex: 1 }} />
-          </View>
-        </View>
       ) : (
-        <Button kind="secondary" label="Request to join" onPress={() => setAsking(true)} />
+        <Button kind="secondary" label="View business" onPress={() => openBusiness(business)} />
       )}
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -176,7 +131,7 @@ const s = StyleSheet.create({
   back: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: C.card, borderWidth: 1, borderColor: C.line },
   headerTitle: { fontSize: 20, lineHeight: 27, fontFamily: Fonts.poppinsBold, color: C.ink },
   body: { paddingHorizontal: 16, gap: 12 },
-  card: { gap: 12 },
+  card: { gap: 10 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   logo: { width: 44, height: 44, borderRadius: 13, backgroundColor: '#F1F5F9' },
   name: { fontSize: 16, lineHeight: 22, fontFamily: Fonts.poppinsBold, color: C.ink },

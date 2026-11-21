@@ -839,7 +839,17 @@ export interface BusinessInvite {
 /** A business found on "Businesses near you" (docs/BUSINESS_DISCOVERY_DESIGN.md §1). */
 export interface NearbyBusiness {
   id: string; name: string; logo_url: string | null; open_to_join_requests: boolean; created_at: string;
-  distance_km: number; team_size: number;
+  /** Null on its page when either location isn't known. */
+  distance_km: number | null; team_size: number;
+  /** Its record as a business (docs/BUSINESS_DISCOVERY_DESIGN.md) — totals, never its people. */
+  jobs_completed: number;
+  /** Null until a customer has reviewed its work: "New on Dodorez". */
+  avg_rating: number | null; review_count: number;
+  /** In-date general liability cover at Dodorez's minimum. */
+  insured: boolean;
+  /** Its kinds of work, from its jobs first, then its team's skills. */
+  trades: string[];
+  owner_name: string | null; owner_photo: string | null; owner_rating: number; owner_jobs_completed: number;
   /** Already tied to them — an invite, a request, or membership. Null: free to ask. */
   my_status: 'INVITED' | 'ACTIVE' | null;
   my_requested_by: 'BUSINESS' | 'MEMBER' | null;
@@ -848,6 +858,12 @@ export interface NearbyBusiness {
   notice: string;
   /** No clear background check yet: they authorise one (this disclosure) before asking. */
   needs_check: boolean; check_disclosure: string | null;
+}
+/** One business's page: the same, with more kinds of work and its approved trade licences. */
+export interface BusinessProfile extends NearbyBusiness {
+  licences: string[];
+  /** On another team, or running a business: why they can't ask (null: they can). */
+  cannot_ask?: string | null;
 }
 /** The business's jobs (docs/BUSINESS_PROVIDERS_DESIGN.md §3). */
 export interface TeamOpenJob {
@@ -2007,6 +2023,9 @@ export const SkoFyApi = {
     /** Approved businesses nearby — every one, not only those hiring. */
     nearby: async (radiusKm?: number): Promise<NearbyBusiness[]> =>
       request(`/businesses/nearby${radiusKm ? `?radius_km=${radiusKm}` : ''}`) as any,
+    /** An approved business, as someone thinking of joining sees it. */
+    businessProfile: async (businessId: string): Promise<BusinessProfile> =>
+      request(`/businesses/${businessId}/profile`) as any,
     /** Asks to join one found nearby — the owner answers it like an invite. */
     requestToJoin: async (businessId: string, hours: WorkHours | undefined, acknowledgedNotice: boolean,
       authorizedCheck: boolean): Promise<{ message: string }> =>
