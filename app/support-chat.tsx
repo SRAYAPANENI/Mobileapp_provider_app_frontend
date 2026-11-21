@@ -10,7 +10,6 @@ import { SkoFyApi } from '@/services/api';
 import { useOpenScreen } from '@/services/openScreens';
 import { useSupportCall } from '@/services/call/supportCall';
 import { Image } from 'expo-image';
-import * as WebBrowser from 'expo-web-browser';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   ChevronLeft,
@@ -385,7 +384,8 @@ export default function SupportChatScreen() {
   };
 
   const openAttachment = (url: string) => {
-    if (isPdf(url)) WebBrowser.openBrowserAsync(url).catch(() => {});
+    // In the app, like a photo: the PDF on its own screen, not the browser.
+    if (isPdf(url)) router.push({ pathname: '/document-viewer', params: { url, title: 'Attachment' } } as any);
     else setViewing(url);
   };
 

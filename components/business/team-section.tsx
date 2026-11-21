@@ -2,8 +2,10 @@ import { ThemedText } from '@/components/themed-text';
 import { MemberRole, Team, TeamMember, WorkHours, isJoinRequest } from '@/services/api';
 import { Clock, MoreHorizontal, UserPlus } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { TouchableOpacity, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Fonts } from '@/constants/theme';
 import { TextInput } from '@/components/scaled-text';
+import { UsPhonePrefix, US_PHONE_INPUT_MAX, formatUsPhone, isUsPhone, usPhoneDigits } from '@/components/us-phone-prefix';
 import { Badge, Button, C, Field, Monogram, Row, Section, Tone, u } from './ui';
 import { defaultHours, sameHours, WorkHoursEditor } from './work-hours';
 
@@ -208,10 +210,17 @@ function InviteForm({ team, onInvite, onClose }: { team: Team; onInvite: Props['
   const [hours, setHours] = useState<WorkHours>(defaultHours());
   const [inviting, setInviting] = useState(false);
 
+  // Kept as its digits, shown as "(512) 555-0100" — the same box as sign-in.
+  const valid = isUsPhone(phone);
+  const [phoneTouched, setPhoneTouched] = useState(false);
+  const phoneError = (phoneTouched || phone.length === 10) && !valid
+    ? (phone.length < 10 ? 'Enter their 10-digit US mobile number.' : 'That isn’t a valid US number — check the area code.')
+    : null;
+
   const invite = async () => {
     setInviting(true);
     try {
-      await onInvite(phone.trim(), role, hours);
+      await onInvite(phone, role, hours);
       onClose();
     } catch {
       // shown by the screen; the number stays for fixing
@@ -222,9 +231,15 @@ function InviteForm({ team, onInvite, onClose }: { team: Team; onInvite: Props['
 
   return (
     <Section title="Invite to the team">
-      <Field label="Their phone">
-        <TextInput style={u.input} value={phone} onChangeText={setPhone} placeholder="(512) 555-0100"
-          keyboardType="phone-pad" placeholderTextColor={C.faint} autoFocus />
+      <Field label="Their phone" required error={phoneError}>
+        <View style={[u.input, s.phoneRow, !!phoneError && u.inputBad]}>
+          <UsPhonePrefix textStyle={s.prefixText} />
+          <View style={s.phoneDivider} />
+          <TextInput style={s.phoneInput} value={formatUsPhone(phone)} onChangeText={(t) => setPhone(usPhoneDigits(t))}
+            onBlur={() => setPhoneTouched(true)} placeholder="(512) 555-0100" keyboardType="phone-pad" textContentType="telephoneNumber"
+            autoComplete="tel" maxLength={US_PHONE_INPUT_MAX} placeholderTextColor={C.faint} autoFocus
+            accessibilityLabel="Their phone number, United States" />
+        </View>
       </Field>
       <Field label="Role">
         <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -254,8 +269,16 @@ function InviteForm({ team, onInvite, onClose }: { team: Team; onInvite: Props['
       </View>
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <Button kind="secondary" label="Cancel" onPress={onClose} disabled={inviting} style={{ flex: 1 }} />
-        <Button label="Send invite" onPress={invite} busy={inviting} disabled={phone.trim().length < 10} style={{ flex: 1 }} />
+        <Button label="Send invite" onPress={invite} busy={inviting} disabled={!valid} style={{ flex: 1 }} />
       </View>
     </Section>
   );
 }
+
+const s = StyleSheet.create({
+  // The invite's phone box: +1 fixed (US launch), then the number.
+  phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 0, minHeight: 48 },
+  prefixText: { fontSize: 14.5, color: C.ink },
+  phoneDivider: { width: 1, alignSelf: 'stretch', marginVertical: 10, backgroundColor: '#DDE1E7' },
+  phoneInput: { flex: 1, paddingVertical: 12, fontSize: 14.5, fontFamily: Fonts.poppins, color: C.ink },
+});

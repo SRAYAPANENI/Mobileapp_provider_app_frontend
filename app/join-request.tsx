@@ -65,6 +65,8 @@ export default function JoinRequestScreen() {
 
   // What's waiting: hours they asked for (the owner answers), or other hours
   // the owner already offered (waiting on them — nothing to accept here).
+  // A status this app doesn't know yet reads as "no check yet", never a crash.
+  const checkLabel = CHECK_LABELS[profile?.background_check_status ?? 'NOT_STARTED'] ?? CHECK_LABELS.NOT_STARTED;
   const offer = profile?.hours?.offer ?? null;
   const asked = offer?.from === 'MEMBER' ? offer : null;
   const offered = offer?.from === 'BUSINESS' ? offer : null;
@@ -153,7 +155,7 @@ export default function JoinRequestScreen() {
                 detail={profile.is_identity_verified ? 'Dodorez checked their ID' : 'They can’t do jobs until it is'} />
               <Row last icon={<ShieldCheck size={18} color={C.ink} />}
                 title="Background check"
-                right={<Badge {...(() => { const c = CHECK_LABELS[profile.background_check_status ?? 'NOT_STARTED']; return { label: c.text, tone: c.tone }; })()} />}
+                right={<Badge label={checkLabel.text} tone={checkLabel.tone} />}
                 detail={profile.background_check_status === 'CLEAR' ? 'Already clear — nothing to run'
                   : 'Dodorez runs one when they join'} />
             </Section>

@@ -9,6 +9,8 @@ import { MyHours } from '@/components/business/my-hours';
 import { SetupChecklist } from '@/components/business/setup-checklist';
 import { TeamSection } from '@/components/business/team-section';
 import { BusinessTabs } from '@/components/business/business-tabs';
+import { usePhotoViewer } from '@/components/photo-viewer';
+import { openDocument } from '@/services/open-document';
 import { Badge, Button, C, Monogram, Progress, Row, Section, Toggle, Tone, u } from '@/components/business/ui';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -23,7 +25,7 @@ import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { AlertTriangle, BadgeCheck, Briefcase, Building2, ChevronLeft, FileText, Landmark, LogOut, Map as MapIcon, Pencil, Plus, Radar, ShieldCheck, Trash2, Users, Camera } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Share, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Share, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Image } from 'expo-image';
 import { PRO_APP_DOWNLOAD_URL } from '@/services/api-config';
 import { Asset } from 'expo-asset';
@@ -57,6 +59,8 @@ const date = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString(und
 export default function BusinessScreen() {
   const bottomInset = useBottomInset();
   const appAlert = useAppAlert();
+  // Certificates and licences open in the app (a photo full screen, a PDF on its own screen).
+  const photoViewer = usePhotoViewer();
   // Camera or gallery, in the app's own popup (components/photo-picker.tsx).
   const photoPicker = usePhotoPicker();
   const scroll = useRef<KeyboardAwareScrollViewRef>(null);
@@ -510,7 +514,7 @@ export default function BusinessScreen() {
                   <Row last icon={<FileText size={18} color={C.muted} />} title="Nothing uploaded yet"
                     detail={`General liability (${usd(data.min_liability)}+) and your trade licences`} />
                 ) : business.documents.map((doc, i) => (
-                  <Row key={doc.id} last={i === business.documents.length - 1} onPress={() => Linking.openURL(doc.file_url)}
+                  <Row key={doc.id} last={i === business.documents.length - 1} onPress={() => openDocument(doc.file_url, `${DOC_NAMES[doc.kind]}${doc.trade ? ` · ${doc.trade}` : ''}`, photoViewer.open)}
                     icon={<FileText size={18} color={C.ink} />} tone={DOC_STATUS[doc.status].tone}
                     title={`${DOC_NAMES[doc.kind]}${doc.trade ? ` · ${doc.trade}` : ''}`}
                     detail={
@@ -557,6 +561,7 @@ export default function BusinessScreen() {
         </KeyboardAwareScrollView>
       )}
       {appAlert.element}
+      {photoViewer.element}
       {photoPicker.element}
     </ThemedView>
   );

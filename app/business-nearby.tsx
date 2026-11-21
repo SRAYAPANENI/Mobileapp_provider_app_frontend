@@ -8,6 +8,7 @@ import { Fonts } from '@/constants/theme';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { usePullRefresh } from '@/hooks/use-pull-refresh';
 import { NearbyBusiness, SkoFyApi, WorkHours } from '@/services/api';
+import { kmToMiles } from '@/services/schedulingEngine';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { Building2, ChevronLeft, MapPin, MapPinOff, Radar, ShieldCheck, Users } from 'lucide-react-native';
@@ -19,7 +20,14 @@ import { ActivityIndicator, FlatList, StatusBar, StyleSheet, TouchableOpacity, V
 // shows up, not only ones hiring — "Actively looking" is a badge an owner
 // set themselves, never a filter on who can be asked. Reached from the
 // Home banner and the Business screen, for someone with no business tie.
-const WIDE_RADIUS_KM = 50;
+// Said in miles (US launch); the server takes kilometres.
+const WIDE_RADIUS_MI = 30;
+const WIDE_RADIUS_KM = WIDE_RADIUS_MI * 1.609344;
+/** "0.4 mi away", "12 mi away" — tenths only while it's under 10. */
+const milesAway = (km: number) => {
+  const mi = kmToMiles(km);
+  return `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi away`;
+};
 
 export default function BusinessNearbyScreen() {
   const bottomInset = useBottomInset();
@@ -88,7 +96,7 @@ export default function BusinessNearbyScreen() {
                     : 'No approved businesses within your usual radius yet.'}
                 </ThemedText>
                 {!noLocation && radius !== WIDE_RADIUS_KM && (
-                  <Button small kind="secondary" label={`Search within ${WIDE_RADIUS_KM} km`} onPress={searchWider} />
+                  <Button small kind="secondary" label={`Search within ${WIDE_RADIUS_MI} mi`} onPress={searchWider} />
                 )}
               </View>
             </Section>
@@ -124,7 +132,7 @@ function BusinessCard({ business, busy, onRequest }: {
         <View style={{ flex: 1, gap: 3 }}>
           <ThemedText style={s.name} numberOfLines={1}>{business.name}</ThemedText>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <ThemedText style={u.muted}>{business.distance_km} km away</ThemedText>
+            <ThemedText style={u.muted}>{milesAway(Number(business.distance_km))}</ThemedText>
             <Badge icon={<Users size={11} color={C.muted} />} label={`${business.team_size} on the team`} />
             {business.open_to_join_requests && <Badge icon={<Radar size={11} color={C.brandInk} />} label="Actively looking" tone="brand" />}
           </View>
