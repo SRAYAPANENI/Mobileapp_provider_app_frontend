@@ -1,6 +1,7 @@
 import { useAppAlert } from '@/components/app-alert';
 import { Badge, Button, C, Monogram, Section, u } from '@/components/business/ui';
 import { defaultHours, inMyZone, WorkHoursEditor } from '@/components/business/work-hours';
+import { Consent } from '@/components/business/business-invites';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
@@ -9,7 +10,7 @@ import { usePullRefresh } from '@/hooks/use-pull-refresh';
 import { NearbyBusiness, SkoFyApi, WorkHours } from '@/services/api';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { Building2, ChevronLeft, MapPinOff, Radar, Users } from 'lucide-react-native';
+import { Building2, ChevronLeft, MapPin, MapPinOff, Radar, ShieldCheck, Users } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
 
@@ -41,10 +42,10 @@ export default function BusinessNearbyScreen() {
 
   const searchWider = () => setRadius(WIDE_RADIUS_KM);
 
-  const requestToJoin = async (business: NearbyBusiness, hours: WorkHours | undefined) => {
+  const requestToJoin = async (business: NearbyBusiness, hours: WorkHours | undefined, agreed: boolean, authorized: boolean) => {
     setRequesting(business.id);
     try {
-      const { message } = await SkoFyApi.business.requestToJoin(business.id, hours);
+      const { message } = await SkoFyApi.business.requestToJoin(business.id, hours, agreed, authorized);
       appAlert.show('success', 'Request sent', message);
       load(radius);
     } catch (err: any) {
@@ -93,7 +94,8 @@ export default function BusinessNearbyScreen() {
             </Section>
           }
           renderItem={({ item }) => (
-            <BusinessCard business={item} busy={requesting === item.id} onRequest={(hours) => requestToJoin(item, hours)} />
+            <BusinessCard business={item} busy={requesting === item.id}
+              onRequest={(hours, agreed, authorized) => requestToJoin(item, hours, agreed, authorized)} />
           )}
         />
       )}
@@ -103,10 +105,15 @@ export default function BusinessNearbyScreen() {
 }
 
 function BusinessCard({ business, busy, onRequest }: {
-  business: NearbyBusiness; busy: boolean; onRequest: (hours: WorkHours | undefined) => void;
+  business: NearbyBusiness; busy: boolean; onRequest: (hours: WorkHours | undefined, agreed: boolean, authorized: boolean) => void;
 }) {
   const [asking, setAsking] = useState(false);
   const [hours, setHours] = useState<WorkHours>(inMyZone(defaultHours()));
+  // Once they accept you, you're on the team straight away: what that means
+  // is read and agreed now, as with an invite (business-invites.tsx).
+  const [agreed, setAgreed] = useState(false);
+  const [authorized, setAuthorized] = useState(false);
+  const ready = agreed && (!business.needs_check || authorized);
 
   return (
     <View style={[u.card, s.card]}>
@@ -134,9 +141,18 @@ function BusinessCard({ business, busy, onRequest }: {
         <View style={{ gap: 10 }}>
           <ThemedText style={u.label}>Hours you'd want with them</ThemedText>
           <WorkHoursEditor value={hours} onChange={setHours} />
+          {business.needs_check && (
+            <ThemedText style={u.body}>Dodorez runs a background check if they accept you — at no cost to you.</ThemedText>
+          )}
+          <Consent icon={<MapPin size={16} color={C.warn} />} title="Your location" text={business.notice}
+            checked={agreed} onToggle={() => setAgreed((a) => !a)} label="I've read this and agree" />
+          {business.needs_check && business.check_disclosure && (
+            <Consent icon={<ShieldCheck size={16} color={C.warn} />} title="Background check" text={business.check_disclosure}
+              checked={authorized} onToggle={() => setAuthorized((a) => !a)} label="I authorise Dodorez to get this background check" />
+          )}
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Button kind="secondary" label="Cancel" onPress={() => setAsking(false)} disabled={busy} style={{ flex: 1 }} />
-            <Button label="Send request" busy={busy} onPress={() => onRequest(hours)} style={{ flex: 1 }} />
+            <Button label="Send request" busy={busy} disabled={!ready} onPress={() => onRequest(hours, agreed, authorized)} style={{ flex: 1 }} />
           </View>
         </View>
       ) : (

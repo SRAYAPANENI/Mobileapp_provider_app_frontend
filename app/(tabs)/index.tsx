@@ -37,6 +37,7 @@ import {
   Package,
   Repeat as RepeatIcon,
   Lock,
+  UserPlus,
 } from 'lucide-react-native';
 import { PriceTag } from '@/components/price-tag';
 import * as SecureStore from 'expo-secure-store';
@@ -1616,6 +1617,32 @@ const filteredJobs = jobs.filter((job) => {
             attention={!myBusiness.data.business.ready_for_on_site_work} />
         )}
 
+        {/* Providers asking to join the owner's business: on the home screen
+            whichever side is showing (the Team side lists them). */}
+        {!teamMode && myBusiness.joinRequests.length > 0 && (
+          <TouchableOpacity
+            style={[styles.repeatRequestsBanner, styles.joinRequestsBanner]}
+            activeOpacity={0.85}
+            onPress={() => {
+              const [only] = myBusiness.joinRequests;
+              if (myBusiness.joinRequests.length === 1) router.push({ pathname: '/join-request', params: { memberId: only.id } } as any);
+              else if (myBusiness.canDispatch) chooseWorkspace('team');
+              else router.push('/business' as any);
+            }}
+            accessibilityRole="button"
+          >
+            <UserPlus size={18} color="#1D4ED8" />
+            <ThemedText style={[styles.repeatRequestsBannerText, { color: '#1E3A8A' }]} numberOfLines={2}>
+              {myBusiness.joinRequests.length === 1
+                ? `${myBusiness.joinRequests[0].name ?? 'A provider'} wants to join ${myBusiness.data?.business?.name ?? 'your team'}`
+                : `${myBusiness.joinRequests.length} providers want to join ${myBusiness.data?.business?.name ?? 'your team'}`}
+            </ThemedText>
+            <ThemedText style={[styles.repeatRequestsBannerAction, { color: '#1D4ED8' }]}>
+              {myBusiness.joinRequests.length === 1 ? 'View profile' : 'View'}
+            </ThemedText>
+          </TouchableOpacity>
+        )}
+
         {!teamMode && isAvailable && repeatRequestCount > 0 && (
           <TouchableOpacity
             style={styles.repeatRequestsBanner}
@@ -2060,6 +2087,7 @@ const styles = StyleSheet.create({
     borderColor: '#FDE68A',
   },
   repeatRequestsBannerText: { flex: 1, fontSize: 13.5, lineHeight: 18, fontFamily: Fonts.poppinsSemiBold, color: '#92400E' },
+  joinRequestsBanner: { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' },
   repeatRequestsBannerAction: { fontSize: 13, lineHeight: 18, fontFamily: Fonts.poppinsBold, color: '#B45309' },
   repeatRequestBadge: {
     backgroundColor: '#F59E0B',

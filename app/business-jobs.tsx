@@ -5,8 +5,9 @@ import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { BusinessBoard, SkoFyApi, Team, TeamActiveJob, TeamOpenJob } from '@/services/api';
+import { BusinessTabs } from '@/components/business/business-tabs';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { Briefcase, Check, ChevronLeft, Clock, Inbox, Map as MapIcon } from 'lucide-react-native';
+import { Briefcase, Check, ChevronLeft, Clock, Inbox } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { TextInput } from '@/components/scaled-text';
@@ -116,8 +117,9 @@ export default function BusinessJobsScreen() {
           <ChevronLeft size={22} color={C.ink} />
         </TouchableOpacity>
         <ThemedText style={[s.headerTitle, { flex: 1 }]}>Team jobs</ThemedText>
-        <Button small kind="secondary" label="Map" icon={<MapIcon size={15} color={C.ink} />} onPress={() => router.push('/business-map' as any)} />
       </View>
+      {/* No requests count here: this page is a dispatcher's too, and only the owner answers them. */}
+      <BusinessTabs current="jobs" style={s.tabs} />
       {!board || !team ? <ActivityIndicator style={{ marginTop: 40 }} color={C.ink} /> : (
         <KeyboardAwareScrollView bottomOffset={24} contentContainerStyle={padBottom([s.body, { paddingBottom: 40 }], bottomInset)} keyboardShouldPersistTaps="handled"
           refreshControl={refreshControl}>
@@ -226,6 +228,7 @@ const s = StyleSheet.create({
   back: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: C.card, borderWidth: 1, borderColor: C.line },
   headerTitle: { fontSize: 22, lineHeight: 30, fontFamily: Fonts.poppinsBold, color: C.ink },
   body: { paddingHorizontal: 16, gap: 20 },
+  tabs: { marginHorizontal: 16, marginBottom: 12 },
   focusTitle: { fontSize: 16, lineHeight: 22, fontFamily: Fonts.poppinsBold, color: C.ink },
   job: { paddingVertical: 14, gap: 10 },
   jobLine: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E2E8F0' },

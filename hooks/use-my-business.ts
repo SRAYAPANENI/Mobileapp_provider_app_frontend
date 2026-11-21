@@ -1,4 +1,4 @@
-import { BusinessBoard, BusinessInvite, MyBusiness, SkoFyApi, TeamOpenJob } from '@/services/api';
+import { BusinessBoard, BusinessInvite, MyBusiness, SkoFyApi, TeamMember, TeamOpenJob, awaitsOwner } from '@/services/api';
 import { onAppConfigChanged } from '@/services/app-config-socket';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
@@ -10,6 +10,8 @@ export interface MyBusinessState {
   board: BusinessBoard | null;
   /** May apply for jobs as the business and give them to members. */
   canDispatch: boolean;
+  /** Providers asking to join, waiting for the owner's answer — empty for anyone else. */
+  joinRequests: TeamMember[];
   /** The open job the team can take, if this is one. */
   teamJob: (jobId: string) => TeamOpenJob | undefined;
   refresh: () => void;
@@ -22,6 +24,7 @@ export function useMyBusiness(): MyBusinessState {
   const [data, setData] = useState<MyBusiness | null>(null);
   const [invites, setInvites] = useState<BusinessInvite[]>([]);
   const [board, setBoard] = useState<BusinessBoard | null>(null);
+  const [joinRequests, setJoinRequests] = useState<TeamMember[]>([]);
 
   const refresh = useCallback(() => {
     return SkoFyApi.business.mine().then((next) => {
@@ -30,6 +33,10 @@ export function useMyBusiness(): MyBusinessState {
       SkoFyApi.business.invites().then(setInvites).catch(() => setInvites([]));
       if (dispatches(next)) SkoFyApi.business.board().then(setBoard).catch(() => setBoard(null));
       else setBoard(null);
+      // Only the owner answers them (BusinessTeamService.answer_hours).
+      if (next.business && next.role === 'OWNER') {
+        SkoFyApi.business.team().then((t) => setJoinRequests(t.members.filter(awaitsOwner))).catch(() => {});
+      } else setJoinRequests([]);
     }).catch(() => {});
   }, []);
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
@@ -40,7 +47,7 @@ export function useMyBusiness(): MyBusinessState {
   useEffect(() => onAppConfigChanged(refresh), [refresh]);
 
   return {
-    data, invites, board,
+    data, invites, board, joinRequests,
     canDispatch: !!data && dispatches(data),
     teamJob: (jobId) => board?.open.find((j) => j.job_id === jobId),
     refresh,

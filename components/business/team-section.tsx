@@ -1,5 +1,5 @@
 import { ThemedText } from '@/components/themed-text';
-import { MemberRole, Team, TeamMember, WorkHours } from '@/services/api';
+import { MemberRole, Team, TeamMember, WorkHours, isJoinRequest } from '@/services/api';
 import { Clock, MoreHorizontal, UserPlus } from 'lucide-react-native';
 import React, { useState } from 'react';
 import { TouchableOpacity, View } from 'react-native';
@@ -8,7 +8,7 @@ import { Badge, Button, C, Field, Monogram, Row, Section, Tone, u } from './ui';
 import { defaultHours, sameHours, WorkHoursEditor } from './work-hours';
 
 const ROLE_LABEL: Record<MemberRole, string> = { OWNER: 'Owner', DISPATCHER: 'Dispatcher', WORKER: 'Worker' };
-const CHECK: Record<string, { text: string; tone: Tone }> = {
+export const CHECK_LABELS: Record<string, { text: string; tone: Tone }> = {
   CLEAR: { text: 'Check clear', tone: 'ok' },
   PENDING: { text: 'Check running', tone: 'info' },
   CONSIDER: { text: 'Check in review', tone: 'warn' },
@@ -31,6 +31,8 @@ interface Props {
   /** Share the invite again — for someone not on Dodorez, who only hears
    *  about it from the owner. */
   onResend?: (member: TeamMember) => void;
+  /** Open someone's request to join: their profile, where it's decided. */
+  onViewRequest: (member: TeamMember) => void;
 }
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -41,7 +43,7 @@ const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, {
 // and their background check is clear, and only in their agreed hours
 // (docs/EMPLOYER_PARTNERS_DESIGN.md).
 export function TeamSection({ team, canManage, onInvite, onOfferHours, onAnswerHours, onChangeRole, onRemove, onRelease,
-  onResend }: Props) {
+  onResend, onViewRequest }: Props) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [editingHours, setEditingHours] = useState<string | null>(null);
@@ -54,7 +56,9 @@ export function TeamSection({ team, canManage, onInvite, onOfferHours, onAnswerH
           <Button small kind="ghost" label="Invite" icon={<UserPlus size={16} color={C.info} />} onPress={() => setInviteOpen(true)} />
         ) : undefined}>
         {team.members.map((m, i) => {
-          const check = CHECK[m.background_check_status ?? 'NOT_STARTED'];
+          const check = CHECK_LABELS[m.background_check_status ?? 'NOT_STARTED'];
+          // Someone asking to join: decided on their profile (app/join-request.tsx), not here.
+          const request = isJoinRequest(m);
           const manageable = canManage && m.role !== 'OWNER';
           const offer = m.hours?.offer ?? null;
           const theirOffer = offer?.from === 'MEMBER';
@@ -62,11 +66,12 @@ export function TeamSection({ team, canManage, onInvite, onOfferHours, onAnswerH
           return (
             <View key={m.id}>
               <Row last={i === team.members.length - 1 && open !== m.id}
-                icon={<Monogram name={m.name ?? m.phone} size={38} tone={m.status === 'INVITED' ? 'neutral' : 'brand'} />}
+                icon={<Monogram name={m.name ?? m.phone ?? undefined} size={38} tone={m.status === 'INVITED' ? 'neutral' : 'brand'} />}
                 tone="neutral"
                 title={
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <ThemedText style={u.label} numberOfLines={1}>{m.name ?? m.phone}</ThemedText>
+                    {/* A request has no phone to fall back on (it comes with joining). */}
+                    <ThemedText style={u.label} numberOfLines={1}>{m.name ?? m.phone ?? 'A provider'}</ThemedText>
                     <Badge
                       label={m.status === 'INVITED' ? (m.requested_by === 'MEMBER' ? 'Wants to join' : 'Invited') : ROLE_LABEL[m.role]}
                       tone={m.role === 'OWNER' ? 'brand' : m.status === 'INVITED' && m.requested_by === 'MEMBER' ? 'info' : 'neutral'} />
@@ -99,8 +104,13 @@ export function TeamSection({ team, canManage, onInvite, onOfferHours, onAnswerH
                   </TouchableOpacity>
                 ) : undefined}
               />
+              {canManage && request && (
+                <View style={{ flexDirection: 'row', gap: 8, paddingBottom: 12, paddingLeft: 50, flexWrap: 'wrap' }}>
+                  <Button small label="View profile" onPress={() => onViewRequest(m)} />
+                </View>
+              )}
               {/* Their hours, sent back or asked for: the owner answers. */}
-              {canManage && theirOffer && offer && editingHours !== m.id && (
+              {canManage && theirOffer && offer && !request && editingHours !== m.id && (
                 <View style={{ gap: 8, paddingBottom: 12, paddingLeft: 50 }}>
                   <ThemedText style={u.muted}>
                     {m.status === 'INVITED' ? 'They’d join for these hours:' : 'They asked for:'} {offer.label}
@@ -171,15 +181,16 @@ function HoursLine({ text }: { text: string }) {
   );
 }
 
-/** Offering a member hours: they accept, decline or send their own. */
-function HoursForm({ initial, current, onCancel, onSend }: {
-  initial: WorkHours; current: WorkHours | null; onCancel: () => void; onSend: (hours: WorkHours) => Promise<void>;
+/** Offering a member hours: they accept, decline or send their own.
+ * `flat`: on a page of its own, not indented under a team row. */
+export function HoursForm({ initial, current, onCancel, onSend, flat }: {
+  initial: WorkHours; current: WorkHours | null; onCancel: () => void; onSend: (hours: WorkHours) => Promise<void>; flat?: boolean;
 }) {
   const [hours, setHours] = useState<WorkHours>(initial);
   const [sending, setSending] = useState(false);
   const unchanged = !!current && sameHours(hours, current);
   return (
-    <View style={{ gap: 10, paddingBottom: 12, paddingLeft: 50 }}>
+    <View style={{ gap: 10, paddingBottom: flat ? 0 : 12, paddingLeft: flat ? 0 : 50 }}>
       <WorkHoursEditor value={hours} onChange={setHours} />
       <ThemedText style={u.muted}>They answer in their app. Their hours stay as they are until they accept.</ThemedText>
       <View style={{ flexDirection: 'row', gap: 8 }}>

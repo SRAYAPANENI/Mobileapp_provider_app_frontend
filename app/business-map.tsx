@@ -4,6 +4,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
 import { useBottomInset } from '@/hooks/use-bottom-inset';
 import { SkoFyApi, TeamPosition } from '@/services/api';
+import { BusinessTabs } from '@/components/business/business-tabs';
 import { router } from 'expo-router';
 import { ChevronLeft, ChevronRight, Home, Navigation, Users } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -152,6 +153,7 @@ export default function BusinessMapScreen() {
           </TouchableOpacity>
         )}
       </View>
+      <BusinessTabs current="map" floating style={s.tabs} />
 
       <View style={[s.bottom, { paddingBottom: Math.max(bottomInset, 16) }]} pointerEvents="box-none">
         {loaded && positions.length === 0 ? (
@@ -189,6 +191,8 @@ const shadow = { shadowColor: '#0F172A', shadowOpacity: 0.12, shadowRadius: 10, 
 const s = StyleSheet.create({
   container: { flex: 1 },
   header: { position: 'absolute', top: 56, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  // Under the header (56 + its 44, and a gap): the three business pages.
+  tabs: { position: 'absolute', top: 110, left: 16, right: 16 },
   round: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: C.card, ...shadow },
   titlePill: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, height: 44, paddingHorizontal: 14, borderRadius: 14, backgroundColor: C.card, ...shadow },
   title: { flex: 1, fontSize: 15, lineHeight: 20, fontFamily: Fonts.poppinsBold, color: C.ink },

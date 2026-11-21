@@ -8,6 +8,7 @@ import { EmployerBenefits } from '@/components/business/employer-benefits';
 import { MyHours } from '@/components/business/my-hours';
 import { SetupChecklist } from '@/components/business/setup-checklist';
 import { TeamSection } from '@/components/business/team-section';
+import { BusinessTabs } from '@/components/business/business-tabs';
 import { Badge, Button, C, Monogram, Progress, Row, Section, Toggle, Tone, u } from '@/components/business/ui';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -59,7 +60,7 @@ export default function BusinessScreen() {
   // Camera or gallery, in the app's own popup (components/photo-picker.tsx).
   const photoPicker = usePhotoPicker();
   const scroll = useRef<KeyboardAwareScrollViewRef>(null);
-  const { data, invites, board, canDispatch, refresh } = useMyBusiness();
+  const { data, invites, board, canDispatch, joinRequests, refresh } = useMyBusiness();
   const [team, setTeam] = useState<Team | null>(null);
   const [earnings, setEarnings] = useState<BusinessEarnings | null>(null);
   const [editing, setEditing] = useState(false);
@@ -258,6 +259,7 @@ export default function BusinessScreen() {
         </TouchableOpacity>
         <ThemedText style={s.headerTitle}>Business</ThemedText>
       </View>
+      {canDispatch && <BusinessTabs current="business" badges={{ business: joinRequests.length }} style={s.tabs} />}
 
       {!data ? <ActivityIndicator style={{ marginTop: 40 }} color={C.ink} /> : !data.enabled ? (
         <View style={s.body}>
@@ -460,6 +462,7 @@ export default function BusinessScreen() {
                   onChangeRole={(m, r) => teamAction(m.id, () => SkoFyApi.business.changeRole(m.id, r))}
                   onRemove={removeMember}
                   onResend={(m) => { if (m.phone) sendInvite(m.phone, m.role, m.id); }}
+                  onViewRequest={(m) => router.push({ pathname: '/join-request', params: { memberId: m.id } } as any)}
                   onRelease={(m) => appAlert.show('warning', `Release ${m.name ?? 'them'} now?`,
                     'They leave the team today instead of at the end of their notice.', [
                       { text: 'Keep notice', variant: 'secondary' },
@@ -589,6 +592,7 @@ const s = StyleSheet.create({
   back: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: C.card, borderWidth: 1, borderColor: C.line },
   headerTitle: { fontSize: 22, lineHeight: 30, fontFamily: Fonts.poppinsBold, color: C.ink },
   body: { paddingHorizontal: 16, gap: 20 },
+  tabs: { marginHorizontal: 16, marginBottom: 12 },
   hero: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   heroName: { fontSize: 19, lineHeight: 25, fontFamily: Fonts.poppinsBold, color: C.ink },
   iconButton: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg, alignSelf: 'flex-start' },

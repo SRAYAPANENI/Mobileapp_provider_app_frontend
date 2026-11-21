@@ -121,7 +121,9 @@ function InviteCard({ invite, onAnswer }: { invite: BusinessInvite; onAnswer: Pr
   );
 }
 
-function Consent({ icon, title, text, checked, onToggle, label }: {
+/** Something to read in full and agree to — the location notice, the
+ * background check. Also asked before a request to join (business-nearby). */
+export function Consent({ icon, title, text, checked, onToggle, label }: {
   icon: React.ReactNode; title: string; text: string; checked: boolean; onToggle: () => void; label: string;
 }) {
   return (

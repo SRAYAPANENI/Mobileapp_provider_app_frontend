@@ -805,6 +805,23 @@ export interface CheckCharge {
   id: string; name: string; amount: number; free: boolean; status: 'PENDING' | 'DUE' | 'DEDUCTED' | 'WAIVED'; created_at: string;
 }
 export interface Team { members: TeamMember[]; free_checks_left: number; check_cost: number; check_charges: CheckCharge[] }
+/** Someone asking to join, as the owner decides on them — their work on
+ * Dodorez, never their phone or email (those come with joining). */
+export interface JoinRequestProfile {
+  member_id: string; name: string | null; profile_image_url: string | null; bio: string | null;
+  years_experience: number; city: string | null; member_since: string | null; requested_at: string | null;
+  avg_rating: number; review_count: number;
+  ratings: { skill: number | null; punctuality: number | null; behaviour: number | null; communication: number | null };
+  jobs_completed: number; jobs_cancelled: number; no_show_count: number;
+  is_identity_verified: boolean; background_check_status: TeamMember['background_check_status'];
+  skills: { name: string; profession: string; is_verified: boolean; skill_o_meter: number }[];
+  hours: HoursView;
+}
+/** A provider asked to join, not answered yet. */
+export const isJoinRequest = (m: TeamMember) => m.status === 'INVITED' && m.requested_by === 'MEMBER';
+/** A request the owner has to answer — not one where they offered other
+ * hours and it's now waiting on the provider. */
+export const awaitsOwner = (m: TeamMember) => isJoinRequest(m) && m.hours?.offer?.from !== 'BUSINESS';
 export interface BusinessInvite {
   id: string; business_id: string; business_name: string; role: MemberRole; invited_by: string | null;
   /** The location notice to read and accept before joining. */
@@ -827,6 +844,10 @@ export interface NearbyBusiness {
   my_status: 'INVITED' | 'ACTIVE' | null;
   my_requested_by: 'BUSINESS' | 'MEMBER' | null;
   my_member_id: string | null;
+  /** Read and accepted before asking — joining is straight away once they accept. */
+  notice: string;
+  /** No clear background check yet: they authorise one (this disclosure) before asking. */
+  needs_check: boolean; check_disclosure: string | null;
 }
 /** The business's jobs (docs/BUSINESS_PROVIDERS_DESIGN.md §3). */
 export interface TeamOpenJob {
@@ -1938,6 +1959,9 @@ export const SkoFyApi = {
     payoutsDashboard: async (): Promise<{ url: string }> =>
       request('/businesses/me/payouts/dashboard', { method: 'POST' }) as any,
     team: async (): Promise<Team> => request('/businesses/me/team') as any,
+    /** Someone asking to join: what the owner decides on (owner only). */
+    requestProfile: async (memberId: string): Promise<JoinRequestProfile> =>
+      request(`/businesses/me/team/${memberId}/profile`) as any,
     /** The logo, as an image data: URL — or null to remove it. */
     setLogo: async (image: string | null): Promise<MyBusiness> =>
       request('/businesses/me/logo', { method: 'PUT', body: JSON.stringify({ image }) }) as any,
@@ -1984,8 +2008,12 @@ export const SkoFyApi = {
     nearby: async (radiusKm?: number): Promise<NearbyBusiness[]> =>
       request(`/businesses/nearby${radiusKm ? `?radius_km=${radiusKm}` : ''}`) as any,
     /** Asks to join one found nearby — the owner answers it like an invite. */
-    requestToJoin: async (businessId: string, hours?: WorkHours): Promise<{ message: string }> =>
-      request(`/businesses/${businessId}/requests`, { method: 'POST', body: JSON.stringify({ hours }) }) as any,
+    requestToJoin: async (businessId: string, hours: WorkHours | undefined, acknowledgedNotice: boolean,
+      authorizedCheck: boolean): Promise<{ message: string }> =>
+      request(`/businesses/${businessId}/requests`, {
+        method: 'POST',
+        body: JSON.stringify({ hours, acknowledged_notice: acknowledgedNotice, authorized_check: authorizedCheck }),
+      }) as any,
     /** Accept the hours offered, or — with other `hours` — send the invite back with those. */
     answerInvite: async (memberId: string, accept: boolean, acknowledgedNotice: boolean, authorizedCheck = false,
       hours?: WorkHours): Promise<{ message: string }> =>

@@ -144,7 +144,9 @@ export default function NotificationsScreen() {
       else router.push('/help-support' as any);
       return;
     }
-    if (item.notif_type === 'business_update') {
+    // A request to join: the list keeps no request id, so Business, where it
+    // waits with its View profile (the push itself opens the profile).
+    if (item.notif_type === 'business_update' || item.notif_type === 'join_request') {
       router.push('/business' as any);
       return;
     }

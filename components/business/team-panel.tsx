@@ -2,7 +2,8 @@ import { ThemedText } from '@/components/themed-text';
 import { Fonts } from '@/constants/theme';
 import { MyBusinessState } from '@/hooks/use-my-business';
 import { router } from 'expo-router';
-import { AlertTriangle, Check, Clock, Inbox, Map as MapIcon, Settings2, Users } from 'lucide-react-native';
+import { AlertTriangle, Check, Clock, Inbox, UserPlus, Users } from 'lucide-react-native';
+import { BusinessTabs } from './business-tabs';
 import React from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Badge, Button, C, jobStage, Monogram, Row, Section, u } from './ui';
@@ -25,11 +26,22 @@ export function TeamPanel({ state }: { state: MyBusinessState }) {
 
   return (
     <View style={{ gap: 20 }}>
-      <View style={s.tools}>
-        <Tool icon={<Users size={16} color={C.ink} />} label="Team jobs" onPress={() => go('/business-jobs')} />
-        <Tool icon={<MapIcon size={16} color={C.ink} />} label="Map" onPress={() => go('/business-map')} />
-        <Tool icon={<Settings2 size={16} color={C.ink} />} label="Business" onPress={() => go('/business')} />
-      </View>
+      <BusinessTabs badges={{ business: state.joinRequests.length }} />
+
+      {/* Providers asking to join: seen here, decided on their profile. */}
+      {state.joinRequests.length > 0 && (
+        <Section title={`Requests to join · ${state.joinRequests.length}`} flush>
+          {state.joinRequests.map((m, i) => (
+            <Row key={m.id} last={i === state.joinRequests.length - 1}
+              onPress={() => go('/join-request', { memberId: m.id })}
+              icon={<Monogram name={m.name} size={38} tone="info" />}
+              title={m.name ?? 'A provider'}
+              detail={m.hours?.offer?.label ? `Asks for ${m.hours.offer.label}` : 'Wants to join your team'}
+              right={<Button small label="View profile" icon={<UserPlus size={14} color={C.ink} />}
+                onPress={() => go('/join-request', { memberId: m.id })} />} />
+          ))}
+        </Section>
+      )}
 
       {!business.ready_for_on_site_work && (
         <TouchableOpacity style={s.warn} activeOpacity={0.8} onPress={() => go('/business')}>
@@ -82,22 +94,7 @@ export function TeamPanel({ state }: { state: MyBusinessState }) {
   );
 }
 
-function Tool({ icon, label, onPress }: { icon: React.ReactNode; label: string; onPress: () => void }) {
-  return (
-    <TouchableOpacity style={s.tool} activeOpacity={0.8} onPress={onPress}>
-      {icon}
-      <ThemedText style={s.toolText} numberOfLines={1}>{label}</ThemedText>
-    </TouchableOpacity>
-  );
-}
-
 const s = StyleSheet.create({
-  tools: { flexDirection: 'row', gap: 8 },
-  tool: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 40,
-    borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.line,
-  },
-  toolText: { fontSize: 13, lineHeight: 18, fontFamily: Fonts.poppinsSemiBold, color: C.ink },
   warn: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14, backgroundColor: C.warnSoft, borderWidth: 1, borderColor: '#F7DC8B' },
   job: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   line: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E2E8F0' },
