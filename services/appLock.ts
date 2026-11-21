@@ -2,7 +2,11 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { AppState } from 'react-native';
 
-const APP_LOCK_KEY = 'skofy_app_lock_enabled';
+// This app's own setting: the name both apps shared ('skofy_app_lock_enabled')
+// was one setting where both run inside one host app, so turning the lock on
+// in one turned it on in the other. Still read when this one isn't set yet.
+const APP_LOCK_KEY = 'dodorez_provider_app_lock_enabled';
+const SHARED_APP_LOCK_KEY = 'skofy_app_lock_enabled';
 
 // Mirrors skofy-customer-app/services/appLock.ts.
 export const AppLock = {
@@ -12,7 +16,8 @@ export const AppLock = {
   async isEnabled(): Promise<boolean> {
     for (;;) {
       try {
-        return (await SecureStore.getItemAsync(APP_LOCK_KEY)) === 'true';
+        const own = await SecureStore.getItemAsync(APP_LOCK_KEY);
+        return (own ?? await SecureStore.getItemAsync(SHARED_APP_LOCK_KEY)) === 'true';
       } catch {
         await new Promise<void>(resolve => {
           const retry = setTimeout(done, 2_000);
