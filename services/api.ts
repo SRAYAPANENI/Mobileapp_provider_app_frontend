@@ -14,7 +14,7 @@
  *   Production             → https://api.skofy.com/v1
  */
 
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { reportReachable, setHealthCheck } from '@/services/server-status';
 import { queryClient } from '@/services/query-client';
@@ -1449,38 +1449,60 @@ export const SkoFyApi = {
     }> => request(`/skills/${skillId}/test/eligibility`),
 
     /**
-     * Get the next skill test question from Claude AI.
-     * Returns a question with multiple choice options.
+     * The skill test's question on screen (docs/SKILL_VERIFICATION_DESIGN.md).
+     * Without a session: resumes the test still open for this skill, or
+     * starts one — starting it counts as an attempt.
      */
-    getTestQuestion: async (skillId: string, sessionId?: string): Promise<{
-      session_id: string;
-      question_number: number;
-      total_questions: number;
-      question: string;
-      options: string[];
-      skill_area: string;
-    }> => request(`/skills/${skillId}/test/question${sessionId ? `?session_id=${sessionId}` : ''}`),
+    getTestQuestion: async (skillId: string, sessionId?: string, consent = false, lang?: 'en' | 'es'): Promise<SkillTestQuestion> => {
+      // The phone it's taken on: the reviewer sees it with what the phone reported.
+      const platform = Platform.OS === 'ios' || Platform.OS === 'android' ? `platform=${Platform.OS}` : '';
+      const q = [sessionId ? `session_id=${encodeURIComponent(sessionId)}` : '', consent ? 'consent=true' : '',
+        lang ? `lang=${lang}` : '', sessionId ? '' : platform].filter(Boolean).join('&');
+      return request(`/skills/${skillId}/test/question${q ? `?${q}` : ''}`);
+    },
 
-    submitTestAnswer: async (skillId: string, sessionId: string, answer: string): Promise<{
-      is_correct: boolean;
-      explanation: string;
-      session_complete: boolean;
-      score?: number;
-      passed?: boolean;
-      // Present iff session_complete is false — lets the caller advance
-      // straight to it without a second getTestQuestion round-trip.
-      next_question?: {
-        session_id: string;
-        question_number: number;
-        total_questions: number;
-        question: string;
-        options: string[];
-        skill_area: string;
-      };
-    }> => request(`/skills/${skillId}/test/answer`, {
-      method: 'POST',
-      body: JSON.stringify({ session_id: sessionId, answer }),
-    }),
+    /** A camera test's spoken answer (no recording: nothing was said in time). */
+    submitSpokenAnswer: async (skillId: string, sessionId: string, questionNumber: number,
+      recording: { uri: string; mimeType: string } | null): Promise<SkillTestAnswer> => {
+      const form = new FormData();
+      form.append('session_id', sessionId);
+      form.append('question_number', String(questionNumber));
+      if (recording) form.append('audio', { uri: recording.uri, name: 'answer.m4a', type: recording.mimeType } as any);
+      return requestMultipart(`/skills/${skillId}/test/spoken`, form);
+    },
+
+    /** A camera test's photo: the face at the start (FACE_START), or one during it. */
+    uploadTestPhoto: async (skillId: string, sessionId: string, kind: 'FACE_START' | 'PHOTO', uri: string,
+      questionNumber?: number): Promise<{ kept: boolean }> => {
+      const form = new FormData();
+      form.append('session_id', sessionId);
+      form.append('kind', kind);
+      if (questionNumber != null) form.append('question_number', String(questionNumber));
+      form.append('photo', { uri, name: 'photo.jpg', type: 'image/jpeg' } as any);
+      return requestMultipart(`/skills/${skillId}/test/photo`, form);
+    },
+
+    /** Right or wrong isn't said until the end — only how the answer was counted. */
+    submitTestAnswer: async (skillId: string, sessionId: string, answer: string, questionNumber: number): Promise<SkillTestAnswer> =>
+      request(`/skills/${skillId}/test/answer`, {
+        method: 'POST',
+        body: JSON.stringify({ session_id: sessionId, answer, question_number: questionNumber }),
+      }),
+
+    /** The app was left mid-question (it's lost), or a screenshot was taken. Safe to send twice. */
+    reportTestEvent: async (skillId: string, sessionId: string, kind: 'LEFT_APP' | 'SCREENSHOT', questionNumber?: number):
+      Promise<{ question_number: number; question_lost: boolean }> =>
+      request(`/skills/${skillId}/test/event`, {
+        method: 'POST',
+        body: JSON.stringify({
+          session_id: sessionId, kind, question_number: questionNumber ?? null,
+          platform: Platform.OS === 'ios' || Platform.OS === 'android' ? Platform.OS : null,
+        }),
+      }),
+
+    /** Closed before the end: an attempt, failed. */
+    abandonTest: async (skillId: string, sessionId: string): Promise<{ abandoned: boolean }> =>
+      request(`/skills/${skillId}/test/abandon`, { method: 'POST', body: JSON.stringify({ session_id: sessionId }) }),
   },
 
   // ── Jobs (Provider view) ──────────────────────────────────────────────────
@@ -2152,3 +2174,37 @@ export const SkoFyApi = {
     getReviews: async (customerId: string) => request(`/customers/${customerId}/reviews`),
   },
 };
+
+/** One skill-test question. Its clock is the server's: count down from seconds_left. */
+export interface SkillTestQuestion {
+  session_id: string;
+  question_number: number;
+  total_questions: number;
+  question: string;
+  options: string[];
+  skill_area: string;
+  seconds_per_question?: number;
+  seconds_left?: number;
+  /** The app was left during it: it counts as wrong whatever is chosen. */
+  question_lost?: boolean;
+  /** CHOICE: tap an answer. SPOKEN: answer out loud (camera tests). */
+  kind?: 'CHOICE' | 'SPOKEN';
+  /** A camera test (docs/SKILL_VERIFICATION_DESIGN.md §3). */
+  proctored?: boolean;
+  /** The test's language. */
+  language?: 'en' | 'es';
+  /** A spoken answer's recording stops here. */
+  max_clip_seconds?: number | null;
+}
+
+export interface SkillTestAnswer {
+  session_complete: boolean;
+  /** ANSWERED | TIMED_OUT | LEFT_APP | ALREADY — never whether it was right. */
+  counted?: string | null;
+  score?: number;
+  passed?: boolean;
+  /** Passed, but a person checks it before the badge shows. */
+  under_review?: boolean;
+  message?: string | null;
+  next_question?: SkillTestQuestion;
+}

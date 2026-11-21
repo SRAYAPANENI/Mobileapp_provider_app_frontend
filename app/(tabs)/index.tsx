@@ -1117,20 +1117,37 @@ const filteredJobs = jobs.filter((job) => {
   const onFilterLocked = React.useCallback((ref: SkillRef, count: number) => filterActionsRef.current.onLockedSkill(ref, count), []);
   const onAlertsPress = React.useCallback(() => setAlertsSheetOpen(true), []);
 
-  // A skill nearby jobs need that this provider hasn't verified: offer the test.
+  // A skill nearby jobs need that this provider hasn't unlocked: add it, then
+  // whatever it needs — its test, or (no test for it, docs/SKILL_VERIFICATION_DESIGN.md §4)
+  // a verified ID, which may already be done.
   const onLockedSkill = (ref: SkillRef, count: number) => {
     appAlert.show(
       'info',
       `Unlock ${ref.name} jobs`,
-      `${count} job${count === 1 ? '' : 's'} near you need ${ref.name}. Take the 5-minute skill test to unlock ${count === 1 ? 'it' : 'them'}.`,
+      `${count} job${count === 1 ? '' : 's'} near you need ${ref.name}. Add it to your skills to unlock ${count === 1 ? 'it' : 'them'} — most skills need a short test first.`,
       [
         { text: 'Later', variant: 'secondary' },
         {
-          text: 'Take test',
+          text: 'Unlock',
           onPress: async () => {
             try {
               if (!mySkills.some(sk => sk.skill_id === ref.skill_id)) await SkoFyApi.skills.addSkill(ref.skill_id);
             } catch { /* already on the profile */ }
+            const status = await SkoFyApi.skills.getTestEligibility(ref.skill_id).catch(() => null);
+            if (status?.reason === 'no_test') {
+              void skillsQuery.refetch();
+              void loadJobs();
+              appAlert.show(isIdentityVerified ? 'success' : 'info',
+                isIdentityVerified ? `${ref.name} is unlocked` : 'Verify your ID',
+                isIdentityVerified
+                  ? `No test needed — ${ref.name} jobs can reach you now. Your first customers' ratings decide whether it stays that way.`
+                  : `No test needed for ${ref.name} — it opens as soon as your ID is verified.`,
+                isIdentityVerified ? undefined : [
+                  { text: 'Later', variant: 'secondary' },
+                  { text: 'Verify my ID', onPress: () => router.push({ pathname: '/(tabs)/profile', params: { section: 'verification' } } as any) },
+                ]);
+              return;
+            }
             router.push({ pathname: '/(tabs)/profile', params: { testSkillId: ref.skill_id, testSkillName: ref.name } } as any);
           },
         },

@@ -6,7 +6,7 @@ import type { MySkill } from '@/services/queries/provider';
 import { useIsFocused } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { ChevronRight, ClipboardCheck, Clock, ListPlus } from 'lucide-react-native';
+import { ChevronRight, ClipboardCheck, Clock, Hourglass, IdCard, ListPlus } from 'lucide-react-native';
 import React, { useEffect } from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 
@@ -26,7 +26,11 @@ const ID_UNLOCKED = 'Pickup & Delivery Errands';
 type Prompt =
   | { kind: 'add'; errandsOnly: boolean; waiting: number }
   | { kind: 'test'; skill: MySkill; others: number; retake: boolean; errandsOnly: boolean; waiting: number }
-  | { kind: 'wait'; skill: MySkill; minutes: number; waiting: number };
+  | { kind: 'wait'; skill: MySkill; minutes: number; waiting: number }
+  // A pass held for Dodorez's review (docs/SKILL_VERIFICATION_DESIGN.md) — nothing to do but wait.
+  | { kind: 'review'; skill: MySkill; waiting: number }
+  // A skill with no test (docs/SKILL_VERIFICATION_DESIGN.md §4): a verified ID is all it needs.
+  | { kind: 'id'; skill: MySkill; waiting: number };
 
 interface Eligibility { eligible: boolean; reason: string; retry_after_minutes?: number | null }
 
@@ -77,9 +81,15 @@ export function SkillTestPrompt({ skills }: { skills: MySkill[] | undefined }) {
       // The one with the most jobs waiting first; a first test before a retake.
       const first = [...ready].sort((a, b) => waitingFor(b.skill_id) - waitingFor(a.skill_id)
         || Number(of(b)?.reason === 'first_test') - Number(of(a)?.reason === 'first_test'))[0];
+      const inReview = testable.find((s) => of(s)?.reason === 'under_review');
+      const idOnly = testable.find((s) => of(s)?.reason === 'no_test' && !s.is_verified);
       if (first) {
         prompt = { kind: 'test', skill: first, others: ready.length - 1, retake: of(first)?.reason === 'retry_after_cooldown',
           errandsOnly, waiting: waitingFor(first.skill_id) };
+      } else if (idOnly) {
+        prompt = { kind: 'id', skill: idOnly, waiting: waitingFor(idOnly.skill_id) };
+      } else if (inReview) {
+        prompt = { kind: 'review', skill: inReview, waiting: waitingFor(inReview.skill_id) };
       } else {
         const soonest = [...testable].sort((a, b) =>
           (of(a)?.retry_after_minutes ?? Infinity) - (of(b)?.retry_after_minutes ?? Infinity))[0];
@@ -91,6 +101,8 @@ export function SkillTestPrompt({ skills }: { skills: MySkill[] | undefined }) {
   const act = () => {
     if (prompt?.kind === 'add') {
       // Skills are added under Verification, next to their tests.
+      router.push({ pathname: '/(tabs)/profile', params: { section: 'verification' } } as any);
+    } else if (prompt?.kind === 'id') {
       router.push({ pathname: '/(tabs)/profile', params: { section: 'verification' } } as any);
     } else if (prompt?.kind === 'test') {
       router.push({ pathname: '/(tabs)/profile', params: { testSkillId: prompt.skill.skill_id, testSkillName: prompt.skill.name } } as any);
@@ -106,19 +118,29 @@ export function SkillTestPrompt({ skills }: { skills: MySkill[] | undefined }) {
     : prompt.kind === 'test'
       ? prompt.waiting > 0 ? `🔥 ${prompt.waiting} ${prompt.skill.name} ${prompt.waiting === 1 ? 'job' : 'jobs'} waiting for you`
         : `Unlock ${prompt.skill.name} jobs`
+    : prompt.kind === 'id'
+      ? prompt.waiting > 0 ? `🔥 ${prompt.waiting} ${prompt.skill.name} ${prompt.waiting === 1 ? 'job' : 'jobs'} waiting for you` : `Unlock ${prompt.skill.name} jobs`
+    : prompt.kind === 'review'
+      ? `Your ${prompt.skill.name} test is being reviewed`
     : `Your next test opens in ${waitText(prompt.minutes)}`;
   const detail = !prompt ? ''
     : prompt.kind === 'add'
       ? `Add what you do and pass a quick test for each — that's all it takes to start applying${prompt.errandsOnly ? ' for jobs in your trade' : ''}.`
     : prompt.kind === 'test'
       ? `${prompt.retake ? 'Retake' : 'Pass'} the 5-minute ${prompt.skill.name} test and ${prompt.waiting > 0 ? (prompt.waiting === 1 ? 'it’s yours to apply for' : 'they’re yours to apply for') : 'you’re ready for the next one that comes in'} — customers only see providers who passed.${prompt.others > 0 ? ` ${prompt.others} more skill${prompt.others > 1 ? 's' : ''} to unlock after.` : ''}`
+    : prompt.kind === 'id'
+      ? `No test needed for ${prompt.skill.name} — verify your ID and its jobs start reaching you. Your first customers' ratings decide the rest.`
+    : prompt.kind === 'review'
+      ? "You passed — Dodorez checks some tests before the badge shows. You'll be told as soon as it's decided, usually within two days."
     : `Then retake ${prompt.skill.name}${prompt.waiting > 0 ? ` — ${jobsWord(prompt.waiting)} near you need it` : ''}. Jobs start coming once you pass.`;
-  const actionLabel = prompt?.kind === 'add' ? 'Add my skills' : prompt?.kind === 'test' ? (prompt.retake ? 'Retake the test' : 'Start the test') : null;
+  const resuming = prompt?.kind === 'test' && eligibility.data?.[prompt.skill.skill_id]?.reason === 'in_progress';
+  const actionLabel = prompt?.kind === 'add' ? 'Add my skills' : prompt?.kind === 'id' ? 'Verify my ID'
+    : prompt?.kind === 'test' ? (resuming ? 'Resume the test' : prompt.retake ? 'Retake the test' : 'Start the test') : null;
 
   // The popup: once per launch, while the dashboard is on screen, and only
   // when there's something to do now.
   useEffect(() => {
-    if (!focused || !prompt || prompt.kind === 'wait' || poppedThisLaunch) return;
+    if (!focused || !prompt || prompt.kind === 'wait' || prompt.kind === 'review' || poppedThisLaunch) return;
     poppedThisLaunch = true;
     const exciting = prompt.kind === 'test' && prompt.waiting > 0;
     appAlert.show('info', exciting ? 'Jobs are waiting for you! 🎉' : title,
@@ -131,13 +153,15 @@ export function SkillTestPrompt({ skills }: { skills: MySkill[] | undefined }) {
   }, [focused, prompt?.kind]);
 
   if (!prompt) return appAlert.element;
-  const Icon = prompt.kind === 'add' ? ListPlus : prompt.kind === 'test' ? ClipboardCheck : Clock;
+  const Icon = prompt.kind === 'add' ? ListPlus : prompt.kind === 'test' ? ClipboardCheck : prompt.kind === 'id' ? IdCard
+    : prompt.kind === 'review' ? Hourglass : Clock;
+  const quiet = prompt.kind === 'wait' || prompt.kind === 'review';
   return (
     <>
       <TouchableOpacity style={s.card} activeOpacity={actionLabel ? 0.85 : 1} disabled={!actionLabel} onPress={act}
         accessibilityRole={actionLabel ? 'button' : undefined}>
-        <View style={[s.icon, prompt.kind === 'wait' && s.iconWait]}>
-          <Icon size={20} color={prompt.kind === 'wait' ? '#B45309' : '#7A5600'} />
+        <View style={[s.icon, quiet && s.iconWait]}>
+          <Icon size={20} color={quiet ? '#B45309' : '#7A5600'} />
         </View>
         <View style={{ flex: 1, gap: 2 }}>
           <ThemedText style={s.title}>{title}</ThemedText>

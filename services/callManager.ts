@@ -714,6 +714,9 @@ const ROUTED_UPDATES: Record<string, string> = {
   // A skill they listed and never tested: straight into its test
   // (skofy-backend app/domain/skill_nudges.py; extraParams below).
   skill_test: '/(tabs)/profile',
+  // A held test approved or turned down, or a retake opened by Dodorez
+  // (skofy-backend SkillTestService) — their skills, in Verification.
+  skill_test_update: '/(tabs)/profile',
   // Admin published new Terms & Conditions (AppConfigService.admin_update) —
   // straight to the Terms screen, which always reads the current server
   // config live, never a stale cached version.
@@ -727,6 +730,7 @@ function extraParams(data: Record<string, unknown>): Record<string, string> | un
     return { testSkillId: String(data.skill_id), testSkillName: String(data.skill_name ?? '') };
   }
   if (data.type === 'join_request' && data.member_id) return { memberId: String(data.member_id) };
+  if (data.type === 'skill_test_update') return { section: 'verification' };
   return undefined;
 }
 

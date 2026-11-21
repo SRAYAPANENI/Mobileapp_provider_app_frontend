@@ -15,8 +15,8 @@
         "NSLocationWhenInUseUsageDescription": "Dodorez Pro uses your location to show jobs near you and to share where you are with the customer during a job.",
         "NSLocationAlwaysUsageDescription": "While you're online, Dodorez Pro uses your location, including in the background, to send you jobs as you come near them and remove ones you've moved away from, and to show customers where you are on a job. Go offline to stop.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "While you're online, Dodorez Pro uses your location, including in the background, to send you jobs as you come near them and remove ones you've moved away from, and to show customers where you are on a job. Go offline to stop.",
-        "NSMicrophoneUsageDescription": "This app needs access to your microphone for voice calls with customers.",
-        "NSCameraUsageDescription": "Dodorez Pro uses your camera for your profile photo, pickup and delivery photos, inspection photos, and photos of your documents and vehicle.",
+        "NSMicrophoneUsageDescription": "Dodorez Pro uses your microphone for voice calls with customers and to record your spoken answers in skill tests.",
+        "NSCameraUsageDescription": "Dodorez Pro uses your camera for your profile photo, pickup and delivery photos, inspection photos, photos of your documents and vehicle, and to take photos of you during camera skill tests, which Dodorez checks against your ID.",
         "NSPhotoLibraryUsageDescription": "Dodorez Pro uses your photo library so you can attach documents, vehicle photos and skill-proof media.",
         "UIBackgroundModes": [
           "voip",
@@ -54,7 +54,11 @@
         "android.permission.USE_FULL_SCREEN_INTENT",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.BIND_TELECOM_CONNECTION_SERVICE",
-        "android.permission.WAKE_LOCK"
+        "android.permission.WAKE_LOCK",
+        "android.permission.CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.READ_MEDIA_IMAGES"
       ],
       "config": {
         "googleMaps": {
@@ -96,8 +100,16 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "Dodorez Pro uses your camera for your profile photo, pickup and delivery photos, inspection photos, and photos of your documents and vehicle.",
+          "cameraPermission": "Dodorez Pro uses your camera for your profile photo, pickup and delivery photos, inspection photos, photos of your documents and vehicle, and to take photos of you during camera skill tests, which Dodorez checks against your ID.",
           "photosPermission": "Dodorez Pro uses your photo library so you can attach documents, vehicle photos and skill-proof media."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Dodorez Pro uses your camera for your profile photo, pickup and delivery photos, inspection photos, photos of your documents and vehicle, and to take photos of you during camera skill tests, which Dodorez checks against your ID.",
+          "microphonePermission": "Dodorez Pro uses your microphone for voice calls with customers and to record your spoken answers in skill tests.",
+          "recordAudioAndroid": false
         }
       ],
       "./plugins/with-notification-sounds.js",

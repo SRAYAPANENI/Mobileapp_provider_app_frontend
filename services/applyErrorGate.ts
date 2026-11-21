@@ -6,10 +6,12 @@ export interface ApplyGateInfo {
 }
 
 const GATE_COPY: Record<string, { title: string; message: string; actionLabel: string }> = {
+  // Most skills open with a short test; some need only a verified ID
+  // (docs/SKILL_VERIFICATION_DESIGN.md §4) — Verification shows which.
   SKILL_NOT_VERIFIED: {
-    title: 'Skill Test Required',
-    message: "You need to pass the skill test for this job's required skill before applying.",
-    actionLabel: 'Take Test',
+    title: 'Unlock this skill first',
+    message: "This job's skill isn't unlocked on your profile yet. Most skills open with a short test; some need only a verified ID.",
+    actionLabel: 'See how to unlock',
   },
   IDENTITY_NOT_VERIFIED: {
     title: 'Identity Verification Required',

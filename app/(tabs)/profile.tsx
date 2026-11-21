@@ -14,7 +14,8 @@ import { SkillAssessmentList } from '@/components/skill-assessment-list';
 import { CustomerRatingSheet } from '@/components/customer-rating-sheet';
 import { RateCustomerButton } from '@/components/rate-customer-button';
 import { useUnratedCustomers } from '@/hooks/use-unrated-customers';
-import { AssessableSkill, SkillEligibility, TestButtonState, eligibilityMessage } from '@/services/skillAssessment';
+import { AssessableSkill, SkillEligibility, TestButtonState, eligibilityMessage, eligibilityTitle } from '@/services/skillAssessment';
+import { SkillTestScreen } from '@/components/skill-test/skill-test-screen';
 import { SkoFyApi } from '@/services/api';
 import { isEmail, tidyEmail } from '@/services/email';
 import { AppLock } from '@/services/appLock';
@@ -23,7 +24,7 @@ import { useServerReachable } from '@/services/server-status';
 import { stopAllBackgroundLocation } from '@/services/background-location';
 import { disconnectLocationSocket } from '@/services/location-socket';
 import { clearDashboardCache } from '@/services/homeCache';
-import { StyleSheet, View, TouchableOpacity, ScrollView, Platform, Dimensions, Switch, RefreshControl, SafeAreaView, Pressable, BackHandler, PanResponder, Animated as RNAnimated, ActivityIndicator, Linking } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, ScrollView, Platform, Dimensions, Switch, RefreshControl, SafeAreaView, Pressable, BackHandler, ActivityIndicator, Linking } from 'react-native';
 import { TextInput } from '@/components/scaled-text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -44,7 +45,6 @@ import {
   CheckCircle2,
   Play,
   Plus,
-  MoreHorizontal,
   XCircle,
   Lock,
   FileText,
@@ -55,7 +55,6 @@ import {
   Search,
   User,
   Info,
-  ChevronDown,
   CalendarDays,
   Wallet,
   ArrowUpRight,
@@ -78,7 +77,7 @@ import * as ImagePicker from 'expo-image-picker';
 import FaceDetection from '@react-native-ml-kit/face-detection';
 import * as WebBrowser from 'expo-web-browser';
 import { Calendar } from 'react-native-calendars';
-import Animated, { FadeInUp, FadeInDown, FadeInRight, LinearTransition, ZoomIn } from 'react-native-reanimated';
+import Animated, { FadeInUp, FadeInDown, LinearTransition, ZoomIn } from 'react-native-reanimated';
 import { Camera, Image as ImageIcon, Trash2, Edit2, Layers, Zap, Clock, Trophy } from 'lucide-react-native';
 import { usePushPreference } from '@/hooks/use-push-preference';
 import { SkillPicker, type PickedSkill } from '@/components/skill-picker';
@@ -88,14 +87,9 @@ import { FeeCapCard } from '@/components/fee-cap-card';
 
 import { Popup, PopupCard } from '@/components/popup';
 import { useButtonRowFit } from '@/hooks/use-button-row-fit';
-// How long the timed-out question's feedback (Incorrect + explanation, or
-// the final score card) stays visible before the skill test auto-advances —
-// long enough to actually read it, short enough that a timeout doesn't feel
-// like it's stalled the test.
-const TIMEOUT_AUTO_ADVANCE_DELAY_MS = 2000;
 
 
-const { width, height: windowHeight } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 interface ApiJob {
   job_id: string;
@@ -136,31 +130,6 @@ const PAYOUT_KIND: Record<string, string> = {
   INSPECTION_FEE: 'Visiting fee', JOB_COST: 'Job', EXTRA_WORK: 'Added work', TIP: 'Tip — all yours',
   GOODS_ADVANCE: 'Shopping paid back',
 };
-
-/** A skill test's seconds left, ticking on its own: in Profile's state it
- * redrew all of Profile every second of a test. Tells Profile when it pauses
- * (to show "…s elapsed - Paused" and resume from there) and when time is up. */
-function TestCountdown({ from, running, onPause, onTimeout, style }: {
-  from: number; running: boolean; onPause: (left: number) => void; onTimeout: () => void; style: any;
-}) {
-  const [left, setLeft] = useState(from);
-  const leftRef = useRef(left);
-  leftRef.current = left;
-  useEffect(() => {
-    if (!running) return;
-    if (left <= 0) { onTimeout(); return; }
-    const id = setTimeout(() => setLeft((n) => n - 1), 1000);
-    return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running, left]);
-  // Paused, or gone (minimised): Profile keeps where it stopped.
-  useEffect(() => {
-    if (!running) onPause(leftRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running]);
-  useEffect(() => () => onPause(leftRef.current), []);   // eslint-disable-line react-hooks/exhaustive-deps
-  return <ThemedText style={style}>{left}s</ThemedText>;
-}
 
 // The longest the full-screen loader stays (loadProfile).
 const PROFILE_LOADER_MAX_MS = 6_000;
@@ -213,64 +182,11 @@ export default function ProfileScreen() {
   const [isAssessmentOpen, setIsAssessmentOpen] = useState(false);
   const [testSkillId, setTestSkillId] = useState<string | null>(null);
   const [testSkillName, setTestSkillName] = useState<string | null>(null);
-  const [testQuestion, setTestQuestion] = useState<{
-    sessionId: string; questionNumber: number; totalQuestions: number;
-    question: string; options: string[]; skillArea: string;
-  } | null>(null);
-  // submitTestAnswer already selects and saves the next question on the
-  // backend — this stashes what it returns so handleNextQuestion can swap
-  // to it instantly instead of making a second round-trip (a plain
-  // getTestQuestion call) just to re-fetch what the server already picked.
-  // A ref, not state: purely a same-render handoff between two handlers,
-  // not something that should trigger a re-render on its own.
-  const pendingNextQuestionRef = React.useRef<{
-    sessionId: string; questionNumber: number; totalQuestions: number;
-    question: string; options: string[]; skillArea: string;
-  } | null>(null);
-  // Holds the timer for the timeout auto-advance below — cleared whenever
-  // the user manually advances (or closes the test) first, so a stale
-  // auto-advance can't fire a second time on top of the manual one and
-  // skip a question / double-trigger the results screen.
-  const timeoutAutoAdvanceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  // The skill-test session currently on screen. sessionId stays constant
-  // across questions within one attempt (only question_number changes), so
-  // this only needs updating on start/close, not on every next-question
-  // swap. Exists so a submitTestAnswer response that resolves AFTER the
-  // user has closed the test (or started a new one) can be recognized as
-  // stale and skipped — without this, that stale response would still call
-  // setTestFeedback/setFinalTestResult/pendingNextQuestionRef and could
-  // stomp a since-started new test's state with the old one's result.
-  const activeSessionIdRef = React.useRef<string | null>(null);
-  // Guards startTest's own initial getTestQuestion() fetch specifically —
-  // activeSessionIdRef can't be reused for this since it isn't populated
-  // until AFTER that fetch succeeds. Opening the modal immediately (not
-  // only once the fetch resolves) made it possible to tap the X and close
-  // it WHILE a slow first-ever-test AI question-generation call is still in
-  // flight; without this, that call resolving afterward would still apply
-  // its result and silently reopen/overwrite the modal the user already
-  // dismissed. A fresh object per call, not a boolean, so two rapid
-  // taps/starts can't be confused with each other either.
-  const pendingStartTestRef = React.useRef<object | null>(null);
-  // Seconds left as of the last question start or pause — the ticking itself
-  // is TestCountdown's, so Profile isn't redrawn every second of a test.
-  const [testTimer, setTestTimer] = useState(30);
-  const [testTimerKey, setTestTimerKey] = useState(0);
-  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
-  const [isLoadingQuestion, setIsLoadingQuestion] = useState(false);
-  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
-  // Mirrors isSubmittingAnswer for the one place that actually needs to
-  // block a double-submit: a manual "Submit" tap and the timer hitting 0 in
-  // the same render tick would both read the same stale (still-false) state
-  // value and both pass the guard, since setState doesn't take effect until
-  // the next render. A ref has no such delay — set synchronously, read
-  // synchronously, so whichever call runs first (JS is single-threaded)
-  // always locks the other out, no matter how close together they land.
-  const isSubmittingRef = React.useRef(false);
-  const [testFeedback, setTestFeedback] = useState<{ isCorrect: boolean; explanation: string } | null>(null);
-  const [finalTestResult, setFinalTestResult] = useState<{ score: number; passed: boolean } | null>(null);
-  const [showResultsScreen, setShowResultsScreen] = useState(false);
+  // A test of theirs is still open for this skill: it picks up where it was.
+  const [testResume, setTestResume] = useState(false);
   const [skillEligibility, setSkillEligibility] = useState<Record<string, {
     eligible: boolean; reason: string; jobs_completed: number; jobs_required: number; retry_after_minutes?: number | null;
+    proctored?: boolean;
   }>>({});
   const [skillScore, setSkillScore] = useState(0);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
@@ -296,7 +212,6 @@ export default function ProfileScreen() {
   const [avgBehaviourRating, setAvgBehaviourRating] = useState<number | null>(null);
   const [avgCommunicationRating, setAvgCommunicationRating] = useState<number | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
-  const [isTestMinimized, setIsTestMinimized] = useState(false);
   const [now, setNow] = useState(Date.now());
 
   // Edit Profile state
@@ -536,51 +451,6 @@ export default function ProfileScreen() {
     setAppLockEnabled(next);
   };
 
-  const pan = React.useRef(new RNAnimated.ValueXY({ x: 0, y: 0 })).current;
-  const panResponder = React.useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponderCapture: (evt, gestureState) => {
-        return Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5;
-      },
-      onPanResponderGrant: () => {
-        pan.setOffset({
-          x: (pan.x as any)._value,
-          y: (pan.y as any)._value
-        });
-        pan.setValue({ x: 0, y: 0 });
-      },
-      onPanResponderMove: RNAnimated.event(
-        [null, { dx: pan.x, dy: pan.y }],
-        { useNativeDriver: false }
-      ),
-      onPanResponderRelease: () => {
-        pan.flattenOffset();
-      }
-    })
-  ).current;
-
-  const contextPan = React.useRef(new RNAnimated.ValueXY({ x: 0, y: 0 })).current;
-  const contextPanResponder = React.useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponderCapture: (evt, gestureState) => {
-        return Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5;
-      },
-      onPanResponderGrant: () => {
-        contextPan.setOffset({
-          x: (contextPan.x as any)._value,
-          y: (contextPan.y as any)._value
-        });
-        contextPan.setValue({ x: 0, y: 0 });
-      },
-      onPanResponderMove: RNAnimated.event(
-        [null, { dx: contextPan.x, dy: contextPan.y }],
-        { useNativeDriver: false }
-      ),
-      onPanResponderRelease: () => {
-        contextPan.flattenOffset();
-      }
-    })
-  ).current;
   const [apiSkills, setApiSkills] = useState<{ skill_id: string; name: string; profession: string; is_verified: boolean; skill_o_meter: number }[]>([]);
 
   const [proofs, setProofs] = useState<{ id: string; uri: string; videoUrl?: string; skill: string; type: string; description: string }[]>([]);
@@ -646,19 +516,13 @@ export default function ProfileScreen() {
         if (isViewAllOpen) { setIsViewAllOpen(false); return true; }
         if (isViewerOpen) { setIsViewerOpen(false); return true; }
         if (isJobHistoryOpen) { setIsJobHistoryOpen(false); return true; }
-        // closeTest(), not a bare setIsAssessmentOpen(false) — this must run
-        // the same cleanup the X button does (clearing timeoutAutoAdvanceRef,
-        // activeSessionIdRef, and pendingStartTestRef), or a slow in-flight
-        // test-start fetch dismissed via the back button instead of the X
-        // could still land afterward and reopen the modal.
-        if (isAssessmentOpen) { closeTest(); return true; }
         if (isSettingsOpen) { setIsSettingsOpen(false); return true; }
         if (isPasswordOpen) { setIsPasswordOpen(false); return true; }
         return false; // let system handle (exit)
       };
       const subscription = BackHandler.addEventListener('hardwareBackPress', onBack);
       return () => subscription.remove();
-    }, [showTagModal, isViewAllOpen, isViewerOpen, isJobHistoryOpen, isAssessmentOpen, isSettingsOpen, isPasswordOpen])
+    }, [showTagModal, isViewAllOpen, isViewerOpen, isJobHistoryOpen, isSettingsOpen, isPasswordOpen])
   );
 
   const getEligibilityMessage = eligibilityMessage;
@@ -717,208 +581,27 @@ export default function ProfileScreen() {
     }
   }, [requestedSection]);
 
-  const startTest = async (skillId: string, skillName: string) => {
+  // The test is its own full-screen page (components/skill-test): the
+  // rules, five questions on the server's clock, the score. Starting it is
+  // there, after the rules — here only whether it can be taken now.
+  const startTest = (skillId: string, skillName: string) => {
     const eligibility = skillEligibility[skillId];
     if (eligibility && !eligibility.eligible) {
-      showAlert('error', 'Not Eligible', getEligibilityMessage(eligibility));
+      showAlert('error', eligibilityTitle(eligibility), getEligibilityMessage(eligibility));
       return;
     }
-    // Opens the modal immediately, before the fetch, instead of only after
-    // it resolves — a first-ever test for a skill with no seeded question
-    // bank yet triggers a live AI question-generation call that can take a
-    // genuinely long time, and previously nothing on screen indicated
-    // anything was happening during that wait. The modal's own loading
-    // spinner below (isLoadingQuestion) already existed for this but was
-    // effectively dead code on this path, since the modal never opened
-    // until after the slow part was already over.
-    const requestToken = {};
-    pendingStartTestRef.current = requestToken;
-    setTestQuestion(null);
-    setFinalTestResult(null);
-    setShowResultsScreen(false);
-    setIsLoadingQuestion(true);
+    setTestSkillId(skillId);
+    setTestSkillName(skillName);
+    setTestResume(eligibility?.reason === 'in_progress');
     setIsAssessmentOpen(true);
-    setIsTestMinimized(false);
-    pan.setValue({ x: 0, y: 50 });
-    try {
-      const q = await SkoFyApi.skills.getTestQuestion(skillId);
-      // Closed (or a new test started) while this was in flight — applying
-      // it now would silently reopen the modal the user already dismissed.
-      if (pendingStartTestRef.current !== requestToken) return;
-      activeSessionIdRef.current = q.session_id;
-      setTestSkillId(skillId);
-      setTestSkillName(skillName);
-      setTestQuestion({
-        sessionId: q.session_id,
-        questionNumber: q.question_number,
-        totalQuestions: q.total_questions,
-        question: q.question,
-        options: q.options,
-        skillArea: q.skill_area,
-      });
-      setSelectedAnswer(null);
-      setTestFeedback(null);
-      setTestTimer(30);
-      setTestTimerKey((k) => k + 1);
-    } catch (e: any) {
-      if (pendingStartTestRef.current !== requestToken) return;
-      // Must close the modal on failure, not just stop loading — testQuestion
-      // is still null at this point, and the spinner branch below shows
-      // whenever (!testQuestion || isLoadingQuestion), so leaving the modal
-      // open here would swap the spinner for an indefinitely stuck one
-      // instead of the error alert actually being seen.
-      setIsAssessmentOpen(false);
-      showAlert('error', 'Could Not Start Test', e?.message || 'Please try again.');
-    } finally {
-      if (pendingStartTestRef.current === requestToken) setIsLoadingQuestion(false);
-    }
-  };
-
-  const handleSubmitAnswer = async () => {
-    if (!testQuestion || !testSkillId || isSubmittingRef.current) return null;
-    const submittedSessionId = testQuestion.sessionId;
-    isSubmittingRef.current = true;
-    setIsSubmittingAnswer(true);
-    try {
-      const result = await SkoFyApi.skills.submitTestAnswer(testSkillId, submittedSessionId, selectedAnswer ?? '');
-      // The test may have been closed (or a new one started) while this was
-      // in flight — activeSessionIdRef now points somewhere else (or
-      // nowhere). Applying this response anyway would show a since-closed
-      // question's feedback/score on top of whatever's on screen now.
-      if (activeSessionIdRef.current !== submittedSessionId) return null;
-      setTestFeedback({ isCorrect: result.is_correct, explanation: result.explanation });
-      if (result.session_complete) {
-        setFinalTestResult({ score: result.score ?? 0, passed: !!result.passed });
-        await refreshSkillsAndEligibility();
-      } else if (result.next_question) {
-        const nq = result.next_question;
-        pendingNextQuestionRef.current = {
-          sessionId: nq.session_id,
-          questionNumber: nq.question_number,
-          totalQuestions: nq.total_questions,
-          question: nq.question,
-          options: nq.options,
-          skillArea: nq.skill_area,
-        };
-      }
-      return result;
-    } catch (e: any) {
-      showAlert('error', 'Submission Failed', e?.message || 'Please try again.');
-      return null;
-    } finally {
-      isSubmittingRef.current = false;
-      setIsSubmittingAnswer(false);
-    }
-  };
-
-  const handlePrimaryButtonPress = () => {
-    // A manual tap always wins over a still-pending timeout auto-advance —
-    // without this, both would fire and skip a question / double-trigger
-    // the results screen.
-    if (timeoutAutoAdvanceRef.current) {
-      clearTimeout(timeoutAutoAdvanceRef.current);
-      timeoutAutoAdvanceRef.current = null;
-    }
-    if (!testFeedback) {
-      handleSubmitAnswer();
-    } else if (testQuestion && testQuestion.questionNumber >= testQuestion.totalQuestions) {
-      setShowResultsScreen(true);
-    } else {
-      handleNextQuestion();
-    }
-  };
-
-  const handleNextQuestion = async () => {
-    if (!testSkillId || !testQuestion) return;
-
-    // The common path: submitTestAnswer already handed us the next
-    // question, so just swap to it — no network call, no loading spinner.
-    if (pendingNextQuestionRef.current) {
-      setTestQuestion(pendingNextQuestionRef.current);
-      pendingNextQuestionRef.current = null;
-      setSelectedAnswer(null);
-      setTestFeedback(null);
-      setTestTimer(30);
-      setTestTimerKey((k) => k + 1);
-      return;
-    }
-
-    // Defensive fallback only — shouldn't normally happen, since submitting
-    // an answer always returns next_question when the session isn't over.
-    setIsLoadingQuestion(true);
-    try {
-      const q = await SkoFyApi.skills.getTestQuestion(testSkillId, testQuestion.sessionId);
-      setTestQuestion({
-        sessionId: q.session_id,
-        questionNumber: q.question_number,
-        totalQuestions: q.total_questions,
-        question: q.question,
-        options: q.options,
-        skillArea: q.skill_area,
-      });
-      setSelectedAnswer(null);
-      setTestFeedback(null);
-      setTestTimer(30);
-      setTestTimerKey((k) => k + 1);
-    } catch (e: any) {
-      showAlert('error', 'Could Not Load Question', e?.message || 'Please try again.');
-    } finally {
-      setIsLoadingQuestion(false);
-    }
   };
 
   const closeTest = () => {
-    // Invalidates startTest's own in-flight fetch guard — see
-    // pendingStartTestRef's declaration for why this matters.
-    pendingStartTestRef.current = null;
-    // Otherwise a still-pending auto-advance from a timeout right before
-    // closing could fire after a new test session has already started,
-    // forcing that new session straight to the results screen.
-    if (timeoutAutoAdvanceRef.current) {
-      clearTimeout(timeoutAutoAdvanceRef.current);
-      timeoutAutoAdvanceRef.current = null;
-    }
-    // So an in-flight submitTestAnswer response that resolves after this
-    // closes (or after a new test has since started) is recognized as
-    // stale and its result discarded instead of applied — see
-    // activeSessionIdRef's declaration for why this matters.
-    activeSessionIdRef.current = null;
     setIsAssessmentOpen(false);
     setTestSkillId(null);
     setTestSkillName(null);
-    setTestQuestion(null);
-    setSelectedAnswer(null);
-    setTestFeedback(null);
-    setFinalTestResult(null);
-    setShowResultsScreen(false);
+    setTestResume(false);
   };
-
-  const testTimerRunning = isAssessmentOpen && !isTestMinimized && !finalTestResult && !testFeedback && !isSubmittingAnswer;
-  const onTestTimeout = () => {
-    setTestTimer(0);
-    if (isAssessmentOpen && !isTestMinimized && !finalTestResult && !testFeedback) {
-      // Auto-submit on timeout (counts as wrong, test continues normally) —
-      // and, since there's no one left to tap "Next Question"/"View
-      // Results", auto-advance ourselves once the feedback has had a beat
-      // to be seen: straight to the score card if that was the last
-      // question, otherwise straight to the next one.
-      handleSubmitAnswer().then(result => {
-        if (!result) return;
-        timeoutAutoAdvanceRef.current = setTimeout(() => {
-          timeoutAutoAdvanceRef.current = null;
-          if (result.session_complete) {
-            setShowResultsScreen(true);
-          } else {
-            handleNextQuestion();
-          }
-        }, TIMEOUT_AUTO_ADVANCE_DELAY_MS);
-      });
-    }
-  };
-  // Stable for the countdown, while always calling the latest handler.
-  const onTestTimeoutRef = useRef(onTestTimeout);
-  onTestTimeoutRef.current = onTestTimeout;
-  const handleTestTimeout = React.useCallback(() => onTestTimeoutRef.current(), []);
 
   const [isSavingSlot, setIsSavingSlot] = useState(false);
 
@@ -989,8 +672,8 @@ export default function ProfileScreen() {
   const skillActionRef = React.useRef<(skill: AssessableSkill, state: TestButtonState, eligibility?: SkillEligibility) => void>(() => {});
   skillActionRef.current = (skill, state, eligibility) => {
     if (state === 'maxed') return;
-    if (state === 'verified_locked' || state === 'locked') {
-      showAlert('error', eligibility?.reason === 'cooldown' ? 'Cooling Period Active' : 'Not Eligible Yet', eligibilityMessage(eligibility));
+    if (state === 'verified_locked' || state === 'locked' || state === 'review' || state === 'no_test' || state === 'id_needed') {
+      showAlert('error', eligibilityTitle(eligibility), eligibilityMessage(eligibility));
       return;
     }
     startTest(skill.skill_id, skill.name);
@@ -2694,180 +2377,10 @@ export default function ProfileScreen() {
         </KeyboardAvoidingView>
       </Popup>
 
-      {/* AI Skill Assessment Modal -> Floating Widget */}
-      {isAssessmentOpen && (
-        <RNAnimated.View style={[
-          styles.floatingTestWidget,
-          { transform: [{ translateX: pan.x }, { translateY: pan.y }] }
-        ]}>
-          <View {...panResponder.panHandlers} style={styles.dragHandleArea}>
-            <View style={styles.dragPill} />
-          </View>
-
-          {isTestMinimized ? (
-            <View style={styles.minimizedContent}>
-              <ThemedText style={styles.minTitle}>{testSkillName} Test</ThemedText>
-              <ThemedText style={styles.minSub}>{testTimer}s elapsed - Paused</ThemedText>
-              <TouchableOpacity onPress={() => setIsTestMinimized(false)} style={styles.resumeBtn}>
-                <ThemedText style={styles.resumeBtnText}>Resume</ThemedText>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.expandedContent}>
-              <View style={[styles.assessHeader, { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 16 }]}>
-                <TouchableOpacity onPress={() => setIsTestMinimized(true)}>
-                  <ChevronDown size={28} color="#000" />
-                </TouchableOpacity>
-                <ThemedText style={styles.assessBrand}>Dodorez Test</ThemedText>
-                <TouchableOpacity onPress={closeTest}>
-                  <XCircle size={24} color="#000" />
-                </TouchableOpacity>
-              </View>
-
-              {showResultsScreen && finalTestResult ? (
-                <View style={{ alignItems: 'center', paddingVertical: 24, gap: 12 }}>
-                  <View style={{
-                    width: 72, height: 72, borderRadius: 36, justifyContent: 'center', alignItems: 'center',
-                    backgroundColor: finalTestResult.passed ? '#ECFDF5' : '#FEF2F2',
-                  }}>
-                    {finalTestResult.passed
-                      ? <CheckCircle2 size={36} color="#10B981" />
-                      : <XCircle size={36} color="#EF4444" />}
-                  </View>
-                  <ThemedText style={{ fontSize: 18, lineHeight: 24, fontFamily: Fonts.poppinsBold, color: '#111827' }}>
-                    {finalTestResult.passed ? 'Skill Verified!' : 'Not Quite — Try Again Later'}
-                  </ThemedText>
-                  <ThemedText style={{ fontSize: 14, lineHeight: 20, color: '#6B7280', fontFamily: Fonts.poppins }}>
-                    Score: {finalTestResult.score}%
-                  </ThemedText>
-                  <ThemedText style={{ fontSize: 12, lineHeight: 18, color: '#9CA3AF', fontFamily: Fonts.poppins, textAlign: 'center', paddingHorizontal: 20 }}>
-                    {finalTestResult.passed
-                      ? `${testSkillName} has been added to your verified skills.`
-                      : 'You can retry this test after the cooldown period.'}
-                  </ThemedText>
-                  <TouchableOpacity onPress={closeTest} style={[styles.nextBtn, { width: '100%', marginTop: 8 }]}>
-                    <ThemedText style={styles.nextBtnText}>Done</ThemedText>
-                  </TouchableOpacity>
-                </View>
-              ) : !testQuestion || isLoadingQuestion ? (
-                <View style={{ paddingVertical: 48, alignItems: 'center' }}>
-                  <ActivityIndicator size="large" color="#FFCE48" />
-                </View>
-              ) : (
-                <>
-                  {/* The question/options/feedback area used to be an
-                      unbounded absolute-positioned View with no scroll —
-                      a long AI-generated explanation (routine for a wrong
-                      answer, which typically has to explain what's right
-                      AND why the selection was wrong) could push the
-                      "Next Question" button past the bottom of the screen
-                      with no way to reach it. Bounding this area and
-                      making it scroll, while keeping the button as a
-                      sibling *after* it (not inside), keeps the button
-                      always visible/pinned regardless of content length. */}
-                  <ScrollView keyboardShouldPersistTaps="handled"
-                    // Fixed chrome around this area (widget's top offset 50 +
-                    // drag handle 30 + header ~45 + footer/button ~76) is
-                    // ~201px — verified against the actual style values, not
-                    // guessed. Reserving 260 leaves a small safety margin for
-                    // status-bar/notch variance Dimensions.get('window')
-                    // doesn't always capture, while still showing
-                    // meaningfully more content before scrolling is needed.
-                    style={{ maxHeight: Math.max(300, windowHeight - 260) }}
-                    // Visible (unlike most decorative ScrollViews in this
-                    // file) — this one can genuinely overflow with a long
-                    // AI-generated explanation, so "there's more below"
-                    // needs to be discoverable, not just technically reachable.
-                    showsVerticalScrollIndicator={true}
-                  >
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
-                    <ThemedText style={styles.assessStepText}>{testQuestion.questionNumber} of {testQuestion.totalQuestions} Questions</ThemedText>
-                    <View style={styles.assessTimer}>
-                      <Clock size={14} color="#EF4444" />
-                      <TestCountdown key={testTimerKey} from={testTimer} running={testTimerRunning}
-                        onPause={setTestTimer} onTimeout={handleTestTimeout} style={styles.assessTimerText} />
-                    </View>
-                  </View>
-
-                  <View style={styles.assessProgressContainer}>
-                    <View style={[styles.assessProgress, { width: `${(testQuestion.questionNumber / testQuestion.totalQuestions) * 100}%` }]} />
-                  </View>
-
-                  <Animated.View key={testQuestion.questionNumber} entering={FadeInRight} style={styles.assessCard}>
-                    <ThemedText style={styles.assessQuestion}>{testQuestion.question}</ThemedText>
-
-                    <View style={styles.optionsList}>
-                      {testQuestion.options.map((opt, idx) => {
-                        const letter = ['A', 'B', 'C', 'D'][idx];
-                        const isSelected = selectedAnswer === opt;
-                        return (
-                          <TouchableOpacity
-                            key={idx}
-                            disabled={!!testFeedback}
-                            style={[styles.optionItem, isSelected && styles.optionItemSelected]}
-                            onPress={() => setSelectedAnswer(opt)}
-                          >
-                            <View style={[styles.optionCircle, isSelected && styles.optionCircleSelected]}>
-                              <ThemedText style={[styles.optionIdText, isSelected && { color: '#fff' }]}>{letter}</ThemedText>
-                            </View>
-                            <ThemedText style={styles.optionText}>{opt}</ThemedText>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-
-                    {testFeedback && (
-                      <View style={{
-                        marginTop: 12, padding: 12, borderRadius: 12,
-                        backgroundColor: testFeedback.isCorrect ? '#ECFDF5' : '#FEF2F2',
-                      }}>
-                        <ThemedText style={{ fontFamily: Fonts.poppinsBold, fontSize: 13, lineHeight: 19, color: testFeedback.isCorrect ? '#10B981' : '#EF4444', marginBottom: 4 }}>
-                          {testFeedback.isCorrect ? 'Correct!' : 'Incorrect'}
-                        </ThemedText>
-                        <ThemedText style={{ fontSize: 12, lineHeight: 18, color: '#6B7280', fontFamily: Fonts.poppins }}>
-                          {testFeedback.explanation}
-                        </ThemedText>
-                      </View>
-                    )}
-                  </Animated.View>
-                  </ScrollView>
-
-                  <View style={[styles.assessFooter, { paddingHorizontal: 0, paddingBottom: 0 }]}>
-                    <TouchableOpacity
-                      style={[styles.nextBtn, (!selectedAnswer && !testFeedback) && { opacity: 0.5 }, { width: '100%' }]}
-                      disabled={(!selectedAnswer && !testFeedback) || isSubmittingAnswer}
-                      onPress={handlePrimaryButtonPress}
-                    >
-                      <ThemedText style={styles.nextBtnText}>
-                        {isSubmittingAnswer
-                          ? 'Submitting...'
-                          : testFeedback
-                            ? (testQuestion.questionNumber >= testQuestion.totalQuestions ? 'View Result' : 'Next Question')
-                            : 'Submit Answer'}
-                      </ThemedText>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Draggable Skill Context Tooltip (Local to Widget) */}
-                  <RNAnimated.View
-                    {...contextPanResponder.panHandlers}
-                    style={[
-                      styles.contextCard,
-                      { transform: [{ translateX: contextPan.x }, { translateY: contextPan.y }] }
-                    ]}
-                  >
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <ThemedText style={styles.contextHeader}>Skill Context</ThemedText>
-                      <MoreHorizontal size={14} color="#9CA3AF" />
-                    </View>
-                    <ThemedText style={styles.contextItem}>Skill: {testSkillName}</ThemedText>
-                    <ThemedText style={styles.contextItem}>Difficulty: {testQuestion.skillArea}</ThemedText>
-                  </RNAnimated.View>
-                </>
-              )}
-            </View>
-          )}
-        </RNAnimated.View>
+      {isAssessmentOpen && testSkillId && (
+        <SkillTestScreen skillId={testSkillId} skillName={testSkillName ?? 'Skill'} resume={testResume}
+          camera={!!skillEligibility[testSkillId]?.proctored}
+          onClose={closeTest} onEnded={() => { void refreshSkillsAndEligibility(); }} />
       )}
 
       {/* Media Viewer Modal */}

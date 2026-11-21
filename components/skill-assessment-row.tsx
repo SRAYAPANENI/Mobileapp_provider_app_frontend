@@ -2,9 +2,9 @@ import { ThemedText } from '@/components/themed-text';
 import { Colors, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import {
-  AssessableSkill, SkillEligibility, TestButtonState, skillLevel, testButtonState,
+  AssessableSkill, SkillEligibility, TestButtonState, shortWait, skillLevel, testButtonState,
 } from '@/services/skillAssessment';
-import { CheckCircle2, Trash2 } from 'lucide-react-native';
+import { CheckCircle2, Hourglass, IdCard, Trash2 } from 'lucide-react-native';
 import React, { memo } from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 
@@ -22,7 +22,7 @@ function SkillAssessmentRowView({ skill, eligibility, onAction, onRemove }: Prop
   const styles = stylesFor(useColorScheme() ?? 'light');
   const state = testButtonState(skill, eligibility);
   const level = skillLevel(skill.skill_o_meter);
-  const done = state === 'maxed' || state === 'verified_locked';
+  const done = state === 'maxed' || state === 'verified_locked' || state === 'no_test';
 
   return (
     <View style={styles.row}>
@@ -42,23 +42,38 @@ function SkillAssessmentRowView({ skill, eligibility, onAction, onRemove }: Prop
           <TouchableOpacity
             onPress={() => onAction(skill, state, eligibility)}
             disabled={state === 'maxed'}
-            style={[styles.button, done && styles.buttonDone, state === 'locked' && styles.buttonLocked]}
+            style={[styles.button, done && styles.buttonDone, (state === 'locked' || state === 'review' || state === 'id_needed') && styles.buttonLocked]}
           >
-            {state === 'maxed' || state === 'verified_locked' ? (
+            {state === 'maxed' || state === 'verified_locked' || state === 'no_test' ? (
               <View style={styles.doneLabel}>
                 <CheckCircle2 size={12} color="#fff" />
                 <ThemedText style={[styles.buttonText, styles.buttonTextLight]}>
                   {state === 'maxed' ? 'Max Level' : 'Verified'}
                 </ThemedText>
               </View>
+            ) : state === 'id_needed' ? (
+              <View style={styles.doneLabel}>
+                <IdCard size={12} color="#9CA3AF" />
+                <ThemedText style={[styles.buttonText, styles.buttonTextMuted]}>Verify ID</ThemedText>
+              </View>
+            ) : state === 'review' ? (
+              <View style={styles.doneLabel}>
+                <Hourglass size={12} color="#9CA3AF" />
+                <ThemedText style={[styles.buttonText, styles.buttonTextMuted]}>In review</ThemedText>
+              </View>
             ) : state === 'locked' ? (
               <ThemedText style={[styles.buttonText, styles.buttonTextMuted]}>
-                {eligibility?.reason === 'cooldown' ? `Wait ${eligibility.retry_after_minutes}m` : 'Locked'}
+                {eligibility?.retry_after_minutes ? `Wait ${shortWait(eligibility.retry_after_minutes)}` : 'Locked'}
               </ThemedText>
             ) : (
-              <ThemedText style={styles.buttonText}>{state === 'upgrade' ? 'Upgrade Test' : 'Take Test'}</ThemedText>
+              <ThemedText style={styles.buttonText}>
+                {state === 'resume' ? 'Resume Test' : state === 'upgrade' ? 'Upgrade Test' : 'Take Test'}
+              </ThemedText>
             )}
           </TouchableOpacity>
+          {(state === 'no_test' || state === 'id_needed') && (
+            <ThemedText style={styles.hint}>No test needed</ThemedText>
+          )}
           {state === 'verified_locked' && eligibility?.reason === 'needs_more_jobs' && (
             <ThemedText style={styles.hint}>
               {eligibility.jobs_required - eligibility.jobs_completed} more job(s) to upgrade
