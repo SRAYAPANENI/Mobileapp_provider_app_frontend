@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { TouchableOpacity, View } from 'react-native';
 import { TextInput } from '@/components/scaled-text';
 import { StatePicker } from './state-picker';
-import { Button, C, Field, u } from './ui';
+import { Button, C, Field, RequiredLegend, u } from './ui';
 
 const ENTITY_TYPES: { value: Business['entity_type']; label: string }[] = [
   { value: 'LLC', label: 'LLC' },
@@ -31,9 +31,26 @@ export function BusinessProfileForm({ initial, submitLabel, onSubmit, onCancel }
   const [email, setEmail] = useState(initial?.email ?? '');
   const [phone, setPhone] = useState(initial?.phone ?? '');
   const [saving, setSaving] = useState(false);
-  const complete = name.trim() && legalName.trim() && state.trim().length === 2;
+  // What's still missing — said under each field once they've tried to send
+  // the form, not while they're still filling it in.
+  // The same limits the server checks (validate_profile in
+  // skofy-backend app/domain/business.py), so a tap never fails there instead.
+  const missing = {
+    name: name.trim().length >= 2 ? null : 'Enter the name customers will see (at least 2 characters).',
+    legalName: legalName.trim().length >= 2 ? null : 'Enter the name as registered with the state.',
+    state: state.trim().length === 2 ? null : 'Choose the state it’s registered in.',
+    // Optional — but if given, it must look like an email.
+    email: !email.trim() || email.includes('@') ? null : 'Enter a valid email, or leave it empty.',
+  };
+  const complete = !missing.name && !missing.legalName && !missing.state && !missing.email;
+  const [tried, setTried] = useState(false);
+  const shown = (key: keyof typeof missing) => (tried ? missing[key] : null);
 
   const save = async () => {
+    if (!complete) {
+      setTried(true);
+      return;
+    }
     setSaving(true);
     try {
       await onSubmit({
@@ -47,13 +64,16 @@ export function BusinessProfileForm({ initial, submitLabel, onSubmit, onCancel }
 
   return (
     <View style={{ gap: 14 }}>
-      <Field label="Business name" hint="What customers see">
-        <TextInput style={u.input} value={name} onChangeText={setName} placeholder="ABC Plumbing" placeholderTextColor={C.faint} />
+      <RequiredLegend />
+      <Field label="Business name" hint="What customers see" required error={shown('name')}>
+        <TextInput style={[u.input, !!shown('name') && u.inputBad]} value={name} onChangeText={setName}
+          placeholder="ABC Plumbing" placeholderTextColor={C.faint} maxLength={120} />
       </Field>
-      <Field label="Legal name" hint="As registered with the state">
-        <TextInput style={u.input} value={legalName} onChangeText={setLegalName} placeholder="ABC Plumbing LLC" placeholderTextColor={C.faint} />
+      <Field label="Legal name" hint="As registered with the state" required error={shown('legalName')}>
+        <TextInput style={[u.input, !!shown('legalName') && u.inputBad]} value={legalName} onChangeText={setLegalName}
+          placeholder="ABC Plumbing LLC" placeholderTextColor={C.faint} maxLength={200} />
       </Field>
-      <Field label="Type of business">
+      <Field label="Type of business" required>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {ENTITY_TYPES.map((t) => (
             <TouchableOpacity key={t.value} style={[u.chip, entity === t.value && u.chipOn]} onPress={() => setEntity(t.value)}>
@@ -62,20 +82,27 @@ export function BusinessProfileForm({ initial, submitLabel, onSubmit, onCancel }
           ))}
         </View>
       </Field>
-      <Field label="State registered in">
-        <StatePicker value={state} onChange={setState} />
+      <Field label="State registered in" required error={shown('state')}>
+        <StatePicker value={state} onChange={setState} invalid={!!shown('state')} />
       </Field>
-      <Field label="Business contact" hint="Optional">
+      <Field label="Business contact" hint="Optional" error={shown('email')}>
         <View style={{ gap: 8 }}>
-          <TextInput style={u.input} value={email} onChangeText={setEmail} placeholder="office@abcplumbing.com"
-            keyboardType="email-address" autoCapitalize="none" placeholderTextColor={C.faint} />
+          <TextInput style={[u.input, !!shown('email') && u.inputBad]} value={email} onChangeText={setEmail}
+            placeholder="office@abcplumbing.com" keyboardType="email-address" autoCapitalize="none" autoCorrect={false}
+            placeholderTextColor={C.faint} maxLength={255} />
           <TextInput style={u.input} value={phone} onChangeText={setPhone} placeholder="(512) 555-0100"
-            keyboardType="phone-pad" placeholderTextColor={C.faint} />
+            keyboardType="phone-pad" placeholderTextColor={C.faint} maxLength={20} />
         </View>
       </Field>
+      {tried && !complete && (
+        <ThemedText style={u.fieldError} accessibilityLiveRegion="polite">
+          {missing.name || missing.legalName || missing.state ? 'Fill in the fields marked * to continue.' : missing.email}
+        </ThemedText>
+      )}
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
         {onCancel && <Button kind="secondary" label="Cancel" onPress={onCancel} disabled={saving} style={{ flex: 1 }} />}
-        <Button label={submitLabel} onPress={save} busy={saving} disabled={!complete} style={{ flex: 1 }} />
+        {/* Dimmed until complete, but a tap says what's missing (it used to do nothing). */}
+        <Button label={submitLabel} onPress={save} busy={saving} dimmed={!complete} style={{ flex: 1 }} />
       </View>
     </View>
   );

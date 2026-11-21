@@ -15,11 +15,13 @@ interface Props {
   onChange: (code: string) => void;
   /** The list's heading — what the state is for. */
   title?: string;
+  /** Required and not chosen yet, after the form was sent: outlined in red. */
+  invalid?: boolean;
 }
 
 /** A US state, chosen from the list the server checks against
  * (GET /businesses/us-states) — searchable by name or code. */
-export function StatePicker({ value, onChange, title = 'State registered in' }: Props) {
+export function StatePicker({ value, onChange, title = 'State registered in', invalid }: Props) {
   const insets = useSafeAreaInsets();
   const states = useUsStates();
   const [open, setOpen] = useState(false);
@@ -39,7 +41,7 @@ export function StatePicker({ value, onChange, title = 'State registered in' }: 
 
   return (
     <>
-      <TouchableOpacity style={[u.input, s.field]} onPress={() => setOpen(true)} activeOpacity={0.8}>
+      <TouchableOpacity style={[u.input, s.field, invalid && u.inputBad]} onPress={() => setOpen(true)} activeOpacity={0.8}>
         <ThemedText style={[s.value, !value && { color: C.faint }]} numberOfLines={1}>
           {chosen ? `${chosen.name} (${chosen.code})` : value || 'Choose a state'}
         </ThemedText>

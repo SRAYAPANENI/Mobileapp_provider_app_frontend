@@ -346,7 +346,6 @@ export default function BusinessScreen() {
               {addingDoc && (
                 <Section title="Add a document">
                   <BusinessDocumentForm key={addingDoc} minLiability={data.min_liability} initialKind={addingDoc} onCancel={() => setAddingDoc(null)}
-                    onError={(message) => appAlert.show('error', 'Not uploaded', message)}
                     onSubmit={async (doc) => {
                       if (await run('doc', () => SkoFyApi.business.addDocument(doc), "Uploaded — we'll review it.")) setAddingDoc(null);
                     }} />

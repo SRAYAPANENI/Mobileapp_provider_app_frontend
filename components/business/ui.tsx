@@ -86,14 +86,16 @@ export function Monogram({ name, size = 40, tone = 'brand' }: { name: string | n
   );
 }
 
-export function Button({ label, onPress, kind = 'primary', busy, disabled, icon, small, style }: {
+/** `dimmed`: looks unavailable but still takes the tap — a form's submit
+ * with something missing, which then says what (Field's `error`). */
+export function Button({ label, onPress, kind = 'primary', busy, disabled, dimmed, icon, small, style }: {
   label: string; onPress: () => void; kind?: 'primary' | 'secondary' | 'ghost' | 'danger'; busy?: boolean;
-  disabled?: boolean; icon?: React.ReactNode; small?: boolean; style?: StyleProp<ViewStyle>;
+  disabled?: boolean; dimmed?: boolean; icon?: React.ReactNode; small?: boolean; style?: StyleProp<ViewStyle>;
 }) {
   const k = BUTTONS[kind];
   return (
     <TouchableOpacity activeOpacity={0.8} onPress={onPress} disabled={disabled || busy}
-      style={[u.button, small && u.buttonSmall, { backgroundColor: k.bg, borderColor: k.border }, (disabled && !busy) && u.dim, style]}>
+      style={[u.button, small && u.buttonSmall, { backgroundColor: k.bg, borderColor: k.border }, ((disabled || dimmed) && !busy) && u.dim, style]}>
       {busy ? <ActivityIndicator color={k.fg} size="small" /> : (
         <>
           {icon}
@@ -121,15 +123,31 @@ export function Toggle({ value, onChange, disabled }: { value: boolean; onChange
 }
 
 /** A labelled form field. */
-export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+/** A form field: its label (a red * when it must be filled in), and what's
+ * wrong with it, once the form has been sent with it missing. */
+export function Field({ label, hint, required, error, children }: {
+  label: string; hint?: string; required?: boolean; error?: string | null; children: React.ReactNode;
+}) {
   return (
     <View style={{ gap: 6 }}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-        <ThemedText style={u.label}>{label}</ThemedText>
+        <ThemedText style={u.label} accessibilityLabel={required ? `${label}, required` : label}>
+          {label}{required && <ThemedText style={u.required}> *</ThemedText>}
+        </ThemedText>
         {hint && <ThemedText style={[u.muted, { fontSize: 12 }]}>{hint}</ThemedText>}
       </View>
       {children}
+      {!!error && <ThemedText style={u.fieldError} accessibilityLiveRegion="polite">{error}</ThemedText>}
     </View>
+  );
+}
+
+/** Says what the red * means — once, at the top of a form. */
+export function RequiredLegend() {
+  return (
+    <ThemedText style={[u.muted, { fontSize: 12 }]}>
+      <ThemedText style={u.required}>*</ThemedText> Required
+    </ThemedText>
   );
 }
 
@@ -170,6 +188,10 @@ export const u = StyleSheet.create({
   body: { fontSize: 13.5, lineHeight: 20, fontFamily: Fonts.poppins, color: C.body },
   muted: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.poppins, color: C.muted },
   label: { fontSize: 12.5, lineHeight: 17, fontFamily: Fonts.poppinsSemiBold, color: C.body },
+  required: { fontFamily: Fonts.poppinsBold, color: C.bad },
+  fieldError: { fontSize: 12, lineHeight: 16, fontFamily: Fonts.poppinsSemiBold, color: C.bad },
+  // A field that must be filled in and isn't, after the form was sent.
+  inputBad: { borderColor: C.bad, backgroundColor: C.badSoft },
   input: {
     borderWidth: 1, borderColor: '#DDE1E7', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
     fontSize: 14.5, fontFamily: Fonts.poppins, color: C.ink, backgroundColor: '#FBFCFD',
