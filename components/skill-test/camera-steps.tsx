@@ -255,7 +255,7 @@ const s = StyleSheet.create({
   agree: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 14, borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.line },
   box: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: C.muted, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
   boxOn: { backgroundColor: C.brand, borderColor: C.brand },
-  footer: { paddingHorizontal: 20, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, backgroundColor: C.card },
+  footer: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, backgroundColor: C.card },
   primary: { height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: C.brand },
   secondary: { height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6, backgroundColor: C.card, borderWidth: 1, borderColor: C.line },
   off: { opacity: 0.45 },

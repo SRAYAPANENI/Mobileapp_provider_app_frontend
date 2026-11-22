@@ -59,7 +59,7 @@ export function SkillTestScreen({ skillId, skillName, resume, camera = false, on
 
   return (
     <TestLanguageContext.Provider value={test.language}>
-    <Popup visible closeOn="back" animationType="slide" onClose={askToLeave} statusBarTranslucent>
+    <Popup visible closeOn="back" animationType="slide" onClose={askToLeave} statusBarTranslucent navigationBarTranslucent>
       <View style={[s.screen, { paddingTop: insets.top + 8 }]}>
         <View style={s.header}>
           <View style={{ flex: 1 }}>
@@ -338,7 +338,8 @@ const s = StyleSheet.create({
   ruleIcon: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: C.brandSoft },
   body: { fontSize: 14, lineHeight: 21, fontFamily: Fonts.poppins, color: C.body },
   small: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.poppins, color: C.muted },
-  footer: { paddingHorizontal: 20, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, backgroundColor: C.card },
+  // paddingBottom: a gap above the phone's own bar, which padBottom adds on top (hooks/use-bottom-inset.ts).
+  footer: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, backgroundColor: C.card },
   primary: { height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: C.brand },
   primaryOff: { opacity: 0.45 },
   primaryText: { fontSize: 15, lineHeight: 21, fontFamily: Fonts.poppinsBold, color: C.ink },

@@ -28,13 +28,13 @@ function SkillAssessmentRowView({ skill, eligibility, onAction, onRemove }: Prop
     <View style={styles.row}>
       <View style={styles.body}>
         <View style={styles.info}>
-          <ThemedText style={styles.name}>{skill.name}</ThemedText>
-          <ThemedText style={styles.profession}>{skill.profession}</ThemedText>
+          <ThemedText style={styles.name} numberOfLines={2}>{skill.name}</ThemedText>
+          <ThemedText style={styles.profession} numberOfLines={1}>{skill.profession}</ThemedText>
           <View style={styles.badgeRow}>
             <View style={[styles.levelBadge, { backgroundColor: level.bg, borderColor: level.border }]}>
               <ThemedText style={[styles.levelText, { color: level.color }]}>{level.label}</ThemedText>
             </View>
-            <ThemedText style={styles.points}>⭐ {skill.is_verified ? '+50 Points' : 'Level Up Available'}</ThemedText>
+            <ThemedText style={styles.points} numberOfLines={1}>⭐ {skill.is_verified ? '+50 Points' : 'Level Up Available'}</ThemedText>
           </View>
         </View>
 
@@ -105,16 +105,19 @@ function makeStyles(t: typeof Colors.light) {
       shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 10, elevation: 2,
     },
     body: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    info: { flex: 1 },
+    // minWidth 0: lets the text column shrink and wrap beside the button instead of running under it.
+    info: { flex: 1, minWidth: 0, paddingRight: 10 },
     name: { fontSize: 16, lineHeight: 22, fontFamily: Fonts.poppinsBold, color: t.textPrimary },
     profession: { fontSize: 11, lineHeight: 17, color: '#9CA3AF', fontFamily: Fonts.poppins },
-    badgeRow: { flexDirection: 'row', marginTop: 4, gap: 6 },
+    badgeRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 4, columnGap: 6, rowGap: 4 },
     levelBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, alignSelf: 'flex-start', borderWidth: 0.5 },
     levelText: { fontSize: 8, lineHeight: 14, fontFamily: Fonts.poppinsBold, textTransform: 'uppercase', letterSpacing: 0.5 },
-    points: { fontSize: 11, lineHeight: 17, fontFamily: Fonts.poppinsSemiBold, color: t.textMuted },
-    actions: { alignItems: 'flex-end' },
+    points: { flexShrink: 1, fontSize: 11, lineHeight: 17, fontFamily: Fonts.poppinsSemiBold, color: t.textMuted },
+    // One width for every row's button, so they line up down the list; the hint centred under it.
+    actions: { width: 128, alignItems: 'stretch' },
     button: {
-      backgroundColor: '#FFCE48', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 14,
+      alignItems: 'center', justifyContent: 'center', minHeight: 42,
+      backgroundColor: '#FFCE48', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14,
       shadowColor: '#FFCE48', shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
     },
     buttonDone: { backgroundColor: '#10B981', shadowColor: '#10B981' },
@@ -123,7 +126,7 @@ function makeStyles(t: typeof Colors.light) {
     buttonText: { fontSize: 13, lineHeight: 19, fontFamily: Fonts.poppinsBold, color: '#000' },
     buttonTextLight: { color: '#fff' },
     buttonTextMuted: { color: '#9CA3AF' },
-    hint: { fontSize: 10, lineHeight: 16, color: '#6B7280', marginTop: 4, fontFamily: Fonts.poppins, textAlign: 'right', maxWidth: 110 },
+    hint: { fontSize: 10, lineHeight: 16, color: '#6B7280', marginTop: 4, fontFamily: Fonts.poppins, textAlign: 'center' },
     remove: {
       marginLeft: 10, width: 28, height: 28, borderRadius: 14, backgroundColor: '#FEF2F2',
       justifyContent: 'center', alignItems: 'center',
