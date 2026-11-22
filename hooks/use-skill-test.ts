@@ -17,6 +17,9 @@ export type SkillTestPhase =
   | { kind: 'consent' }
   | { kind: 'face' }
   | { kind: 'starting' }
+  // Its questions are being written for the first time: checked every few
+  // seconds, then it starts by itself (the face photo kept).
+  | { kind: 'preparing' }
   | { kind: 'question'; question: SkillTestQuestion; /** Date.now() at which its time is up */ deadline: number }
   | { kind: 'done'; score: number; passed: boolean; underReview: boolean; message: string }
   | { kind: 'failed'; message: string };
@@ -70,6 +73,29 @@ export function useSkillTest({ skillId, resume, camera = false, onEnded }: {
     setPhase({ kind: 'question', question: q, deadline: deadlineFor(q) });
   }, []);
 
+  // Its questions written while the rules are read: asked as the screen opens,
+  // and again when the language changes. Best effort — Start checks again.
+  useEffect(() => {
+    if (resume) return;
+    SkoFyApi.skills.prepareTest(skillId, language).catch(() => {});
+  }, [skillId, language, resume]);
+
+  // Waiting for them: asked every few seconds, then the test starts.
+  const waitingStart = useRef<{ consent?: boolean; facePhotoUri?: string } | null>(null);
+  const startRef = useRef<(opts?: { consent?: boolean; facePhotoUri?: string }) => Promise<void>>(async () => {});
+  useEffect(() => {
+    if (phase.kind !== 'preparing') return;
+    let stopped = false;
+    const id = setInterval(async () => {
+      const r = await SkoFyApi.skills.prepareTest(skillId, languageRef.current).catch(() => null);
+      if (stopped || !r?.ready || !mounted.current) return;
+      stopped = true;
+      clearInterval(id);
+      void startRef.current(waitingStart.current ?? {});
+    }, 4000);
+    return () => { stopped = true; clearInterval(id); };
+  }, [phase.kind, skillId]);
+
   /** consent: they agreed to a camera test (never sent without the consent
    * screen). facePhotoUri: their face, sent once the test has opened. */
   const start = useCallback(async (opts: { consent?: boolean; facePhotoUri?: string } = {}) => {
@@ -86,7 +112,10 @@ export function useSkillTest({ skillId, resume, camera = false, onEnded }: {
       if (!mounted.current) return;
       // A camera test (not known yet, or resumed after it ended): its consent
       // screen first, never started silently.
-      if (e?.error_code === 'CAMERA_CONSENT_REQUIRED' && !opts.consent) {
+      if (e?.error_code === 'TEST_PREPARING') {
+        waitingStart.current = opts;
+        setPhase({ kind: 'preparing' });
+      } else if (e?.error_code === 'CAMERA_CONSENT_REQUIRED' && !opts.consent) {
         // The rules first (a resumed test skipped them), then its consent screen.
         setCameraTest(true);
         setPhase({ kind: 'intro' });
@@ -95,6 +124,7 @@ export function useSkillTest({ skillId, resume, camera = false, onEnded }: {
       }
     }
   }, [skillId, show]);
+  startRef.current = start;
 
   /** From the rules: a camera test goes to its consent screen, any other starts. */
   const proceed = useCallback(() => {

@@ -49,7 +49,7 @@ export function SkillTestScreen({ skillId, skillName, resume, camera = false, on
   const askToLeave = () => {
     // Closed while it was starting: it may have opened on the server — the
     // profile reloads, so the skill says "Resume Test" instead of "Take Test".
-    if (phase.kind === 'starting') { onEnded(); onClose(); return; }
+    if (phase.kind === 'starting' || phase.kind === 'preparing') { onEnded(); onClose(); return; }
     if (phase.kind !== 'question') { onClose(); return; }
     alert.show('warning', t.leaveTitle, t.leaveBody, [
       { text: t.keepGoing, variant: 'secondary', cancel: true },
@@ -83,6 +83,12 @@ export function SkillTestScreen({ skillId, skillName, resume, camera = false, on
           <View style={s.center}>
             <ActivityIndicator size="large" color={C.brand} />
             <ThemedText style={[s.body, { marginTop: 12 }]}>{t.preparing}</ThemedText>
+          </View>
+        ) : phase.kind === 'preparing' ? (
+          <View style={[s.center, { paddingHorizontal: 32 }]}>
+            <ActivityIndicator size="large" color={C.brand} />
+            <ThemedText style={[s.lead, { marginTop: 16, textAlign: 'center' }]}>{t.firstTimeTitle}</ThemedText>
+            <ThemedText style={[s.body, { marginTop: 8, textAlign: 'center' }]}>{t.firstTimeBody}</ThemedText>
           </View>
         ) : phase.kind === 'failed' ? (
           <View style={s.center}>

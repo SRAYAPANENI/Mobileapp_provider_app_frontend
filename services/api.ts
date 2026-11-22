@@ -1461,6 +1461,10 @@ export const SkoFyApi = {
       return request(`/skills/${skillId}/test/question${q ? `?${q}` : ''}`);
     },
 
+    /** Whether this skill's test can start now; if not, it's being prepared — ask again in a few seconds. */
+    prepareTest: async (skillId: string, lang: 'en' | 'es'): Promise<{ ready: boolean }> =>
+      request(`/skills/${skillId}/test/prepare?lang=${lang}`),
+
     /** A camera test's spoken answer (no recording: nothing was said in time). */
     submitSpokenAnswer: async (skillId: string, sessionId: string, questionNumber: number,
       recording: { uri: string; mimeType: string } | null): Promise<SkillTestAnswer> => {
