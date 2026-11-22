@@ -1,6 +1,7 @@
 import { Audio } from 'expo-av';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
+import { whileSystemPrompt } from '@/components/skill-test/system-prompt';
 
 // One spoken answer in a camera skill test: start, stop (or stopped for you
 // at `maxSeconds`), and the file to send. Same audio-session handover as the
@@ -16,9 +17,8 @@ export function useAnswerRecorder(maxSeconds: number) {
   /** 'mic': no permission; 'failed': it couldn't start. */
   const [error, setError] = useState<'mic' | 'failed' | null>(null);
 
-  const release = async () => {
-    await Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {});
-  };
+  // Handing the audio session back can blink the app's state too: not leaving it.
+  const release = () => whileSystemPrompt(() => Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {}));
 
   /** The finished recording, or null if there was none. */
   const stop = useCallback(async (): Promise<Recorded | null> => {
@@ -26,7 +26,7 @@ export function useAnswerRecorder(maxSeconds: number) {
     recordingRef.current = null;
     setRecording(false);
     if (!rec) return null;
-    try { await rec.stopAndUnloadAsync(); } catch { /* already stopped */ }
+    await whileSystemPrompt(() => rec.stopAndUnloadAsync().catch(() => { /* already stopped */ }));
     await release();
     const uri = rec.getURI();
     const took = (Date.now() - startedAt.current) / 1000;
@@ -36,19 +36,24 @@ export function useAnswerRecorder(maxSeconds: number) {
 
   const start = useCallback(async (): Promise<boolean> => {
     setError(null);
-    const { status } = await Audio.requestPermissionsAsync();
+    // Allowed already (asked before the test began): no prompt at all.
+    let { status } = await Audio.getPermissionsAsync();
+    if (status !== 'granted') ({ status } = await whileSystemPrompt(() => Audio.requestPermissionsAsync()));
     if (status !== 'granted') {
       setError('mic');
       return false;
     }
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        await Audio.setAudioModeAsync({ allowsRecordingIOS: false, shouldDuckAndroid: false }).catch(() => {});
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true, playsInSilentModeIOS: true, staysActiveInBackground: false,
-          shouldDuckAndroid: true, playThroughEarpieceAndroid: false,
+        // The audio session handing over can blink the app's state: not leaving it.
+        const { recording: rec } = await whileSystemPrompt(async () => {
+          await Audio.setAudioModeAsync({ allowsRecordingIOS: false, shouldDuckAndroid: false }).catch(() => {});
+          await Audio.setAudioModeAsync({
+            allowsRecordingIOS: true, playsInSilentModeIOS: true, staysActiveInBackground: false,
+            shouldDuckAndroid: true, playThroughEarpieceAndroid: false,
+          });
+          return Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
         });
-        const { recording: rec } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
         recordingRef.current = rec;
         startedAt.current = Date.now();
         setSeconds(0);

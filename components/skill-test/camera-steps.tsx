@@ -3,6 +3,7 @@ import { Fonts } from '@/constants/theme';
 import { padBottom } from '@/hooks/use-bottom-inset';
 import { useAnswerRecorder } from '@/hooks/use-answer-recorder';
 import type { SkillTestQuestion } from '@/services/api';
+import { Audio } from 'expo-av';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Image } from 'expo-image';
 import { Camera, Check, EyeOff, Lock, Mic, RotateCcw, Square, Trash2, UserCheck } from 'lucide-react-native';
@@ -59,13 +60,31 @@ export function ConsentStep({ onAgree, bottomInset }: { onAgree: () => void; bot
 export function FaceStep({ onReady, bottomInset }: { onReady: (uri: string) => void; bottomInset: number }) {
   const t = useTestStrings();
   const [permission, requestPermission] = useCameraPermissions();
+  // The microphone too, here — before the test starts. Asked mid-question,
+  // its system prompt would send the app to the background.
+  const [mic, requestMic] = Audio.usePermissions();
   const cam = useRef<CameraView>(null);
   const [photo, setPhoto] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { if (permission && !permission.granted && permission.canAskAgain) void requestPermission(); }, [permission?.granted]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (permission?.granted && mic && !mic.granted && mic.canAskAgain) void requestMic();
+  }, [permission?.granted, mic?.granted]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!permission) return <View style={s.center}><ActivityIndicator color={C.brand} /></View>;
+  if (!permission || !mic) return <View style={s.center}><ActivityIndicator color={C.brand} /></View>;
+  if (permission.granted && !mic.granted) {
+    return (
+      <View style={s.center}>
+        <View style={[s.bigIcon, { backgroundColor: C.badSoft }]}><Mic size={28} color={C.bad} /></View>
+        <ThemedText style={[s.body, { textAlign: 'center', marginVertical: 16 }]}>{t.micNeeded}</ThemedText>
+        <TouchableOpacity style={[s.primary, { alignSelf: 'stretch' }]}
+          onPress={() => (mic.canAskAgain ? requestMic() : Linking.openSettings())}>
+          <ThemedText style={s.primaryText}>{mic.canAskAgain ? t.allowMic : t.openSettings}</ThemedText>
+        </TouchableOpacity>
+      </View>
+    );
+  }
   if (!permission.granted) {
     return (
       <View style={s.center}>

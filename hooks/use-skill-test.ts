@@ -1,4 +1,5 @@
 import { STRINGS, TestLanguage } from '@/components/skill-test/strings';
+import { inSystemPrompt } from '@/components/skill-test/system-prompt';
 import { SkillTestAnswer, SkillTestQuestion, SkoFyApi } from '@/services/api';
 import * as ScreenCapture from 'expo-screen-capture';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -176,6 +177,8 @@ export function useSkillTest({ skillId, resume, camera = false, onEnded }: {
       const q = current();
       if (!q) return;
       if (state === 'background') {
+        // The test's own permission prompt or audio hand-over, not leaving.
+        if (inSystemPrompt()) return;
         leftDuring.current = q.question_number;
         SkoFyApi.skills.reportTestEvent(skillId, q.session_id, 'LEFT_APP', q.question_number).catch(() => {});
       } else if (state === 'active' && leftDuring.current === q.question_number) {

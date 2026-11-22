@@ -241,14 +241,27 @@ function Countdown({ deadline, seconds, onTimeUp }: { deadline: number; seconds:
   const leftNow = () => Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
   const [left, setLeft] = useState(leftNow);
   const fired = useRef(false);
+  const onTimeUpRef = useRef(onTimeUp);
+  onTimeUpRef.current = onTimeUp;
+  // A steady ticker, independent of redraws. (Re-arming a timeout from each
+  // render stalled: four ticks a second mostly set the same whole second,
+  // React skipped that render, and with it the next tick — the clock froze
+  // until something else, like choosing an answer, redrew the screen.)
   useEffect(() => {
-    if (left <= 0) {
-      if (!fired.current) { fired.current = true; onTimeUp(); }
-      return;
-    }
-    const id = setTimeout(() => setLeft(leftNow()), 250);
-    return () => clearTimeout(id);
-  });
+    fired.current = false;
+    const tick = () => {
+      const now = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setLeft(now);
+      if (now <= 0 && !fired.current) {
+        fired.current = true;
+        clearInterval(id);
+        onTimeUpRef.current();
+      }
+    };
+    const id = setInterval(tick, 250);
+    tick();
+    return () => clearInterval(id);
+  }, [deadline]);
   const low = left <= 5;
   const t = useTestStrings();
   return (
