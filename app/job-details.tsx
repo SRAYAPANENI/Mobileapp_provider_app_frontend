@@ -1318,7 +1318,10 @@ export default function JobDetailsScreen() {
         type="success"
         title={hiredSuccess ? "You're Hired!" : 'Application Submitted!'}
         message={hiredSuccess
-          ? "Head to the job when you're ready — the customer has been notified."
+          ? (job?.serviceMode === 'REMOTE'
+            // Online: nowhere to head to — the meeting link is the next thing.
+            ? 'The customer has been notified. Open the job to add your meeting link and send your price.'
+            : "Head to the job when you're ready — the customer has been notified.")
           : "The customer will review your profile. You'll be notified once you're hired."}
         onDismiss={() => setShowSuccessModal(false)}
       />

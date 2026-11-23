@@ -4,7 +4,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
-import { BusinessBoard, listedTeamJobs, SkoFyApi, Team, TeamActiveJob, TeamOpenJob } from '@/services/api';
+import { BusinessBoard, listedTeamJobs, needsSomeoneElse, SkoFyApi, Team, TeamActiveJob, TeamOpenJob } from '@/services/api';
 import { BusinessTabs } from '@/components/business/business-tabs';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Briefcase, Check, ChevronLeft, Clock, Inbox } from 'lucide-react-native';
@@ -41,8 +41,12 @@ export default function BusinessJobsScreen() {
   const [team, setTeam] = useState<Team | null>(null);
   const [applying, setApplying] = useState<TeamOpenJob | null>(null);
   const [assigning, setAssigning] = useState<TeamActiveJob | null>(null);
+  // A waiting application, to name someone else on.
+  const [changing, setChanging] = useState<TeamOpenJob | null>(null);
+  const choosing = applying ?? changing ?? assigning;
   const [workerId, setWorkerId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
+  const [busyIds, setBusyIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -65,6 +69,8 @@ export default function BusinessJobsScreen() {
     opened.current = jobId;
     const job = board.open.find((j) => j.job_id === jobId);
     if (job && !job.applied && !job.withdrawn) setApplying(job);
+    // Whoever we named is booked now: straight to choosing someone else.
+    else if (job?.applied && needsSomeoneElse(job)) setChanging(job);
     else if (!board.active.some((j) => j.job_id === jobId)) {
       // A stale alert: applied, withdrawn, or the job closed or was taken since it was sent.
       appAlert.show('info',
@@ -76,7 +82,22 @@ export default function BusinessJobsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board, jobId]);
 
-  const close = () => { setApplying(null); setAssigning(null); setWorkerId(null); setMessage(''); };
+  // Who's already booked at this job's time, as it opens. Unknown (offline):
+  // nobody marked — the server refuses a clash anyway.
+  const choosingFor = choosing?.job_id;
+  useEffect(() => {
+    setBusyIds([]);
+    if (!choosingFor) return;
+    let cancelled = false;
+    SkoFyApi.business.busyFor(choosingFor).then((ids) => {
+      if (cancelled) return;
+      setBusyIds(ids);
+      setWorkerId((w) => (w && ids.includes(w) ? null : w));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [choosingFor]);
+
+  const close = () => { setApplying(null); setChanging(null); setAssigning(null); setWorkerId(null); setMessage(''); };
 
   const submit = async () => {
     if (!workerId) return;
@@ -84,12 +105,14 @@ export default function BusinessJobsScreen() {
     try {
       const result = applying
         ? await SkoFyApi.business.applyForJob(applying.job_id, workerId, message.trim() || undefined)
+        : changing ? await SkoFyApi.business.changePerson(changing.job_id, workerId)
         : await SkoFyApi.business.assignJob(assigning!.job_id, workerId);
       appAlert.show('success', applying ? 'Applied' : 'Done', applying ? 'The customer sees your business and who would do it.' : result.message);
       close();
       load();
     } catch (err: any) {
       appAlert.show('error', 'Not done', err?.message ?? 'Please try again.');
+      load();          // e.g. hired or booked this instant: shown as it is now
     } finally {
       setBusy(false);
     }
@@ -98,6 +121,8 @@ export default function BusinessJobsScreen() {
   const setOff = (j: TeamActiveJob) => !!(j.navigation_started_at || j.arrived_at || j.checked_in_at);
   // Withdrawn jobs are gone for good: not listed, not counted.
   const open = listedTeamJobs(board);
+
+  const nameOf = (id?: string | null) => team?.members.find((m) => m.provider_id === id)?.name ?? null;
 
   // Taking back the business's application — final, as for anyone.
   const withdraw = (j: TeamOpenJob) => appAlert.show('warning', 'Withdraw your business’s application?',
@@ -149,9 +174,26 @@ export default function BusinessJobsScreen() {
                   </View>
                 </TouchableOpacity>
                 {j.applied ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <Badge label="Applied" tone="ok" icon={<Check size={12} color={C.ok} />} />
-                    <Button small kind="secondary" label="Withdraw" onPress={() => withdraw(j)} />
+                  <View style={{ gap: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <Badge label="Applied" tone="ok" icon={<Check size={12} color={C.ok} />} />
+                      {!!nameOf(j.applied_worker_id) && <ThemedText style={u.muted}>{nameOf(j.applied_worker_id)} would do it</ThemedText>}
+                      {needsSomeoneElse(j) && <Badge label={j.applied_worker_left ? 'Left your team' : 'Booked since'} tone="warn" />}
+                    </View>
+                    {needsSomeoneElse(j) && (
+                      <ThemedText style={u.muted}>{j.applied_worker_left ? 'They’ve left your team' : 'They’re on another job at that time now'}, so the customer can’t hire you. Choose someone else.</ThemedText>
+                    )}
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <Button small kind={needsSomeoneElse(j) ? undefined : 'secondary'} label="Change person"
+                        disabled={!needsSomeoneElse(j) && j.person_changes_left === 0} onPress={() => { close(); setChanging(j); }} />
+                      <Button small kind="secondary" label="Withdraw" onPress={() => withdraw(j)} />
+                    </View>
+                    {!needsSomeoneElse(j) && j.person_changes_left != null && (
+                      <ThemedText style={u.muted}>
+                        {j.person_changes_left > 0 ? `${j.person_changes_left} change${j.person_changes_left === 1 ? '' : 's'} of person left`
+                          : 'No changes left, unless they get booked or leave your team'}
+                      </ThemedText>
+                    )}
                   </View>
                 ) : (
                   <Button small label="Apply as the business" style={{ alignSelf: 'flex-start' }}
@@ -198,24 +240,26 @@ export default function BusinessJobsScreen() {
           form, so tapping "Apply as the business" (or "Give to someone
           else") doesn't depend on the list having scrolled back to the top
           to see it. */}
-      <Popup closeOn={busy ? 'none' : 'back'} visible={!!(applying || assigning)} transparent animationType="slide" onClose={close}>
+      <Popup closeOn={busy ? 'none' : 'back'} visible={!!choosing} transparent animationType="slide" onClose={close}>
         <KeyboardAvoidingView style={s.sheetOverlay} behavior="padding">
           <PopupCard style={s.sheet}>
             <View style={s.sheetHandle} />
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={padBottom(s.sheetContent, bottomInset)}>
-              <ThemedText style={u.sectionTitle}>{applying ? 'Apply as your business' : 'Give to someone else'}</ThemedText>
-              <ThemedText style={s.focusTitle}>{applying ? applying.title : assigning?.title}</ThemedText>
-              <ThemedText style={u.muted}>{applying ? 'Who would do it? The customer sees your business and them.' : "Only until someone sets off — then it's theirs to finish."}</ThemedText>
+              <ThemedText style={u.sectionTitle}>{applying ? 'Apply as your business' : changing ? 'Change person' : 'Give to someone else'}</ThemedText>
+              <ThemedText style={s.focusTitle}>{choosing?.title}</ThemedText>
+              <ThemedText style={u.muted}>{applying ? 'Who would do it? The customer sees your business and them.'
+                : changing ? `The customer is told and sees the new person at once. Your price stays the same. ${needsSomeoneElse(changing)
+                  ? 'This change isn’t counted.' : `You can change the person ${changing.person_changes_left ?? 0} more time${changing.person_changes_left === 1 ? '' : 's'}.`}` : "Only until someone sets off — then it's theirs to finish."}</ThemedText>
               <MemberPicker members={team?.members ?? []} selectedId={workerId} onSelect={(m) => setWorkerId(m.provider_id)}
-                preferredIds={applying?.reached_member_ids} excludeId={assigning?.worker_id}
-                workTime={workTimeOf(applying ?? assigning)} />
+                preferredIds={(applying ?? changing)?.reached_member_ids} excludeId={changing?.applied_worker_id ?? assigning?.worker_id}
+                workTime={workTimeOf(choosing)} busyIds={busyIds} />
               {applying && (
                 <TextInput style={[u.input, { minHeight: 72, textAlignVertical: 'top' }]} value={message} onChangeText={setMessage} multiline maxLength={1000}
                   placeholder="A note for the customer (optional)" placeholderTextColor={C.faint} />
               )}
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <Button kind="secondary" label="Cancel" onPress={close} disabled={busy} style={{ flex: 1 }} />
-                <Button label={applying ? 'Apply' : 'Give it to them'} onPress={submit} busy={busy} disabled={!workerId} style={{ flex: 1 }} />
+                <Button label={applying ? 'Apply' : changing ? 'Change' : 'Give it to them'} onPress={submit} busy={busy} disabled={!workerId} style={{ flex: 1 }} />
               </View>
             </ScrollView>
           </PopupCard>

@@ -8,7 +8,7 @@ import { useBottomInset } from '@/hooks/use-bottom-inset';
 import { BusinessJobDetail, SkoFyApi } from '@/services/api';
 import { setWatchedBusinessJob } from '@/services/callManager';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Calendar, Check, ChevronLeft, Eye, Map as MapIcon, MapPin, Send, User } from 'lucide-react-native';
+import { Calendar, Check, ChevronLeft, Eye, Map as MapIcon, MapPin, Send, User, Video } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { TextInput } from '@/components/scaled-text';
@@ -111,6 +111,7 @@ export default function BusinessJobScreen() {
                   </TouchableOpacity>
                 ) : undefined} />
               <Row icon={<User size={18} color={C.ink} />} title={job.customer_name ?? 'Customer'} detail="Customer" />
+              {job.venue === 'ONLINE' && <Row icon={<Video size={18} color={C.ink} />} title="Online" detail="Where" />}
               {job.address && <Row icon={<MapPin size={18} color={C.ink} />} title={job.address} detail="Where" />}
               <Row last icon={<Calendar size={18} color={C.ink} />} title={job.scheduled_at ? time(job.scheduled_at) : 'As soon as possible'} detail="When" />
             </View>

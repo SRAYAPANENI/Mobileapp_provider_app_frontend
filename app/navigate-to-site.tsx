@@ -8,7 +8,7 @@ import { RouteFollower, haversineKm, type Progress } from '@/services/route';
 import { sendTripViaSocket, type TripFigures } from '@/services/location-socket';
 import { callTapAllowed } from '@/services/callManager';
 import { router, useLocalSearchParams } from 'expo-router';
-import { isServiceRoomOpen, openServiceRoom } from '@/services/service-room';
+import { emitRoomEvent, isServiceRoomOpen, openServiceRoom } from '@/services/service-room';
 import * as Location from 'expo-location';
 import { ChevronLeft, Navigation, MapPin, LocateFixed, MessageSquare, Phone } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
@@ -194,7 +194,16 @@ export default function NavigateToSiteScreen() {
       if (wait) await new Promise((r) => setTimeout(r, wait));
       if (leftRef.current) return;     // they left the screen: nothing to retry for
       try {
+        // Where they set off from, sent first: nothing is followed before
+        // this, and the server works out the arrival time from it. A slow
+        // GPS doesn't hold it up.
+        const here = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
+          new Promise<null>((r) => setTimeout(() => r(null), 4000)),
+        ]) ?? await Location.getLastKnownPositionAsync({ maxAge: 300000 }).catch(() => null);
+        if (here) await SkoFyApi.tracking.updateLocation(here.coords.latitude, here.coords.longitude).catch(() => {});
         await SkoFyApi.jobs.startNavigation(jobId);
+        emitRoomEvent({ type: 'set_off', jobId });
         return;
       } catch (err: any) {
         // The job has moved on (cancelled, taken): the status check below says so.

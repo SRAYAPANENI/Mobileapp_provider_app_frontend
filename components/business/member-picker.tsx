@@ -21,6 +21,8 @@ interface Props {
   /** When the job's work happens: someone not in their work hours then can't
    * be given it (docs/EMPLOYER_PARTNERS_DESIGN.md) — the server's rule too. */
   workTime?: Date | null;
+  /** Already booked at the job's time (the server's busyFor). */
+  busyIds?: string[];
 }
 
 /** Not in their agreed hours at `at`: false when the phone can't tell. */
@@ -32,7 +34,7 @@ function outOfHours(m: TeamMember, at: Date | null | undefined): boolean {
 // Choosing who on the team does a job. Only members who can do jobs (ID
 // verified, background check clear) and are in their work hours for it can
 // be picked; the rest say why not.
-export function MemberPicker({ members, selectedId, onSelect, preferredIds = [], excludeId, workTime }: Props) {
+export function MemberPicker({ members, selectedId, onSelect, preferredIds = [], excludeId, workTime, busyIds = [] }: Props) {
   const list = members
     .filter((m) => m.status === 'ACTIVE' && m.provider_id && m.provider_id !== excludeId)
     .sort((a, b) => Number(preferredIds.includes(b.provider_id!)) - Number(preferredIds.includes(a.provider_id!)));
@@ -41,7 +43,8 @@ export function MemberPicker({ members, selectedId, onSelect, preferredIds = [],
     <View style={s.wrap}>
       {list.map((m) => {
         const offHours = outOfHours(m, workTime);
-        const able = canDoJobs(m) && !offHours;
+        const booked = busyIds.includes(m.provider_id!);
+        const able = canDoJobs(m) && !offHours && !booked;
         const on = selectedId === m.provider_id;
         const reached = preferredIds.includes(m.provider_id!);
         return (
@@ -51,6 +54,7 @@ export function MemberPicker({ members, selectedId, onSelect, preferredIds = [],
               <ThemedText style={u.label}>{m.name ?? m.phone}</ThemedText>
               <ThemedText style={u.muted}>
                 {offHours ? `Not their hours then · ${m.hours?.agreed_label ?? ''}`
+                  : booked && canDoJobs(m) ? 'Already booked then'
                   : !able ? (m.is_identity_verified ? "Background check hasn't cleared" : 'ID not verified yet')
                   : m.leave_at ? `Leaving ${new Date(m.leave_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} — only jobs before then`
                   : m.role === 'DISPATCHER' ? 'Dispatcher' : m.role === 'OWNER' ? 'Owner' : 'Worker'}

@@ -13,6 +13,7 @@ import { DeliveryHandover } from '@/components/delivery-handover';
 import { ExtraWorkPanel } from '@/components/extra-work-panel';
 import { InspectionReportForm } from '@/components/inspection-report-form';
 import { InspectionStatus } from '@/components/inspection-status';
+import { MeetingCard } from '@/components/meeting-card';
 import { ReportIssueModal } from '@/components/report-issue-modal';
 import { CancelJobSheet } from '@/components/service-room/cancel-job-sheet';
 import { InspectionCode } from '@/components/service-room/inspection-code';
@@ -205,6 +206,14 @@ export default function ServiceRoomScreen() {
           </View>
 
           {isDelivery(job) && <TripCard detail={detail} />}
+
+          {/* Online: the meeting in place of a site — add the link, join here or on a computer. */}
+          {job.serviceMode === 'REMOTE' && ['ACCEPTED', 'INVOICE_PENDING', 'IN_PROGRESS'].includes(job.status) && (
+            <MeetingCard jobId={job.id} meeting={detail?.meeting ?? null} sessionAt={detail?.scheduled_at ?? null}
+              title={job.title} viewer="provider"
+              onChanged={(meeting) => setDetail({ ...detail, meeting })}
+              onMessage={(kind, title, message) => showDialog(title, message, undefined, { type: kind })} />
+          )}
 
           {/* No site to go to for an online job, or one at the provider's own place. */}
           {job.serviceMode !== 'REMOTE' && detail?.shape?.venue !== 'PROVIDER_PLACE' && navigationTarget(job, detail) && (

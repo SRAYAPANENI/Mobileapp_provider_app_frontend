@@ -687,6 +687,8 @@ const DASHBOARD_JOB_UPDATES = new Set([
   'job_disputed',
   // Dodorez lifted your pause from new jobs: they show on the dashboard again.
   'pause_lifted',
+  // An online job's meeting link added by the customer, or its session about to start.
+  'meeting_link',
 ]);
 
 /** Pushes that open a screen of their own rather than the dashboard. */

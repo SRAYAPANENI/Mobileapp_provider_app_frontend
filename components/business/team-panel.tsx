@@ -1,7 +1,7 @@
 import { ThemedText } from '@/components/themed-text';
 import { Fonts } from '@/constants/theme';
 import { MyBusinessState } from '@/hooks/use-my-business';
-import { listedTeamJobs } from '@/services/api';
+import { listedTeamJobs, needsSomeoneElse } from '@/services/api';
 import { router } from 'expo-router';
 import { AlertTriangle, Check, Clock, Inbox, UserPlus, Users } from 'lucide-react-native';
 import { BusinessTabs } from './business-tabs';
@@ -80,7 +80,10 @@ export function TeamPanel({ state }: { state: MyBusinessState }) {
               </View>
             </TouchableOpacity>
             {j.applied
-              ? <Badge label="Applied" tone="ok" icon={<Check size={12} color={C.ok} />} />
+              // Whoever we named is booked since: someone else is needed.
+              ? needsSomeoneElse(j)
+                ? <Button small label="Change person" onPress={() => go('/business-jobs', { jobId: j.job_id })} />
+                : <Badge label="Applied" tone="ok" icon={<Check size={12} color={C.ok} />} />
               : <Button small label="Assign" onPress={() => go('/business-jobs', { jobId: j.job_id })} />}
           </View>
         ))}

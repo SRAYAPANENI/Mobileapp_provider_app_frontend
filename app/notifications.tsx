@@ -181,6 +181,7 @@ export default function NotificationsScreen() {
       case 'job_cost_paid':
       case 'care_update_due':
       case 'pickup_code':
+      case 'meeting_link':
         openServiceRoom(item.job_id);
         break;
       case 'business_job':

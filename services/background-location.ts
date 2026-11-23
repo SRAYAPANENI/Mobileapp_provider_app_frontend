@@ -42,11 +42,31 @@ async function running(task: string): Promise<boolean> {
   return Location.hasStartedLocationUpdatesAsync(task).catch(() => false);
 }
 
+// One change at a time, in the order asked: a stop overtaking a start still
+// being set up left tracking on, and going back online was skipped while the
+// trip's own stop was still under way.
+let queue: Promise<void> = Promise.resolve();
+const inTurn = (change: () => Promise<void>): Promise<void> => (queue = queue.then(change, change));
+
+export const startBackgroundLocation = (business: string | null = null) => inTurn(() => startTrip(business));
+export const stopBackgroundLocation = () => inTurn(stopTrip);
+export const startOnlineLocation = () => inTurn(startOnline);
+export const stopOnlineLocation = () => inTurn(stopOnline);
+
 /** On a trip: the customer follows them closely. Online mode steps aside. */
-export async function startBackgroundLocation() {
+// Who the running trip says it's shared with — started again when that changes.
+let sharingWith: string | null | undefined;
+
+/** `business`: the business the trip is for — it sees the location too, and
+ * the member is always told so (the server's LOCATION_NOTICE). */
+async function startTrip(business: string | null) {
   try {
-    await stopOnlineLocation();
-    if (await running(LOCATION_TASK_NAME)) return;
+    await stopOnline();
+    if (await running(LOCATION_TASK_NAME)) {
+      if (sharingWith === business) return;
+      await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+    }
+    sharingWith = business;
     await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
       accuracy: Location.Accuracy.High,
       distanceInterval: 5,  // fire after 5 m of movement …
@@ -54,7 +74,9 @@ export async function startBackgroundLocation() {
       // Foreground service keeps the task alive even when the app is swiped away
       foregroundService: {
         notificationTitle: 'Dodorez Pro — On the way',
-        notificationBody: 'Your location is being shared with the customer.',
+        notificationBody: business
+          ? `Your location is being shared with the customer and ${business}.`
+          : 'Your location is being shared with the customer.',
         notificationColor: '#FFCE48',
       },
       pausesUpdatesAutomatically: false,
@@ -65,7 +87,7 @@ export async function startBackgroundLocation() {
   }
 }
 
-export async function stopBackgroundLocation() {
+async function stopTrip() {
   try {
     if (await running(LOCATION_TASK_NAME)) await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
   } catch (e) {
@@ -75,7 +97,7 @@ export async function stopBackgroundLocation() {
 
 /** Online and free for work: where they are, every ~500 m, app open or not.
  * Never during a trip (its own, closer tracking runs then). */
-export async function startOnlineLocation() {
+async function startOnline() {
   try {
     if (await running(LOCATION_TASK_NAME) || await running(ONLINE_TASK_NAME)) return;
     const fg = await Location.getForegroundPermissionsAsync();
@@ -105,7 +127,7 @@ export async function startOnlineLocation() {
   }
 }
 
-export async function stopOnlineLocation() {
+async function stopOnline() {
   try {
     if (await running(ONLINE_TASK_NAME)) await Location.stopLocationUpdatesAsync(ONLINE_TASK_NAME);
   } catch (e) {

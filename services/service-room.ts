@@ -54,6 +54,8 @@ export type RoomEvent =
   | { type: 'completed'; jobId: string }
   /** Over without finishing — cancelled, refused, the customer not there, disputed. */
   | { type: 'ended'; jobId: string }
+  /** On the way: their trip is followed from now. */
+  | { type: 'set_off'; jobId: string }
   /** Still going, at a new step (started, inspecting, invoiced, collected). */
   | { type: 'changed'; jobId: string; status: string };
 

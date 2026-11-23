@@ -3,7 +3,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
 import { useBottomInset } from '@/hooks/use-bottom-inset';
-import { SkoFyApi, TeamPosition } from '@/services/api';
+import { SkoFyApi, TeamActiveJob, TeamPosition } from '@/services/api';
+import { arrange, Bubble, onePerMember, whereElse, workingElsewhere } from '@/services/team-map';
 import { BusinessTabs } from '@/components/business/business-tabs';
 import { router } from 'expo-router';
 import { ChevronLeft, ChevronRight, Home, Navigation, Users } from 'lucide-react-native';
@@ -12,6 +13,8 @@ import { LayoutChangeEvent, ScrollView, StatusBar, StyleSheet, TouchableOpacity,
 import MapView, { PROVIDER_GOOGLE, Region } from 'react-native-maps';
 
 const POLL_MS = 10000;
+// The rest of the team's jobs (heavier, and slower to change).
+const JOBS_MS = 30000;
 const CARD_W = 248;
 const START: Region = { latitude: 39.5, longitude: -98.35, latitudeDelta: 30, longitudeDelta: 30 };
 
@@ -21,6 +24,7 @@ const PIN_W = 150;
 const PIN_H = 58;
 const ANCHOR = { x: 23, y: 56 };
 const SITE = 28;
+const BUBBLE = 48;
 
 const merc = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
 /** Where a coordinate falls on the map view, in pixels — the map is kept flat (no tilt or turn) so this holds. */
@@ -44,6 +48,7 @@ function project(lat: number, lng: number, r: Region, w: number, h: number) {
 export default function BusinessMapScreen() {
   const bottomInset = useBottomInset();
   const [positions, setPositions] = useState<TeamPosition[]>([]);
+  const [active, setActive] = useState<TeamActiveJob[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [focused, setFocused] = useState<string | null>(null);
   const [region, setRegion] = useState<Region>(START);
@@ -89,7 +94,28 @@ export default function BusinessMapScreen() {
     return () => clearInterval(id);
   }, [load]);
 
-  const openJob = (p: TeamPosition) => router.push({ pathname: '/business-job', params: { jobId: p.job_id } } as any);
+  useEffect(() => {
+    const loadJobs = () => SkoFyApi.business.board().then((b) => setActive(b.active)).catch(() => {});
+    loadJobs();
+    const id = setInterval(loadJobs, JOBS_MS);
+    return () => clearInterval(id);
+  }, []);
+  const elsewhere = useMemo(() => workingElsewhere(active, positions), [active, positions]);
+  // People, not jobs: someone on two counts once.
+  const people = new Set([...positions, ...elsewhere].map((p) => p.worker_id)).size;
+
+  const openJob = (p: { job_id: string }) => router.push({ pathname: '/business-job', params: { jobId: p.job_id } } as any);
+  // A bubble: closer, until its people part — or, all at one spot, fan out.
+  const openBubble = (b: Bubble) => {
+    const lats = b.pins.map((m) => m.position.lat);
+    const lngs = b.pins.map((m) => m.position.lng);
+    const [latMin, latMax, lngMin, lngMax] = [Math.min(...lats), Math.max(...lats), Math.min(...lngs), Math.max(...lngs)];
+    const span = (d: number, now: number) => Math.max(0.003, Math.min(d * 2.2, now / 2));
+    map.current?.animateToRegion({
+      latitude: (latMin + latMax) / 2, longitude: (lngMin + lngMax) / 2,
+      latitudeDelta: span(latMax - latMin, region.latitudeDelta), longitudeDelta: span(lngMax - lngMin, region.longitudeDelta),
+    }, 400);
+  };
   const focus = (p: TeamPosition) => {
     if (focused === p.job_id) return openJob(p);
     setFocused(p.job_id);
@@ -97,13 +123,15 @@ export default function BusinessMapScreen() {
   };
 
   const placed = useMemo(() => {
-    if (!size.width) return { members: [], sites: [] };
+    if (!size.width) return { members: [], bubbles: [], sites: [] };
     const at = (lat: number, lng: number) => project(lat, lng, region, size.width, size.height);
+    const { placed: members, bubbles } = arrange(
+      onePerMember(positions, focused), at, size.width, size.height, region.latitudeDelta);
     return {
-      members: positions.map((p) => ({ p, ...at(p.lat, p.lng) })),
+      members, bubbles,
       sites: positions.filter((p) => p.job_lat != null && p.job_lng != null).map((p) => ({ p, ...at(p.job_lat!, p.job_lng!) })),
     };
-  }, [positions, region, size]);
+  }, [positions, region, size, focused]);
 
   return (
     <ThemedView style={s.container}>
@@ -120,10 +148,18 @@ export default function BusinessMapScreen() {
             <Home size={14} color="#FFFFFF" />
           </View>
         ))}
-        {placed.members.map(({ p, x, y }) => {
+        {placed.bubbles.map((b) => (
+          <TouchableOpacity key={b.key} activeOpacity={0.85} onPress={() => openBubble(b)}
+            accessibilityRole="button" accessibilityLabel={`${b.pins.length} people here — zoom in`}
+            style={[s.bubble, { left: b.x - BUBBLE / 2, top: b.y - BUBBLE / 2 }]}>
+            <ThemedText style={s.bubbleText}>{b.pins.length}</ThemedText>
+          </TouchableOpacity>
+        ))}
+        {placed.members.map(({ pin, x, y }) => {
+          const p = pin.position;
           const on = focused === p.job_id;
           return (
-            <TouchableOpacity key={p.job_id} activeOpacity={0.85} onPress={() => focus(p)}
+            <TouchableOpacity key={pin.worker} activeOpacity={0.85} onPress={() => focus(p)}
               style={[s.pin, { left: x - ANCHOR.x, top: y - ANCHOR.y, zIndex: on ? 2 : 1 }]}>
               <View style={[s.ring, on && s.ringOn]}>
                 <Monogram name={p.worker_name ?? '?'} size={38} />
@@ -131,7 +167,7 @@ export default function BusinessMapScreen() {
               <View style={[s.tail, on && { borderTopColor: C.ink }]} />
               <View style={s.label}>
                 <ThemedText style={s.labelName} numberOfLines={1}>{(p.worker_name ?? 'Team member').split(' ')[0]}</ThemedText>
-                <ThemedText style={s.labelJob} numberOfLines={1}>{p.title}</ThemedText>
+                <ThemedText style={s.labelJob} numberOfLines={1}>{pin.jobs > 1 ? `${pin.jobs} jobs · ${p.title}` : p.title}</ThemedText>
               </View>
             </TouchableOpacity>
           );
@@ -145,7 +181,7 @@ export default function BusinessMapScreen() {
         <View style={s.titlePill}>
           <Users size={15} color={C.ink} />
           <ThemedText style={s.title}>Team map</ThemedText>
-          <View style={s.count}><ThemedText style={s.countText}>{positions.length}</ThemedText></View>
+          <View style={s.count}><ThemedText style={s.countText}>{people}</ThemedText></View>
         </View>
         {positions.length > 0 && (
           <TouchableOpacity style={s.round} onPress={() => { setFocused(null); fitAll(positions); }}>
@@ -156,11 +192,11 @@ export default function BusinessMapScreen() {
       <BusinessTabs current="map" floating style={s.tabs} />
 
       <View style={[s.bottom, { paddingBottom: Math.max(bottomInset, 16) }]} pointerEvents="box-none">
-        {loaded && positions.length === 0 ? (
+        {loaded && positions.length === 0 && elsewhere.length === 0 ? (
           <View style={[u.card, s.empty]}>
-            <ThemedText style={s.emptyTitle}>Nobody is on a job right now</ThemedText>
+            <ThemedText style={s.emptyTitle}>Nobody is out on a job right now</ThemedText>
             <ThemedText style={[u.muted, { textAlign: 'center' }]}>
-              Members show here only while they’re on a job — from setting off until it’s done.
+              Members show on the map from setting off until the job is done. For online jobs, and jobs at their own place, they’re listed here without a location.
             </ThemedText>
           </View>
         ) : (
@@ -176,6 +212,18 @@ export default function BusinessMapScreen() {
                   <ThemedText style={[u.muted, { color: focused === p.job_id ? C.info : C.faint }]}>
                     {focused === p.job_id ? 'Tap to open the job' : 'Tap to find them'}
                   </ThemedText>
+                </View>
+                <ChevronRight size={18} color={C.faint} />
+              </TouchableOpacity>
+            ))}
+            {/* Working, but not on the map: still counted and listed. */}
+            {elsewhere.map((j) => (
+              <TouchableOpacity key={j.job_id} activeOpacity={0.85} onPress={() => openJob(j)} style={[u.card, s.card]}>
+                <Monogram name={j.worker_name ?? '?'} size={40} tone="neutral" />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <ThemedText style={u.label} numberOfLines={1}>{j.worker_name ?? 'Team member'}</ThemedText>
+                  <ThemedText style={u.muted} numberOfLines={1}>{j.title}</ThemedText>
+                  <ThemedText style={[u.muted, { color: C.faint }]}>{whereElse(j)} · tap to open the job</ThemedText>
                 </View>
                 <ChevronRight size={18} color={C.faint} />
               </TouchableOpacity>
@@ -220,6 +268,12 @@ const s = StyleSheet.create({
     position: 'absolute', width: SITE, height: SITE, borderRadius: SITE / 2, alignItems: 'center', justifyContent: 'center',
     backgroundColor: C.ink, borderWidth: 2, borderColor: '#FFFFFF', ...shadow,
   },
+
+  bubble: {
+    position: 'absolute', width: BUBBLE, height: BUBBLE, borderRadius: BUBBLE / 2, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.brand, borderWidth: 3, borderColor: '#FFFFFF', zIndex: 1, ...shadow,
+  },
+  bubbleText: { fontSize: 16, lineHeight: 22, fontFamily: Fonts.poppinsBold, color: C.ink },
 
   bottom: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   card: { width: CARD_W, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 },

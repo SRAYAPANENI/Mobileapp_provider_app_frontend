@@ -629,6 +629,10 @@ export default function DashboardScreen() {
         // "ON_SITE" (default) or "REMOTE" — no physical location/distance
         // matching at all (e.g. hiring a developer/consultant).
         serviceMode: j.service_mode ?? 'ON_SITE',
+        // They go somewhere for it: the customer's place, or a pickup. Not
+        // online work, nor work at their own place — no trip to follow.
+        setOffAt: j.set_off_at ? new Date(j.set_off_at).getTime() : 0,
+        travels: j.service_mode !== 'REMOTE' && !['ONLINE', 'PROVIDER_PLACE'].includes(j.shape?.venue),
         startTime: j.scheduled_at ? new Date(j.scheduled_at).getTime() : Date.now(),
         endTime: j.scheduled_at ? new Date(j.scheduled_at).getTime() + 7200000 : Date.now() + 7200000,
         // Same reasoning as mapInbound — anchor to when the job was actually
@@ -658,6 +662,14 @@ export default function DashboardScreen() {
       // Active job IDs take precedence; if provider has an active job, lock the dashboard
       const ongoingJob = activeList[0] ?? null;
       if (ongoingJob) setActiveJobId(ongoingJob.id);
+      // Followed live (customer's map, the business's map) only on a trip.
+      // Only one they've set off for (or started): hired isn't on the way.
+      // Two under way (one waiting on its price, say): the latest set off for.
+      const trip = activeList
+        .filter((j) => j.travels && (j.setOffAt || j.status !== 'ACCEPTED'))
+        .sort((a, b) => b.setOffAt - a.setOffAt)[0];
+      setTrackedJobId(trip?.id ?? null);
+      setTrackedFor(trip?.businessName ?? null);
 
       // Real conflict/feasibility check against this provider's other
       // confirmed jobs — every inbound job used to hardcode SAFE regardless
@@ -752,32 +764,41 @@ export default function DashboardScreen() {
   // The location-watch effect below runs once on mount, so it reads this ref
   // (not the state directly) to always see the current active job without restarting GPS watching.
   const activeJobIdRef = useRef<string | null>(null);
+  // The job whose trip is followed live — the active job when they travel for
+  // it. Online work and work at their own place have no trip: nothing is
+  // streamed to the customer or the business then (the location notice
+  // promises "from when you set off").
+  const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
+  // The business that trip is for, if any: it sees the location too, and is named.
+  const [trackedFor, setTrackedFor] = useState<string | null>(null);
+  const trackedJobIdRef = useRef<string | null>(null);
   const userCoordsRef = useRef<{ latitude: number; longitude: number } | null>(null);
+  useEffect(() => { activeJobIdRef.current = activeJobId; }, [activeJobId]);
   useEffect(() => {
-    activeJobIdRef.current = activeJobId;
-    if (activeJobId) {
-      startBackgroundLocation();
-      connectLocationSocket(activeJobId);
+    trackedJobIdRef.current = trackedJobId;
+    if (trackedJobId) {
+      startBackgroundLocation(trackedFor);
+      connectLocationSocket(trackedJobId);
     } else {
       stopBackgroundLocation();
       disconnectLocationSocket();
     }
-  }, [activeJobId]);
+  }, [trackedJobId, trackedFor]);
   useEffect(() => { userCoordsRef.current = userCoords; if (userCoords) setLivePosition(userCoords); }, [userCoords]);
   // Online and free: the server follows them every ~500 m, app open or not,
   // so jobs reach them as they come near and leave as they go. Offline, or
   // on a job (its own closer tracking above), it stops.
   useEffect(() => {
-    if (availabilityKnown && isAvailable && !activeJobId) void startOnlineLocation();
+    if (availabilityKnown && isAvailable && !trackedJobId) void startOnlineLocation();
     else void stopOnlineLocation();
-  }, [availabilityKnown, isAvailable, activeJobId]);
+  }, [availabilityKnown, isAvailable, trackedJobId]);
 
   // When the provider brings the app to the foreground after it was backgrounded
   // or killed, push an immediate fresh GPS fix so the customer's tracking screen
   // doesn't stay frozen at the last known position.
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (nextState) => {
-      if (nextState !== 'active' || !activeJobIdRef.current) return;
+      if (nextState !== 'active' || !trackedJobIdRef.current) return;
       try {
         // Push cached GPS immediately so customer sees movement right away,
         // then follow with a fresh fix.
@@ -1220,12 +1241,18 @@ const filteredJobs = jobs.filter((job) => {
     if (event.type === 'completed') {
       setJobs(prev => prev.map(job => job.id === event.jobId ? { ...job, isOngoing: false, status: 'Completed' } : job));
       setActiveJobId(prev => (prev === event.jobId ? null : prev));
+      setTrackedJobId(prev => (prev === event.jobId ? null : prev));
       setPendingRatingJobId(event.jobId);
       // Once the room has closed and Home is back.
       setTimeout(() => setShowRatingModal(true), 500);
     } else if (event.type === 'ended') {
       setJobs(prev => prev.filter(job => job.id !== event.jobId));
       setActiveJobId(prev => (prev === event.jobId ? null : prev));
+      setTrackedJobId(prev => (prev === event.jobId ? null : prev));
+    } else if (event.type === 'set_off') {
+      // Followed at once — not when the list next loads (its trip figures go
+      // out on this socket straight away).
+      setTrackedJobId(event.jobId);
     } else {
       setJobs(prev => prev.map(job => job.id === event.jobId ? { ...job, status: event.status } : job));
     }
@@ -1381,7 +1408,7 @@ const filteredJobs = jobs.filter((job) => {
             // Stream live GPS to the backend only while a job is actively underway.
             // Try WebSocket first (real-time, <200ms); fall back to HTTP PATCH
             // if the socket isn't open (e.g. briefly after app reopen).
-            if (activeJobIdRef.current) {
+            if (trackedJobIdRef.current) {
               const sent = sendLocationViaSocket(
                 newLocation.coords.latitude,
                 newLocation.coords.longitude,

@@ -876,6 +876,10 @@ export interface TeamOpenJob {
   venue: string; pricing_unit: string; lat: number | null; lng: number | null;
   /** Members the job reached — the business can name anyone able to do it. */
   reached_member_ids: string[]; applied: boolean;
+  /** Who our waiting application names, and whether they've been booked for that time since. */
+  applied_worker_id?: string | null; applied_worker_booked?: boolean;
+  /** They've left the team since; and changes by choice still allowed. */
+  applied_worker_left?: boolean; person_changes_left?: number;
   /** The business withdrew its application: final, it can't apply again. */
   withdrawn?: boolean;
 }
@@ -883,6 +887,16 @@ export interface TeamActiveJob {
   job_id: string; title: string; status: string; scheduled_at: string | null; created_at?: string; hired_at: string | null;
   navigation_started_at: string | null; arrived_at: string | null; checked_in_at: string | null;
   worker_id: string | null; worker_name: string | null; customer_name: string | null;
+  venue?: string | null;
+}
+/** An online job's meeting (skofy-backend app/services/meeting_service.py):
+ * the link, and the short address that opens it in a laptop's browser. */
+export interface MeetingInfo {
+  url: string;
+  code: string;
+  /** Null when the server has no public address set — no "on a computer" then. */
+  short_link: string | null;
+  set_by: 'customer' | 'provider' | null;
 }
 export interface BusinessBoard { open: TeamOpenJob[]; active: TeamActiveJob[] }
 /** The open jobs the business's lists show. A withdrawn one is gone for good
@@ -890,6 +904,8 @@ export interface BusinessBoard { open: TeamOpenJob[]; active: TeamActiveJob[] }
  * the board, to say the business withdrew. */
 export const listedTeamJobs = (board: BusinessBoard | null | undefined): TeamOpenJob[] =>
   board?.open.filter((j) => !j.withdrawn) ?? [];
+/** Whoever our application names can't do it now: someone else is needed (not counted). */
+export const needsSomeoneElse = (j: TeamOpenJob): boolean => !!(j.applied_worker_booked || j.applied_worker_left);
 /** Listed jobs the business hasn't applied for yet — the counts on the tabs. */
 export const newTeamJobCount = (board: BusinessBoard | null | undefined): number =>
   listedTeamJobs(board).filter((j) => !j.applied).length;
@@ -900,6 +916,7 @@ export interface TeamPosition {
 export interface BusinessJobDetail {
   job_id: string; title: string; status: string; customer_id: string; customer_name: string | null;
   scheduled_at: string | null; worker_id: string | null; worker_name: string | null; address: string | null;
+  venue?: string | null;
   timeline: { step: string; actor_role: string; actor_name: string | null; created_at: string; evidence: any }[];
 }
 export interface BusinessEarnings {
@@ -1562,6 +1579,11 @@ export const SkoFyApi = {
      * — an open job screen polls this and reloads the job only when it changes. */
     stamp: async (jobId: string): Promise<{ stamp: string }> =>
       request(`/jobs/${jobId}/stamp`),
+    /** An online job's meeting link (Zoom, Meet, Teams, Webex) — set or replace it. */
+    setMeeting: async (jobId: string, url: string): Promise<MeetingInfo> =>
+      request(`/jobs/${jobId}/meeting`, { method: 'PUT', body: JSON.stringify({ url }) }),
+    clearMeeting: async (jobId: string): Promise<{ message: string }> =>
+      request(`/jobs/${jobId}/meeting`, { method: 'DELETE' }),
 
     /**
      * Apply to a distributed job. Bidding is retired — there's no fee to
@@ -2044,10 +2066,15 @@ export const SkoFyApi = {
       request(`/businesses/me/team/${memberId}/release`, { method: 'POST' }) as any,
     board: async (): Promise<BusinessBoard> => request('/businesses/me/jobs') as any,
     job: async (jobId: string): Promise<BusinessJobDetail> => request(`/businesses/me/jobs/${jobId}`) as any,
+    /** Members already booked at this job's time — they can't be given it. */
+    busyFor: async (jobId: string): Promise<string[]> => request(`/businesses/me/jobs/${jobId}/busy`) as any,
     positions: async (): Promise<TeamPosition[]> => request('/businesses/me/positions') as any,
     earnings: async (): Promise<BusinessEarnings> => request('/businesses/me/earnings') as any,
     applyForJob: async (jobId: string, workerId: string, message?: string): Promise<{ message: string }> =>
       request(`/businesses/me/jobs/${jobId}/apply`, { method: 'POST', body: JSON.stringify({ worker_id: workerId, message }) }) as any,
+    /** Our waiting application names another member. */
+    changePerson: async (jobId: string, workerId: string): Promise<{ message: string }> =>
+      request(`/businesses/me/jobs/${jobId}/change-person`, { method: 'POST', body: JSON.stringify({ worker_id: workerId }) }) as any,
     /** Takes back the business's application while the customer hasn't chosen — final. */
     withdrawApplication: async (jobId: string): Promise<{ message: string }> =>
       request(`/businesses/me/jobs/${jobId}/withdraw`, { method: 'POST' }) as any,
