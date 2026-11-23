@@ -1,4 +1,4 @@
-import { Lock, MapPin } from 'lucide-react-native';
+import { MapPin } from 'lucide-react-native';
 import React, { useRef, useState } from 'react';
 import { Pressable, TextInput, TouchableOpacity, View } from 'react-native';
 import { showDialog } from '@/components/alert-host';
@@ -58,23 +58,28 @@ export function InspectionCode({ jobId, onVerified, arrived, atYourPlace = false
     }
   };
 
-  return (
-    <View>
+  const intro = (
       <ThemedText style={s.note}>
         {atYourPlace
           ? 'When the customer arrives at your place, ask for the 4-digit code on their screen to start inspecting.'
-          : 'Once you’ve arrived, ask the customer for the 4-digit code on their screen to start inspecting.'}
+          : arrived
+            ? 'The customer has a 4-digit code on their screen. Ask for it and enter it here to start inspecting.'
+            : 'Tap “I’m here” when you arrive — the customer gets a 4-digit code to give you.'}
       </ThemedText>
-      <TouchableOpacity
-        style={[s.primaryBtn, (requesting || !arrived) && { opacity: 0.5 }]}
-        onPress={request}
-        disabled={requesting || !arrived}
-      >
-        {arrived ? <MapPin size={20} color="#fff" /> : <Lock size={20} color="#fff" />}
-        <ThemedText style={s.primaryBtnText}>
-          {!arrived ? 'Tap “I’m here” first' : requesting ? 'Sending…' : 'Request Inspection Code'}
-        </ThemedText>
-      </TouchableOpacity>
+  );
+  // "I'm here" first (the button above): there's no code to enter yet.
+  if (!arrived) return intro;
+
+  return (
+    <View>
+      {intro}
+      {/* At the customer's, "I'm here" already sent it: this only sends it again. */}
+      {atYourPlace && (
+        <TouchableOpacity style={[s.primaryBtn, requesting && { opacity: 0.5 }]} onPress={request} disabled={requesting}>
+          <MapPin size={20} color="#fff" />
+          <ThemedText style={s.primaryBtnText}>{requesting ? 'Sending…' : 'Show the customer their code'}</ThemedText>
+        </TouchableOpacity>
+      )}
 
       <ThemedText style={s.otpLabel}>Enter the 4-digit code</ThemedText>
       <View style={s.otpContainer}>
@@ -106,6 +111,13 @@ export function InspectionCode({ jobId, onVerified, arrived, atYourPlace = false
       >
         <ThemedText style={s.primaryBtnText}>{verifying ? 'Verifying…' : 'Verify & Start Inspection'}</ThemedText>
       </TouchableOpacity>
+      {!atYourPlace && (
+        <TouchableOpacity onPress={request} disabled={requesting} style={{ paddingVertical: 12 }} accessibilityRole="button">
+          <ThemedText style={[s.note, { textAlign: 'center', textDecorationLine: 'underline', marginBottom: 0 }]}>
+            {requesting ? 'Sending…' : 'Customer can’t see a code? Send it again'}
+          </ThemedText>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }

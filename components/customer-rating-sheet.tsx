@@ -1,7 +1,7 @@
 import { Fonts } from '@/constants/theme';
 import { showDialog } from '@/components/alert-host';
 import { SkoFyApi } from '@/services/api';
-import { markRatingSkipped, markRatingSubmitted } from '@/services/ratingReminders';
+import { alreadyRated, markRatingSkipped, markRatingSubmitted } from '@/services/ratingReminders';
 import { Star } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
@@ -66,6 +66,11 @@ export function CustomerRatingSheet({
       markRatingSubmitted(jobId);
       onClose(true);
     } catch (err: any) {
+      if (alreadyRated(err)) {
+        markRatingSubmitted(jobId);
+        onClose(true);
+        return;
+      }
       showDialog('Error', err?.message ?? 'Failed to submit rating. Please try again.');
     } finally {
       setSubmitting(false);

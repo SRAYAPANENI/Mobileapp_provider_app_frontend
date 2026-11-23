@@ -56,7 +56,7 @@ import { ThemedText } from '@/components/themed-text';
 import { checkFeasibility, FeasibilityResult, FIT_LABEL, fitText, calculateDistance, kmToMiles, estimateDriveMinutes, formatDriveTime } from '@/services/schedulingEngine';
 import { resolveApplyGate } from '@/services/applyErrorGate';
 import { newTeamJobCount, SkoFyApi } from '@/services/api';
-import { markRatingSkipped, nextPendingRating, markRatingSubmitted } from '@/services/ratingReminders';
+import { alreadyRated, isRatingSkipped, markRatingSkipped, nextPendingRating, markRatingSubmitted } from '@/services/ratingReminders';
 import { readDashboardCache, writeDashboardCache } from '@/services/homeCache';
 import { Skeleton } from '@/components/skeleton';
 import { startBackgroundLocation, startOnlineLocation, stopBackgroundLocation, stopOnlineLocation } from '@/services/background-location';
@@ -1242,9 +1242,13 @@ const filteredJobs = jobs.filter((job) => {
       setJobs(prev => prev.map(job => job.id === event.jobId ? { ...job, isOngoing: false, status: 'Completed' } : job));
       setActiveJobId(prev => (prev === event.jobId ? null : prev));
       setTrackedJobId(prev => (prev === event.jobId ? null : prev));
-      setPendingRatingJobId(event.jobId);
-      // Once the room has closed and Home is back.
-      setTimeout(() => setShowRatingModal(true), 500);
+      // Said twice when both sides finish it (their tap, the live update):
+      // asked once, and never again after it's rated.
+      if (!isRatingSkipped(event.jobId)) {
+        setPendingRatingJobId(event.jobId);
+        // Once the room has closed and Home is back.
+        setTimeout(() => { if (!isRatingSkipped(event.jobId)) setShowRatingModal(true); }, 500);
+      }
     } else if (event.type === 'ended') {
       setJobs(prev => prev.filter(job => job.id !== event.jobId));
       setActiveJobId(prev => (prev === event.jobId ? null : prev));
@@ -1331,6 +1335,15 @@ const filteredJobs = jobs.filter((job) => {
         }, 400);
       }
     } catch (error) {
+      if (alreadyRated(error)) {
+        // Rated already: nothing to send, nothing wrong — stop asking.
+        markRatingSubmitted(pendingRatingJobId);
+        setPendingRatingJobId(null);
+        setShowRatingModal(false);
+        setRatingReminder(null);
+        resetRatingForm();
+        return;
+      }
       console.error('Failed to submit customer review:', error);
       appAlert.show('error', 'Rating Failed', 'Failed to submit rating. Please try again.');
     } finally {
