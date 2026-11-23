@@ -1,7 +1,8 @@
 import { Fonts } from '@/constants/theme';
 import { showDialog } from '@/components/alert-host';
 import { SkoFyApi } from '@/services/api';
-import { alreadyRated, markRatingSkipped, markRatingSubmitted } from '@/services/ratingReminders';
+import { alreadyRated, isRatingSkipped, markRatingSkipped, markRatingSubmitted } from '@/services/ratingReminders';
+import { useIsFocused } from '@react-navigation/native';
 import { Star } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
@@ -17,21 +18,30 @@ const EMPTY: Record<Dimension, number> = { behaviour: 0, negotiation: 0, payment
 
 /**
  * The provider's rating of a customer for one finished job (completed or
- * disputed). One sheet for every place that asks — the job chat and the
- * Jobs tab's history — so they can't drift apart. Skipping or submitting is
- * recorded for the session so no other screen asks again straight away.
+ * disputed), whatever kind of job it is. One sheet for every place that asks
+ * — Home, the job chat and the job histories — so they can't drift apart.
+ * Skipping or submitting is recorded for the session so no other screen asks
+ * again straight away, and only the screen in view shows it: a popup covers
+ * everything, so a screen underneath would put a second one on top.
  */
 export function CustomerRatingSheet({
   jobId,
   customerName,
+  asked = false,
   onClose,
 }: {
   /** The job to rate; null hides the sheet. */
   jobId: string | null;
   customerName?: string;
+  /** The app asked (not the provider's tap): not shown for a job answered
+   *  elsewhere since. */
+  asked?: boolean;
   onClose: (submitted: boolean) => void;
 }) {
   const fit = useButtonRowFit();
+  // Coming back into view draws again, so the answer given meanwhile is seen.
+  const inView = useIsFocused();
+  const visible = !!jobId && inView && !(asked && isRatingSkipped(jobId));
   const bottomInset = useBottomInset();
   const [ratings, setRatings] = useState(EMPTY);
   const [comment, setComment] = useState('');
@@ -78,7 +88,7 @@ export function CustomerRatingSheet({
   };
 
   return (
-    <Popup closeOn={submitting ? 'none' : 'back'} statusBarTranslucent navigationBarTranslucent visible={!!jobId} transparent animationType="fade" onClose={skip}>
+    <Popup closeOn={submitting ? 'none' : 'back'} statusBarTranslucent navigationBarTranslucent visible={visible} transparent animationType="fade" onClose={skip}>
       <KeyboardAvoidingView style={styles.overlay} behavior="padding" automaticOffset>
         <View style={padBottom(styles.sheet, bottomInset)}>
           <Text style={styles.title}>{customerName ? `Rate ${customerName}` : 'Rate this customer'}</Text>

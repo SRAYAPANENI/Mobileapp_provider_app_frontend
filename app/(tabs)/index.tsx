@@ -1,8 +1,7 @@
 import AnimatedBrandMark from '@/components/animated-brand-mark';
 import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { AppState, BackHandler, StyleSheet, View, ScrollView, TouchableOpacity, Switch, Platform, SafeAreaView, ActivityIndicator, useWindowDimensions, RefreshControl } from 'react-native';
-import { Text, TextInput as RNTextInput } from '@/components/scaled-text';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { Text } from '@/components/scaled-text';
 import { AppAlert, useAppAlert } from '@/components/app-alert';
 import { Image } from 'expo-image';
 import * as Location from 'expo-location';
@@ -32,7 +31,6 @@ import {
   Check,
   Zap,
   MessageSquare,
-  Star,
   X as XIcon,
   Package,
   Repeat as RepeatIcon,
@@ -56,7 +54,7 @@ import { ThemedText } from '@/components/themed-text';
 import { checkFeasibility, FeasibilityResult, FIT_LABEL, fitText, calculateDistance, kmToMiles, estimateDriveMinutes, formatDriveTime } from '@/services/schedulingEngine';
 import { resolveApplyGate } from '@/services/applyErrorGate';
 import { newTeamJobCount, SkoFyApi } from '@/services/api';
-import { alreadyRated, isRatingSkipped, markRatingSkipped, nextPendingRating, markRatingSubmitted } from '@/services/ratingReminders';
+import { isRatingSkipped, nextPendingRating } from '@/services/ratingReminders';
 import { readDashboardCache, writeDashboardCache } from '@/services/homeCache';
 import { Skeleton } from '@/components/skeleton';
 import { startBackgroundLocation, startOnlineLocation, stopBackgroundLocation, stopOnlineLocation } from '@/services/background-location';
@@ -70,9 +68,9 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { fitBottom, padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
+import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { FAB_CLEARANCE } from '@/components/rates/rates-fab';
-import { Popup } from '@/components/popup';
+import { CustomerRatingSheet } from '@/components/customer-rating-sheet';
 const formatTime = (deadline: number, now: number) => {
   const diff = Math.max(0, deadline - now);
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -861,13 +859,6 @@ export default function DashboardScreen() {
   const [showChatNotification, setShowChatNotification] = useState(false);
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [showFinalSuccess, setShowFinalSuccess] = useState(false);
-  const [ratings, setRatings] = useState({
-    behaviour: 0,
-    negotiation: 0,
-    payment: 0,
-    environment: 0,
-  });
-  const [comment, setComment] = useState('');
   const [pendingRatingJobId, setPendingRatingJobId] = useState<string | null>(null);
   // Set when the rating sheet was opened by the "you still owe a rating"
   // reminder (not straight after completing a job) — names the customer and
@@ -878,7 +869,6 @@ export default function DashboardScreen() {
   // Opened offline with nothing cached: the shared page. (The feed's queries
   // also reload by themselves when back online.)
   const offline = useOfflinePage(!isLoading, () => { void onRefresh(); });
-  const [isSubmittingRating, setIsSubmittingRating] = useState(false);
 
 
 
@@ -1247,8 +1237,13 @@ const filteredJobs = jobs.filter((job) => {
       // asked once, and never again after it's rated.
       if (!isRatingSkipped(event.jobId)) {
         setPendingRatingJobId(event.jobId);
+        setRatingReminder(null);
         // Once the room has closed and Home is back.
-        setTimeout(() => { if (!isRatingSkipped(event.jobId)) setShowRatingModal(true); }, 500);
+        setTimeout(() => {
+          if (!isRatingSkipped(event.jobId)) setShowRatingModal(true);
+          // Answered in that moment: nothing left owed (it blocked applying).
+          else setPendingRatingJobId(cur => (cur === event.jobId ? null : cur));
+        }, 500);
       }
     } else if (event.type === 'ended') {
       setJobs(prev => prev.filter(job => job.id !== event.jobId));
@@ -1264,20 +1259,16 @@ const filteredJobs = jobs.filter((job) => {
     void loadJobs();
   }), [loadJobs]);
 
-  const resetRatingForm = () => {
-    setRatings({ behaviour: 0, negotiation: 0, payment: 0, environment: 0 });
-    setComment('');
-  };
-
-  // "Maybe later" — the rating is still owed, so the reminder below brings
-  // it back next time the app is opened. The sheet used to have no way to
-  // close it at all.
-  const skipRating = () => {
-    if (pendingRatingJobId) markRatingSkipped(pendingRatingJobId);
+  // "Maybe later" keeps it owed: the reminder below brings it back next time
+  // the app is opened.
+  const closeRating = (submitted: boolean) => {
+    const fromReminder = !!ratingReminder;
     setShowRatingModal(false);
     setPendingRatingJobId(null);
     setRatingReminder(null);
-    resetRatingForm();
+    if (!submitted) return;
+    if (fromReminder) appAlert.show('success', 'Thanks!', 'Your rating has been submitted.');
+    else setTimeout(() => setShowFinalSuccess(true), 400);
   };
 
   // Ask for any finished job (completed or disputed) the provider still owes
@@ -1287,13 +1278,20 @@ const filteredJobs = jobs.filter((job) => {
   // app) — not again straight after "Maybe later" or a submit. The ref lets
   // the focus callback see whether a rating sheet is already open without
   // re-running every time that state changes.
-  const ratingSheetBusyRef = useRef(false);
-  ratingSheetBusyRef.current = showRatingModal || !!pendingRatingJobId;
+  const ratingJobRef = useRef<string | null>(null);
+  ratingJobRef.current = pendingRatingJobId;
   useFocusEffect(
     React.useCallback(() => {
       let active = true;
+      // Answered on another screen (the chat, a history) while this waited.
+      if (ratingJobRef.current && isRatingSkipped(ratingJobRef.current)) {
+        ratingJobRef.current = null;
+        setShowRatingModal(false);
+        setPendingRatingJobId(null);
+        setRatingReminder(null);
+      }
       nextPendingRating().then(next => {
-        if (!active || !next || ratingSheetBusyRef.current) return;
+        if (!active || !next || ratingJobRef.current) return;
         setPendingRatingJobId(next.job_id);
         setRatingReminder({ customerName: next.counterpart_name });
         setShowRatingModal(true);
@@ -1301,56 +1299,6 @@ const filteredJobs = jobs.filter((job) => {
       return () => { active = false; };
     }, [])
   );
-
-  const submitRating = async () => {
-    if (!pendingRatingJobId) return;
-    if (Object.values(ratings).some(v => v === 0)) {
-      appAlert.show('info', 'Rate All Categories', 'Please give a rating for every category before submitting.');
-      return;
-    }
-
-    setIsSubmittingRating(true);
-    try {
-      // This used to call a mock stub that always resolved true without
-      // touching the network — the rating just disappeared, never reaching
-      // the backend at all. Now wired to the real endpoint.
-      await SkoFyApi.jobs.submitCustomerReview(pendingRatingJobId, {
-        behaviour_rating: ratings.behaviour,
-        negotiation_rating: ratings.negotiation,
-        payment_rating: ratings.payment,
-        environment_rating: ratings.environment,
-        comment: comment || undefined,
-      });
-      markRatingSubmitted(pendingRatingJobId);
-      const fromReminder = !!ratingReminder;
-      setPendingRatingJobId(null);
-      setShowRatingModal(false);
-      setRatingReminder(null);
-      resetRatingForm();
-
-      if (fromReminder) {
-        appAlert.show('success', 'Thanks!', 'Your rating has been submitted.');
-      } else {
-        setTimeout(() => {
-          setShowFinalSuccess(true);
-        }, 400);
-      }
-    } catch (error) {
-      if (alreadyRated(error)) {
-        // Rated already: nothing to send, nothing wrong — stop asking.
-        markRatingSubmitted(pendingRatingJobId);
-        setPendingRatingJobId(null);
-        setShowRatingModal(false);
-        setRatingReminder(null);
-        resetRatingForm();
-        return;
-      }
-      console.error('Failed to submit customer review:', error);
-      appAlert.show('error', 'Rating Failed', 'Failed to submit rating. Please try again.');
-    } finally {
-      setIsSubmittingRating(false);
-    }
-  };
 
   useEffect(() => {
     let locationSubscription: Location.LocationSubscription | null = null;
@@ -1912,76 +1860,18 @@ const filteredJobs = jobs.filter((job) => {
         ]}
       />
 
-      {/* Rating Modal */}
-      <Popup closeOn={isSubmittingRating ? 'none' : 'back'} statusBarTranslucent navigationBarTranslucent
-        visible={showRatingModal}
-        transparent
-        animationType="slide"
-        onClose={skipRating}
-      >
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior="padding" automaticOffset>
-          <View style={fitBottom(styles.ratingSheet, bottomInset)}>
-            <View style={styles.dragHandle} />
-            <ThemedText style={styles.ratingTitle}>Rate Your Experience</ThemedText>
-            <ThemedText style={styles.ratingSubtitle}>
-              {ratingReminder ? `How was ${ratingReminder.customerName}?` : 'How was the customer?'}
-            </ThemedText>
-
-            {(['behaviour', 'negotiation', 'payment', 'environment'] as const).map((cat) => (
-              <View key={cat} style={styles.ratingRow}>
-                <ThemedText style={styles.ratingLabel}>
-                  {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                </ThemedText>
-                <View style={styles.starsRow}>
-                  {[1, 2, 3, 4, 5].map(star => (
-                    <TouchableOpacity
-                      key={star}
-                      onPress={() => setRatings(prev => ({ ...prev, [cat]: star }))}
-                    >
-                      <Star
-                        size={28}
-                        color="#FFCE48"
-                        fill={ratings[cat] >= star ? '#FFCE48' : 'transparent'}
-                      />
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            ))}
-
-            <RNTextInput
-              style={styles.ratingComment}
-              placeholder="Add a comment (optional)"
-              placeholderTextColor="#9CA3AF"
-              value={comment}
-              onChangeText={setComment}
-              multiline
-              numberOfLines={3}
-            />
-
-            <TouchableOpacity
-              style={[styles.submitRatingBtn, isSubmittingRating && { opacity: 0.7 }]}
-              onPress={submitRating}
-              disabled={isSubmittingRating}
-            >
-              {isSubmittingRating
-                ? <ActivityIndicator size="small" color="#111827" />
-                : <ThemedText style={styles.submitRatingText}>Submit Rating</ThemedText>
-              }
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.skipRatingBtn} onPress={skipRating} disabled={isSubmittingRating}>
-              <ThemedText style={styles.skipRatingText}>Maybe later</ThemedText>
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </Popup>
+      <CustomerRatingSheet
+        asked
+        jobId={showRatingModal ? pendingRatingJobId : null}
+        customerName={ratingReminder?.customerName}
+        onClose={closeRating}
+      />
 
       <AppAlert
         visible={showFinalSuccess}
         type="success"
         title="Job Completed!"
-        message="Great work! Payment will be credited to your account shortly."
+        message="Great work! You’ll find it in your Jobs history."
         onDismiss={() => setShowFinalSuccess(false)}
         buttons={[{ text: 'Continue' }]}
       />
@@ -2539,102 +2429,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontFamily: Fonts.poppins,
     color: '#9CA3AF',
-  },
-
-  // Modal backdrop
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-
-  // Exit App modal
-
-  // Service Room manage sheet
-  dragHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#D1D5DB',
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-
-  // Rating modal
-  ratingSheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: 24,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 32,
-  },
-  ratingTitle: {
-    fontSize: 20,
-    lineHeight: 26,
-    fontFamily: Fonts.poppinsBold,
-    color: '#111827',
-    textAlign: 'center',
-    marginBottom: 6,
-  },
-  ratingSubtitle: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontFamily: Fonts.poppins,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  ratingLabel: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontFamily: Fonts.poppinsSemiBold,
-    color: '#374151',
-    width: 110,
-  },
-  starsRow: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  ratingComment: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 14,
-    padding: 14,
-    fontFamily: Fonts.poppins,
-    fontSize: 14,
-    color: '#111827',
-    minHeight: 80,
-    textAlignVertical: 'top',
-    marginBottom: 20,
-  },
-  submitRatingBtn: {
-    backgroundColor: '#FFCE48',
-    paddingVertical: 16,
-    borderRadius: 16,
-    alignItems: 'center',
-  },
-  submitRatingText: {
-    fontSize: 16,
-    lineHeight: 22,
-    fontFamily: Fonts.poppinsBold,
-    color: '#111827',
-  },
-  skipRatingBtn: {
-    alignSelf: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    marginTop: 4,
-  },
-  skipRatingText: {
-    fontSize: 14,
-    lineHeight: 18,
-    fontFamily: Fonts.poppinsSemiBold,
-    color: '#6B7280',
   },
 
   // Final success modal

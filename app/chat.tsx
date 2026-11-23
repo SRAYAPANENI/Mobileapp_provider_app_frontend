@@ -1141,6 +1141,7 @@ export default function ChatScreen() {
 
       {/* Shown once when opening a finished job's chat the provider hasn't rated */}
       <CustomerRatingSheet
+        asked
         jobId={ratingVisible ? jobId : null}
         customerName={name}
         onClose={() => setRatingVisible(false)}
