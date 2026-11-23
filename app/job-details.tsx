@@ -423,6 +423,7 @@ export default function JobDetailsScreen() {
           // visit is paid, and the work is quoted after it.
           const visitFee = Number(j.inspection_fee) > 0 ? `$${Number(j.inspection_fee)}` : null;
           const scheduledMs = j.scheduled_at ? new Date(j.scheduled_at).getTime() : null;
+          const startsMs = j.by_deadline ? null : scheduledMs;
           // Priced up front (docs/JOB_SHAPE_DESIGN.md phase 4): your own
           // price for these dates, from Rates & hosting — no quoting.
           const upfront = upfrontPricing(j);
@@ -467,12 +468,13 @@ export default function JobDetailsScreen() {
             applicantCount: j.applicant_count ?? 0,
             // Pickup & Delivery: what it takes to carry it (bag, box, car trunk, van).
             itemSize: j.job_type === 'PICKUP_DROPOFF' ? (j.item_size ?? 'SMALL') : null,
-            startTime: scheduledMs ?? Date.now() + 3600000,
-            endTime: scheduledMs ? scheduledMs + 7200000 : Date.now() + 7200000,
+            // Urgent's time is its deadline: the work is now, not then.
+            startTime: startsMs ?? Date.now() + 3600000,
+            endTime: startsMs ? startsMs + 7200000 : Date.now() + 7200000,
             // When the work happens — its start, or when it was posted: in a
             // team member's work hours that makes it the business's job
             // (docs/EMPLOYER_PARTNERS_DESIGN.md).
-            workTime: scheduledMs ?? new Date(j.created_at).getTime(),
+            workTime: startsMs ?? new Date(j.created_at).getTime(),
             // No visit fee (online, at your place, or a free visit): just the quote.
             rate: upfront ? `${upfront.rate} / ${upfront.duration}` : visitFee ? `${visitFee} visit` : 'To quote',
             upfront,
@@ -561,8 +563,8 @@ export default function JobDetailsScreen() {
           .filter((aj: any) => aj.job_id?.toString() !== jobData.id && aj.lat != null && aj.lng != null)
           .map((aj: any) => ({
             id: String(aj.job_id ?? aj.id),
-            startTime: aj.scheduled_at ? new Date(aj.scheduled_at).getTime() : Date.now(),
-            endTime: aj.scheduled_at ? new Date(aj.scheduled_at).getTime() + 7200000 : Date.now() + 7200000,
+            startTime: aj.scheduled_at && !aj.by_deadline ? new Date(aj.scheduled_at).getTime() : Date.now(),
+            endTime: aj.scheduled_at && !aj.by_deadline ? new Date(aj.scheduled_at).getTime() + 7200000 : Date.now() + 7200000,
             location: { latitude: aj.lat, longitude: aj.lng },
           }));
         const result = jobData.isOngoing || jobData.latitude == null || jobData.longitude == null

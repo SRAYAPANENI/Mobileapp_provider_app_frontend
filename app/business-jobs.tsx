@@ -27,9 +27,10 @@ const when = (iso: string | null) => iso
 // until someone sets off. Each job then runs in the assigned member's app.
 // Opened with a jobId (job details' "Apply as", a team-job alert), it goes
 // straight to choosing who'd do that job.
-/** When a team job's work happens: its start, or when it was posted. */
-function workTimeOf(job: { scheduled_at: string | null; created_at?: string } | null): Date | null {
-  const iso = job?.scheduled_at ?? job?.created_at;
+/** When a team job's work happens: its start, or when it was posted (an
+ * urgent job's time is its deadline, not its start). */
+function workTimeOf(job: { scheduled_at: string | null; created_at?: string; by_deadline?: boolean } | null): Date | null {
+  const iso = (job?.by_deadline ? null : job?.scheduled_at) ?? job?.created_at;
   return iso ? new Date(iso) : null;
 }
 

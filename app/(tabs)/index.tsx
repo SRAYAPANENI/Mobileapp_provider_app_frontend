@@ -564,8 +564,9 @@ export default function DashboardScreen() {
         // "ON_SITE" (default) or "REMOTE" — no physical location/distance
         // matching at all (e.g. hiring a developer/consultant).
         serviceMode: j.service_mode ?? 'ON_SITE',
-        startTime: j.scheduled_at ? new Date(j.scheduled_at).getTime() : Date.now() + 3600000,
-        endTime: j.scheduled_at ? new Date(j.scheduled_at).getTime() + 7200000 : Date.now() + 7200000,
+        // Urgent's time is its deadline: the work is now, not then.
+        startTime: j.scheduled_at && !j.by_deadline ? new Date(j.scheduled_at).getTime() : Date.now() + 3600000,
+        endTime: j.scheduled_at && !j.by_deadline ? new Date(j.scheduled_at).getTime() + 7200000 : Date.now() + 7200000,
         // No scheduled_at means this is an ASAP/urgent request rather than a
         // booked slot — give a 9hr response window from when the job was
         // actually POSTED, not from whenever this list happens to load. Using
@@ -633,8 +634,8 @@ export default function DashboardScreen() {
         // online work, nor work at their own place — no trip to follow.
         setOffAt: j.set_off_at ? new Date(j.set_off_at).getTime() : 0,
         travels: j.service_mode !== 'REMOTE' && !['ONLINE', 'PROVIDER_PLACE'].includes(j.shape?.venue),
-        startTime: j.scheduled_at ? new Date(j.scheduled_at).getTime() : Date.now(),
-        endTime: j.scheduled_at ? new Date(j.scheduled_at).getTime() + 7200000 : Date.now() + 7200000,
+        startTime: j.scheduled_at && !j.by_deadline ? new Date(j.scheduled_at).getTime() : Date.now(),
+        endTime: j.scheduled_at && !j.by_deadline ? new Date(j.scheduled_at).getTime() + 7200000 : Date.now() + 7200000,
         // Same reasoning as mapInbound — anchor to when the job was actually
         // posted, not to whenever this list happens to load.
         deadline: j.scheduled_at
