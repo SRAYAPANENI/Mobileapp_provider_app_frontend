@@ -63,7 +63,7 @@ export function InspectionCode({ jobId, onVerified, arrived, atYourPlace = false
         {atYourPlace
           ? 'When the customer arrives at your place, ask for the 4-digit code on their screen to start inspecting.'
           : arrived
-            ? 'The customer has a 4-digit code on their screen. Ask for it and enter it here to start inspecting.'
+            ? 'Ask for the 4-digit code on the customer’s screen and enter it here to start inspecting. It shows once their visiting fee is paid.'
             : 'Tap “I’m here” when you arrive — the customer gets a 4-digit code to give you.'}
       </ThemedText>
   );
