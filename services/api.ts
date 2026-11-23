@@ -885,6 +885,14 @@ export interface TeamActiveJob {
   worker_id: string | null; worker_name: string | null; customer_name: string | null;
 }
 export interface BusinessBoard { open: TeamOpenJob[]; active: TeamActiveJob[] }
+/** The open jobs the business's lists show. A withdrawn one is gone for good
+ * (it can't apply again), so it's left out; job details still gets it from
+ * the board, to say the business withdrew. */
+export const listedTeamJobs = (board: BusinessBoard | null | undefined): TeamOpenJob[] =>
+  board?.open.filter((j) => !j.withdrawn) ?? [];
+/** Listed jobs the business hasn't applied for yet — the counts on the tabs. */
+export const newTeamJobCount = (board: BusinessBoard | null | undefined): number =>
+  listedTeamJobs(board).filter((j) => !j.applied).length;
 export interface TeamPosition {
   job_id: string; title: string; status: string; worker_id: string; worker_name: string | null;
   lat: number; lng: number; heading: number | null; job_lat: number | null; job_lng: number | null;

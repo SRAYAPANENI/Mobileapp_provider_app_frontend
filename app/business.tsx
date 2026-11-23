@@ -18,8 +18,8 @@ import { Fonts } from '@/constants/theme';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { useMyBusiness } from '@/hooks/use-my-business';
 import {
-  BusinessDocument, BusinessDocumentKind, BusinessEarnings, BusinessInvite, MemberRole, SkoFyApi, Team, TeamMember,
-  WorkHours,
+  BusinessDocument, BusinessDocumentKind, BusinessEarnings, BusinessInvite, MemberRole, newTeamJobCount, SkoFyApi, Team,
+  TeamMember, WorkHours,
 } from '@/services/api';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
@@ -252,7 +252,7 @@ export default function BusinessScreen() {
   const payoutsDone = business?.connect_onboarding_status === 'COMPLETE';
   // Not on Stripe, yet not missing either: demo payouts (recorded, not sent).
   const demoPayouts = !!business && !payoutsDone && !business.missing.some((m) => m.startsWith('Payouts'));
-  const openJobs = board?.open.filter((j) => !j.applied).length ?? 0;
+  const openJobs = newTeamJobCount(board);
 
   return (
     <ThemedView style={s.container}>

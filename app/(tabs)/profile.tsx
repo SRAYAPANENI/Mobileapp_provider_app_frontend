@@ -159,6 +159,8 @@ export default function ProfileScreen() {
   // would land you scrolled past the end of the new tab's content instead
   // of at its top.
   const profileScrollRef = React.useRef<ScrollView>(null);
+  // The skill list (Verification) is scrolled down: the page's pull-to-refresh waits.
+  const [skillListScrolled, setSkillListScrolled] = useState(false);
   const handleProfileTabChange = (tab: ProfileTab) => {
     setActiveProfileTab(tab);
     profileScrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -1368,6 +1370,9 @@ export default function ProfileScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
+            // Off while the skill list inside is scrolled down, so a swipe
+            // down scrolls the list back up (Android refreshes otherwise).
+            enabled={!skillListScrolled}
             colors={['#FFCE48']} // Android
             tintColor="#FFCE48" // iOS
           />
@@ -1734,6 +1739,7 @@ export default function ProfileScreen() {
             eligibility={skillEligibility}
             onAction={onSkillAction}
             onRemove={onRemoveSkill}
+            onScrolledChange={setSkillListScrolled}
           />
         </Animated.View>
 

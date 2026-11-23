@@ -4,7 +4,7 @@ import {
   AssessableSkill, SkillEligibility, TestButtonState, filterSkills,
 } from '@/services/skillAssessment';
 import { Search, X } from 'lucide-react-native';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, TextInput } from '@/components/scaled-text';
 
@@ -20,17 +20,33 @@ interface Props {
   eligibility: Record<string, SkillEligibility>;
   onAction: (skill: AssessableSkill, state: TestButtonState, eligibility?: SkillEligibility) => void;
   onRemove: (skillId: string) => void;
+  /** Told when the list leaves its top (true) and comes back to it (false).
+   * The page's pull-to-refresh is off meanwhile: on Android it only looks at
+   * the page, so a swipe down to scroll this list back up refreshed the page. */
+  onScrolledChange?: (scrolled: boolean) => void;
 }
 
 // Verification → Skill Assessments: search, and the rows drawn a page at a time.
-export function SkillAssessmentList({ skills, eligibility, onAction, onRemove }: Props) {
+export function SkillAssessmentList({ skills, eligibility, onAction, onRemove, onScrolledChange }: Props) {
   const [query, setQuery] = useState('');
   const [shown, setShown] = useState(PAGE);
   const matches = useMemo(() => filterSkills(skills, query), [skills, query]);
   useEffect(() => { setShown(PAGE); }, [query]);
 
+  // Said only when it changes, and "at the top" once the list is gone — the
+  // page's refresh must never stay off after it.
+  const scrolled = useRef(false);
+  const report = useCallback((next: boolean) => {
+    if (scrolled.current === next) return;
+    scrolled.current = next;
+    onScrolledChange?.(next);
+  }, [onScrolledChange]);
+  useEffect(() => () => { if (scrolled.current) onScrolledChange?.(false); }, [onScrolledChange]);
+  const listShown = skills.length > 0 && matches.length > 0;
+  useEffect(() => { if (!listShown) report(false); }, [listShown, report]);
+
   if (skills.length === 0) {
-    return <Text style={s.empty}>No skills added yet. Tap "Add" to get started.</Text>;
+    return <Text style={s.empty}>No skills added yet. Tap “Add” to get started.</Text>;
   }
 
   const visible = matches.slice(0, shown);
@@ -64,6 +80,8 @@ export function SkillAssessmentList({ skills, eligibility, onAction, onRemove }:
           style={s.list}
           nestedScrollEnabled
           showsVerticalScrollIndicator
+          scrollEventThrottle={16}
+          onScroll={(e) => report(e.nativeEvent.contentOffset.y > 0)}
           contentContainerStyle={s.listContent}
         >
           {visible.map(skill => (

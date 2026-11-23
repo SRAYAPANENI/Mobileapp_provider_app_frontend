@@ -1060,11 +1060,17 @@ export default function JobDetailsScreen() {
           // final state, overrides "Applied" even if I did apply) >
           // myApplicationId (still open, I'm waiting on my own pending bid)
           // > feasibility conflict > default "Apply Now".
-          const isApplied = !job.isOngoing && !job.isClosed && !job.isLockedByOther && !!job.myApplicationId;
+          // An application that's over — withdrawn (by them, or a business
+          // naming them) or turned down — is final, not "Applied".
+          const stillOpen = !job.isOngoing && !job.isClosed && !job.isLockedByOther && !!job.myApplicationId;
+          const isWithdrawn = stillOpen && job.myApplicationStatus === 'WITHDRAWN';
+          const isRejected = stillOpen && job.myApplicationStatus === 'REJECTED';
+          const isApplied = stillOpen && !isWithdrawn && !isRejected;
           const isLocked = !job.isOngoing && !job.isClosed && job.isLockedByOther;
           const isConflictLocked = !job.isOngoing && !job.isClosed && !job.isLockedByOther && !job.myApplicationId && feasibility?.status === 'NOT_FEASIBLE';
+          const isFinal = isWithdrawn || isRejected;
           const busy = isAcceptingDirect || isApplying;
-          const disabled = job.isOngoing ? false : (isApplied || isLocked || isConflictLocked || job.isClosed || busy);
+          const disabled = job.isOngoing ? false : (isApplied || isFinal || isLocked || isConflictLocked || job.isClosed || busy);
           return (
             <View style={[styles.footerRow, teamJob && styles.footerItem]}>
               {/* Applied and waiting: they can take it back (for example before
@@ -1094,7 +1100,7 @@ export default function JobDetailsScreen() {
                   <Text style={styles.declineBtnText}>Withdraw</Text>
                 </TouchableOpacity>
               )}
-              {job.isDirectRequest && !job.isOngoing && !isApplied && !isLocked && !job.isClosed && (
+              {job.isDirectRequest && !job.isOngoing && !isApplied && !isFinal && !isLocked && !job.isClosed && (
                 <TouchableOpacity
                   style={styles.declineBtn}
                   disabled={isAcceptingDirect}
@@ -1126,12 +1132,12 @@ export default function JobDetailsScreen() {
               )}
               <TouchableOpacity
                 style={[
-                  (job.isDirectRequest && !job.isOngoing && !isApplied && !isLocked) || (isApplied && !teamJob)
+                  (job.isDirectRequest && !job.isOngoing && !isApplied && !isFinal && !isLocked) || (isApplied && !teamJob)
                     ? styles.applyButtonFlex : styles.applyButtonFull,
                   job.isOngoing && styles.ongoingButton,
                   isApplied && styles.appliedButton,
-                  (isLocked || isConflictLocked) && styles.conflictButton,
-                  teamJob && !isApplied && !isLocked && !isConflictLocked && styles.secondaryApplyButton,
+                  (isLocked || isConflictLocked || isFinal) && styles.conflictButton,
+                  teamJob && !isApplied && !isFinal && !isLocked && !isConflictLocked && styles.secondaryApplyButton,
                 ]}
                 onPress={() => {
                   if (job.isOngoing) {
@@ -1148,7 +1154,7 @@ export default function JobDetailsScreen() {
                   <ShieldCheck size={20} color="#111827" />
                 ) : isApplied ? (
                   <CheckCircle2 size={20} color="#16A34A" />
-                ) : (isLocked || isConflictLocked || job.isClosed) ? (
+                ) : (isLocked || isConflictLocked || isFinal || job.isClosed) ? (
                   <Lock size={20} color="#9CA3AF" />
                 ) : (
                   <ShieldCheck size={20} color="#111827" />
@@ -1157,12 +1163,14 @@ export default function JobDetailsScreen() {
                   styles.applyButtonText,
                   job.isOngoing && styles.ongoingButtonText,
                   isApplied && styles.appliedButtonText,
-                  (isLocked || isConflictLocked || job.isClosed) && styles.conflictButtonText,
+                  (isLocked || isConflictLocked || isFinal || job.isClosed) && styles.conflictButtonText,
                 ]}>
                   {isAcceptingDirect ? 'Accepting…' :
                     isApplying ? 'Applying…' :
                     job.isOngoing ? 'Enter Service Room' :
                     isApplied ? 'Applied ✓' :
+                    isWithdrawn ? 'Withdrawn' :
+                    isRejected ? 'Not Selected' :
                     job.isClosed ? 'No Longer Available' :
                     isLocked ? 'Locked — Not Selected' :
                     isConflictLocked ? 'Conflict Locked' :

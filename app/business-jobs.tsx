@@ -4,7 +4,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
-import { BusinessBoard, SkoFyApi, Team, TeamActiveJob, TeamOpenJob } from '@/services/api';
+import { BusinessBoard, listedTeamJobs, SkoFyApi, Team, TeamActiveJob, TeamOpenJob } from '@/services/api';
 import { BusinessTabs } from '@/components/business/business-tabs';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Briefcase, Check, ChevronLeft, Clock, Inbox } from 'lucide-react-native';
@@ -64,11 +64,14 @@ export default function BusinessJobsScreen() {
     if (!board || !jobId || opened.current === jobId) return;
     opened.current = jobId;
     const job = board.open.find((j) => j.job_id === jobId);
-    if (job && !job.applied) setApplying(job);
+    if (job && !job.applied && !job.withdrawn) setApplying(job);
     else if (!board.active.some((j) => j.job_id === jobId)) {
-      // A stale alert: the job closed, or was taken, since it was sent.
-      appAlert.show('info', job ? 'Already applied' : 'No longer open',
-        job ? 'Your business has applied for this job — the customer chooses next.' : "This job isn't open for your team any more.");
+      // A stale alert: applied, withdrawn, or the job closed or was taken since it was sent.
+      appAlert.show('info',
+        job?.applied ? 'Already applied' : job?.withdrawn ? 'Already withdrawn' : 'No longer open',
+        job?.applied ? 'Your business has applied for this job — the customer chooses next.'
+          : job?.withdrawn ? 'Your business withdrew from this job, so it can’t apply again.'
+          : "This job isn't open for your team any more.");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board, jobId]);
@@ -93,6 +96,8 @@ export default function BusinessJobsScreen() {
   };
 
   const setOff = (j: TeamActiveJob) => !!(j.navigation_started_at || j.arrived_at || j.checked_in_at);
+  // Withdrawn jobs are gone for good: not listed, not counted.
+  const open = listedTeamJobs(board);
 
   // Taking back the business's application — final, as for anyone.
   const withdraw = (j: TeamOpenJob) => appAlert.show('warning', 'Withdraw your business’s application?',
@@ -105,6 +110,8 @@ export default function BusinessJobsScreen() {
           load();
         } catch (err: any) {
           appAlert.show('error', 'Not withdrawn', err?.message ?? 'Please try again.');
+          // e.g. hired that same instant: it now shows under way.
+          load();
         }
       } },
     ]);
@@ -124,12 +131,12 @@ export default function BusinessJobsScreen() {
         <KeyboardAwareScrollView bottomOffset={24} contentContainerStyle={padBottom([s.body, { paddingBottom: 40 }], bottomInset)} keyboardShouldPersistTaps="handled"
           refreshControl={refreshControl}>
 
-          <Section title={`Open for your team · ${board.open.length}`} flush>
-            {board.open.length === 0 && (
+          <Section title={`Open for your team · ${open.length}`} flush>
+            {open.length === 0 && (
               <Row last icon={<Inbox size={18} color={C.muted} />} title="Nothing new right now" detail="Jobs that reach anyone on your team show here" />
             )}
-            {board.open.map((j, i) => (
-              <View key={j.job_id} style={[s.job, i < board.open.length - 1 && s.jobLine]}>
+            {open.map((j, i) => (
+              <View key={j.job_id} style={[s.job, i < open.length - 1 && s.jobLine]}>
                 <TouchableOpacity activeOpacity={0.7} onPress={() => router.push({ pathname: '/job-details', params: { id: j.job_id } } as any)} style={{ gap: 4 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <ThemedText style={[s.jobTitle, { flex: 1 }]} numberOfLines={1}>{j.title}</ThemedText>
@@ -146,8 +153,6 @@ export default function BusinessJobsScreen() {
                     <Badge label="Applied" tone="ok" icon={<Check size={12} color={C.ok} />} />
                     <Button small kind="secondary" label="Withdraw" onPress={() => withdraw(j)} />
                   </View>
-                ) : j.withdrawn ? (
-                  <Badge label="Withdrawn" tone="neutral" />
                 ) : (
                   <Button small label="Apply as the business" style={{ alignSelf: 'flex-start' }}
                     onPress={() => { close(); setApplying(j); }} />

@@ -1,6 +1,7 @@
 import { ThemedText } from '@/components/themed-text';
 import { Fonts } from '@/constants/theme';
 import { MyBusinessState } from '@/hooks/use-my-business';
+import { listedTeamJobs } from '@/services/api';
 import { router } from 'expo-router';
 import { AlertTriangle, Check, Clock, Inbox, UserPlus, Users } from 'lucide-react-native';
 import { BusinessTabs } from './business-tabs';
@@ -20,7 +21,7 @@ export function TeamPanel({ state }: { state: MyBusinessState }) {
   const business = state.data?.business;
   const board = state.board;
   if (!business) return null;
-  const open = board?.open ?? [];
+  const open = listedTeamJobs(board);
   const active = board?.active ?? [];
   const setOff = (j: (typeof active)[number]) => !!(j.navigation_started_at || j.arrived_at || j.checked_in_at);
 

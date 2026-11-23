@@ -55,7 +55,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { ThemedText } from '@/components/themed-text';
 import { checkFeasibility, FeasibilityResult, FIT_LABEL, fitText, calculateDistance, kmToMiles, estimateDriveMinutes, formatDriveTime } from '@/services/schedulingEngine';
 import { resolveApplyGate } from '@/services/applyErrorGate';
-import { SkoFyApi } from '@/services/api';
+import { newTeamJobCount, SkoFyApi } from '@/services/api';
 import { markRatingSkipped, nextPendingRating, markRatingSubmitted } from '@/services/ratingReminders';
 import { readDashboardCache, writeDashboardCache } from '@/services/homeCache';
 import { Skeleton } from '@/components/skeleton';
@@ -1637,7 +1637,7 @@ const filteredJobs = jobs.filter((job) => {
         <BusinessHomeCard state={myBusiness} />
         {myBusiness.canDispatch && myBusiness.data?.business && (
           <WorkspaceSwitch businessName={myBusiness.data.business.name} value={workspace} onChange={chooseWorkspace}
-            teamCount={myBusiness.board?.open.filter((j) => !j.applied).length ?? 0}
+            teamCount={newTeamJobCount(myBusiness.board)}
             attention={!myBusiness.data.business.ready_for_on_site_work} />
         )}
 
