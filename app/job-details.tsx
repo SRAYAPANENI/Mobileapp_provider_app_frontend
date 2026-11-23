@@ -461,6 +461,8 @@ export default function JobDetailsScreen() {
             // When the work is (in the job's own time zone), and where.
             when: scheduleText(j),
             venue: j.shape?.venue ?? null,
+            // Sent only to a business's member working at its owner's place.
+            atBusiness: !!j.host_address || j.host_lat != null,
             // How their price is made up ("$6 + 4.2 mi × $1.50").
             priceText: (j.my_price ?? j.upfront_price)?.text ?? null,
             // What the customer needs the provider to have ("fenced yard", "has a van").
@@ -874,7 +876,7 @@ export default function JobDetailsScreen() {
             <FactRow icon={<Receipt size={18} color="#16A34A" />} label="How it’s paid" value={job.fee} styles={styles} />
           )}
           {job.venue === 'PROVIDER_PLACE' && (
-            <FactRow icon={<Home size={18} color="#7C3AED" />} label="Where" value="At your place — the customer comes to you" styles={styles} />
+            <FactRow icon={<Home size={18} color="#7C3AED" />} label="Where" value={job.atBusiness ? 'At the business’s place — the customer comes there' : 'At your place — the customer comes to you'} styles={styles} />
           )}
           {job.venue === 'ONLINE' && (
             <FactRow icon={<Zap size={18} color="#7C3AED" />} label="Where" value="Online" styles={styles} />

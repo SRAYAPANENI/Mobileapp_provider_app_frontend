@@ -8,7 +8,8 @@ import { SkoFyApi } from '@/services/api';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { shrinkPhoto } from '@/services/photo';
-import { Camera, CheckCircle, DoorOpen, X } from 'lucide-react-native';
+import { openDirections } from '@/services/directions';
+import { Camera, CheckCircle, DoorOpen, Navigation, X } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 
@@ -39,6 +40,18 @@ const when = (iso: string) => new Date(iso).toLocaleString([], { weekday: 'short
 export function CareJobPanel(props: Props) {
   return (
     <View style={{ gap: 12 }}>
+      {(!!props.job?.host_address || props.job?.host_lat != null) && (
+        <View style={s.card}>
+          <Text style={s.title}>At the business’s place</Text>
+          {!!props.job.host_address && <Text style={s.body}>{props.job.host_address}</Text>}
+          <TouchableOpacity style={s.directions} accessibilityRole="button"
+            onPress={() => openDirections(props.job.host_address ?? null, props.job.host_lat, props.job.host_lng).catch(() =>
+              props.onMessage('error', 'No maps app', 'We couldn’t open directions on this phone.'))}>
+            <Navigation size={17} color="#111827" />
+            <Text style={s.directionsText}>Get directions</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       {!!props.job && <CareSheetCard custody={props.job.shape?.custody} sheet={props.job.care_sheet} details={props.job.shape?.details} />}
       <CareJobSteps {...props} />
     </View>
@@ -50,6 +63,9 @@ function CareJobSteps({ job, getCoords, onChanged, onComplete, onCustomerAbsent,
   const venue: string = job?.shape?.venue ?? 'CUSTOMER_PLACE';
   const paid = job?.payment_status === 'HELD' || job?.payment_status === 'PAID';
   const price = job?.upfront_price;
+  const leftWithYou = venue === 'PROVIDER_PLACE' && steps.includes('HANDBACK_CODE');
+  // A business's job is at its owner's place: where its member goes (sent only to them).
+  const businessPlace = !!job?.host_address || job?.host_lat != null;
 
   if (!job) return <ActivityIndicator color="#111827" style={{ marginVertical: 12 }} />;
 
@@ -59,8 +75,8 @@ function CareJobSteps({ job, getCoords, onChanged, onComplete, onCustomerAbsent,
       {price && <Text style={s.body}>{price.text}</Text>}
       {job.scheduled_at && (
         <Text style={s.body}>
-          {venue === 'PROVIDER_PLACE' ? 'Drop-off' : 'Starts'}: {when(job.scheduled_at)}
-          {job.shape?.ends_at ? `  ·  ${venue === 'PROVIDER_PLACE' ? 'Pick-up' : 'Ends'}: ${when(job.shape.ends_at)}` : ''}
+          {leftWithYou ? 'Drop-off' : venue === 'PROVIDER_PLACE' ? 'They arrive' : 'Starts'}: {when(job.scheduled_at)}
+          {job.shape?.ends_at ? `  ·  ${leftWithYou ? 'Pick-up' : 'Ends'}: ${when(job.shape.ends_at)}` : ''}
         </Text>
       )}
       {!paid && <Text style={s.muted}>The customer pays when they book — it's held safely and paid to you when the job is done.</Text>}
@@ -83,7 +99,7 @@ function CareJobSteps({ job, getCoords, onChanged, onComplete, onCustomerAbsent,
         requestLabel={venue === 'CUSTOMER_PLACE' ? 'Send the code again' : 'Ask for the code'}
         confirmLabel={venue === 'PROVIDER_PLACE' ? 'Check in' : 'Start'}
         requestedMessage="The customer now sees a 4-digit code in their app."
-        placeName={venue === 'PROVIDER_PLACE' ? 'your place' : 'the job'}
+        placeName={venue === 'PROVIDER_PLACE' ? (businessPlace ? 'the business’s place' : 'your place') : 'the job'}
         onRequest={() => SkoFyApi.jobs.requestCheckInCode(job.id)}
         onVerify={(code, lat, lng) => SkoFyApi.jobs.checkIn(job.id, code, lat, lng)}
         onDone={onChanged}
@@ -169,7 +185,7 @@ function MissedDropOff({ job, getCoords, onDone, onMessage }: {
     try {
       const c = await getCoords();
       if (!c) {
-        onMessage('error', 'Location Required', 'Turn on location — this only counts at your place.');
+        onMessage('error', 'Location Required', 'Turn on location — this only counts where the booking is.');
         return;
       }
       const result: any = await SkoFyApi.jobs.reportCustomerAbsent(job.id, c.latitude, c.longitude);
@@ -300,6 +316,8 @@ function CareUpdates({ jobId, onMessage }: { jobId: string; onMessage: Props['on
 }
 
 const s = StyleSheet.create({
+  directions: { height: 48, borderRadius: 12, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFCE48' },
+  directionsText: { fontSize: 14.5, lineHeight: 20, fontFamily: Fonts.poppinsBold, color: '#111827' },
   wrap: { gap: 12 },
   card: { padding: 14, borderRadius: 14, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E5E7EB', gap: 8 },
   title: { fontSize: 15, lineHeight: 20, fontFamily: Fonts.poppinsBold, color: '#111827' },
