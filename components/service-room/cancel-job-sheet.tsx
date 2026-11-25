@@ -19,9 +19,11 @@ const REASONS = [
   'Other',
 ];
 
-export function CancelJobSheet({ jobId, visible, onClose, onCancelled }: {
+export function CancelJobSheet({ jobId, visible, title = 'Withdraw from Job', subtitle = 'The customer will be notified. This may affect your reliability score.', onClose, onCancelled }: {
   jobId: string;
   visible: boolean;
+  title?: string;
+  subtitle?: string;
   onClose: () => void;
   onCancelled: () => void;
 }) {
@@ -50,8 +52,8 @@ export function CancelJobSheet({ jobId, visible, onClose, onCancelled }: {
     <Popup closeOn={cancelling ? 'none' : 'back'} visible={visible} transparent animationType="fade" onClose={close}>
       <View style={st.overlay}>
         <PopupCard style={st.card}>
-          <ThemedText style={st.title}>Withdraw from Job</ThemedText>
-          <ThemedText style={st.subtitle}>The customer will be notified. This may affect your reliability score.</ThemedText>
+          <ThemedText style={st.title}>{title}</ThemedText>
+          <ThemedText style={st.subtitle}>{subtitle}</ThemedText>
           <View style={{ gap: 8, marginTop: 16 }}>
             {REASONS.map((r) => (
               <TouchableOpacity key={r} style={[st.chip, reason === r && st.chipOn]} onPress={() => setReason(r)}>

@@ -1,5 +1,6 @@
 import { useAppAlert } from '@/components/app-alert';
 import { MemberPicker } from '@/components/business/member-picker';
+import { CancelJobSheet } from '@/components/service-room/cancel-job-sheet';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
@@ -7,7 +8,7 @@ import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { BusinessBoard, listedTeamJobs, needsSomeoneElse, SkoFyApi, Team, TeamActiveJob, TeamOpenJob } from '@/services/api';
 import { BusinessTabs } from '@/components/business/business-tabs';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { Briefcase, Check, ChevronLeft, Clock, Inbox } from 'lucide-react-native';
+import { Briefcase, Check, ChevronLeft, Clock, Inbox, PauseCircle } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { TextInput } from '@/components/scaled-text';
@@ -42,6 +43,7 @@ export default function BusinessJobsScreen() {
   const [team, setTeam] = useState<Team | null>(null);
   const [applying, setApplying] = useState<TeamOpenJob | null>(null);
   const [assigning, setAssigning] = useState<TeamActiveJob | null>(null);
+  const [givingUp, setGivingUp] = useState<TeamActiveJob | null>(null);
   // A waiting application, to name someone else on.
   const [changing, setChanging] = useState<TeamOpenJob | null>(null);
   const choosing = applying ?? changing ?? assigning;
@@ -69,15 +71,18 @@ export default function BusinessJobsScreen() {
     if (!board || !jobId || opened.current === jobId) return;
     opened.current = jobId;
     const job = board.open.find((j) => j.job_id === jobId);
-    if (job && !job.applied && !job.withdrawn) setApplying(job);
+    const paused = !!board.paused_until && new Date(board.paused_until).getTime() > Date.now();
+    if (job && !job.applied && !job.withdrawn && !job.rejected && paused) return;   // said at the top
+    if (job && !job.applied && !job.withdrawn && !job.rejected) setApplying(job);
     // Whoever we named is booked now: straight to choosing someone else.
     else if (job?.applied && needsSomeoneElse(job)) setChanging(job);
     else if (!board.active.some((j) => j.job_id === jobId)) {
       // A stale alert: applied, withdrawn, or the job closed or was taken since it was sent.
       appAlert.show('info',
-        job?.applied ? 'Already applied' : job?.withdrawn ? 'Already withdrawn' : 'No longer open',
+        job?.applied ? 'Already applied' : job?.rejected ? 'Not selected' : job?.withdrawn ? 'Already withdrawn' : 'No longer open',
         job?.applied ? 'Your business has applied for this job — the customer chooses next.'
-          : job?.withdrawn ? 'Your business withdrew from this job, so it can’t apply again.'
+          : job?.rejected ? 'The customer didn’t choose your business for this job.'
+          : job?.withdrawn ? 'Your business withdrew from this job. It can apply again if the time changes.'
           : "This job isn't open for your team any more.");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -120,14 +125,15 @@ export default function BusinessJobsScreen() {
   };
 
   const setOff = (j: TeamActiveJob) => !!(j.navigation_started_at || j.arrived_at || j.checked_in_at);
-  // Withdrawn jobs are gone for good: not listed, not counted.
+  // Withdrawn or turned down: not listed, not counted.
   const open = listedTeamJobs(board);
+  const pausedUntil = board?.paused_until && new Date(board.paused_until).getTime() > Date.now() ? board.paused_until : null;
 
   const nameOf = (id?: string | null) => team?.members.find((m) => m.provider_id === id)?.name ?? null;
 
-  // Taking back the business's application — final, as for anyone.
+  // Taking back the business's application: it can come back only if the time changes.
   const withdraw = (j: TeamOpenJob) => appAlert.show('warning', 'Withdraw your business’s application?',
-    'The customer won’t see it any more, and your business can’t apply for this job again.', [
+    'The customer won’t see it any more. Your business can apply again only if the job’s time changes.', [
       { text: 'Keep it', variant: 'secondary' },
       { text: 'Withdraw', variant: 'destructive', onPress: async () => {
         try {
@@ -156,6 +162,21 @@ export default function BusinessJobsScreen() {
       {!board || !team ? <ActivityIndicator style={{ marginTop: 40 }} color={C.ink} /> : (
         <KeyboardAwareScrollView bottomOffset={24} contentContainerStyle={padBottom([s.body, { paddingBottom: 40 }], bottomInset)} keyboardShouldPersistTaps="handled"
           refreshControl={refreshControl}>
+
+          {!!pausedUntil && (
+            <View style={s.paused} accessibilityRole="alert">
+              <PauseCircle size={20} color="#B91C1C" />
+              <View style={{ flex: 1 }}>
+                <ThemedText style={s.pausedTitle}>Paused from new jobs until {when(pausedUntil)}</ThemedText>
+                <ThemedText style={s.pausedText}>
+                  Your business gave up {board.given_up?.length ?? 0} jobs close together. Jobs you already have carry on.
+                </ThemedText>
+                <TouchableOpacity onPress={() => router.push('/help-support' as any)} hitSlop={8}>
+                  <ThemedText style={s.pausedLink}>Think this is wrong? Contact support</ThemedText>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
 
           <Section title={`Open for your team · ${open.length}`} flush>
             {open.length === 0 && (
@@ -197,7 +218,7 @@ export default function BusinessJobsScreen() {
                     )}
                   </View>
                 ) : (
-                  <Button small label="Apply as the business" style={{ alignSelf: 'flex-start' }}
+                  <Button small label="Apply as the business" disabled={!!pausedUntil} style={{ alignSelf: 'flex-start' }}
                     onPress={() => { close(); setApplying(j); }} />
                 )}
               </View>
@@ -210,6 +231,7 @@ export default function BusinessJobsScreen() {
             )}
             {board.active.map((j, i) => {
               const canMove = j.status === 'ACCEPTED' && !setOff(j);
+              const canGiveUp = ['ACCEPTED', 'INSPECTING', 'INVOICE_PENDING'].includes(j.status);
               const lastOne = i === board.active.length - 1;
               return (
                 <View key={j.job_id} style={!lastOne && s.jobLine}>
@@ -224,10 +246,12 @@ export default function BusinessJobsScreen() {
                         <Badge {...jobStage(j.status, setOff(j))} />
                       </View>
                     } />
-                  {canMove && (
-                    <View style={{ paddingLeft: 50, paddingBottom: 12 }}>
-                      <Button small kind="secondary" label="Give to someone else" style={{ alignSelf: 'flex-start' }}
-                        onPress={() => { close(); setAssigning(j); }} />
+                  {(canMove || canGiveUp) && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingLeft: 50, paddingBottom: 12 }}>
+                      {canMove && (
+                        <Button small kind="secondary" label="Give to someone else" onPress={() => { close(); setAssigning(j); }} />
+                      )}
+                      {canGiveUp && <Button small kind="secondary" label="Give up" onPress={() => { close(); setGivingUp(j); }} />}
                     </View>
                   )}
                 </View>
@@ -235,6 +259,17 @@ export default function BusinessJobsScreen() {
             })}
           </Section>
         </KeyboardAwareScrollView>
+      )}
+
+      {givingUp && (
+        <CancelJobSheet jobId={givingUp.job_id} visible title="Give up this job"
+          subtitle="The customer is told why and gets their money back where it’s due. It counts for your business, not for you or your team member; too many in 30 days pause it from new jobs."
+          onClose={() => setGivingUp(null)}
+          onCancelled={() => {
+            setGivingUp(null);
+            appAlert.show('success', 'Job given up', 'The customer and your team member have been told.');
+            load();
+          }} />
       )}
 
       {/* Apply / reassign — a popup from the bottom rather than an inline
@@ -273,6 +308,10 @@ export default function BusinessJobsScreen() {
 }
 
 const s = StyleSheet.create({
+  paused: { flexDirection: 'row', gap: 10, backgroundColor: '#FEF2F2', borderRadius: 14, borderWidth: 1, borderColor: '#FECACA', padding: 14 },
+  pausedTitle: { fontFamily: Fonts.poppinsBold, fontSize: 13.5, lineHeight: 19, color: '#7F1D1D' },
+  pausedText: { fontFamily: Fonts.poppins, fontSize: 12.5, lineHeight: 18, color: '#991B1B', marginTop: 2 },
+  pausedLink: { fontFamily: Fonts.poppinsBold, fontSize: 12.5, lineHeight: 18, color: '#B91C1C', marginTop: 4 },
   container: { flex: 1, backgroundColor: C.bg },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12 },
   back: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: C.card, borderWidth: 1, borderColor: C.line },

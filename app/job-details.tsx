@@ -303,6 +303,9 @@ export default function JobDetailsScreen() {
   const myBusiness = useMyBusiness();
   const [job, setJob] = useState<any>(null);
   const teamJob = job && !job.isOngoing && !job.isClosed && myBusiness.canDispatch ? myBusiness.teamJob(job.id) : undefined;
+  // The business's application is over: said in a line, not as a button that
+  // does nothing beside the person's own.
+  const teamOver = !!teamJob && !teamJob.applied && (!!teamJob.withdrawn || !!teamJob.rejected);
   const businessName = myBusiness.data?.business?.name ?? 'your business';
   // A dispatcher's own hours cover this job: it's the business's, not theirs
   // to apply for themselves. Unknown on the phone: the button shows, and the
@@ -1045,15 +1048,20 @@ export default function JobDetailsScreen() {
 
       {/* Persistent Footer Actions */}
       <View style={[styles.footer, { paddingBottom: Math.max(bottomInset + 8, 16) }, teamJob && styles.footerStacked]}>
-        {teamJob && (
+        {teamJob && teamOver && (
+          <Text style={[styles.summaryStatLabel, styles.footerItem, { textAlign: 'center' }]}>
+            {teamJob.rejected ? `The customer didn’t choose ${businessName}.` : `${businessName} withdrew its application.`}
+          </Text>
+        )}
+        {teamJob && !teamOver && (
           <TouchableOpacity
-            style={[styles.applyButtonFull, styles.footerItem, (teamJob.applied || teamJob.withdrawn) && styles.appliedButton]}
-            disabled={teamJob.applied || !!teamJob.withdrawn}
+            style={[styles.applyButtonFull, styles.footerItem, teamJob.applied && styles.appliedButton]}
+            disabled={teamJob.applied}
             onPress={() => router.push({ pathname: '/business-jobs', params: { jobId: job.id } } as any)}
           >
             {teamJob.applied ? <CheckCircle2 size={20} color="#16A34A" /> : <Users size={20} color="#111827" />}
             <Text style={[styles.applyButtonText, teamJob.applied && styles.appliedButtonText, { flexShrink: 1 }]} numberOfLines={1}>
-              {teamJob.applied ? `Applied as ${businessName} ✓` : teamJob.withdrawn ? `${businessName} withdrew` : `Apply as ${businessName}`}
+              {teamJob.applied ? `Applied as ${businessName} ✓` : `Apply as ${businessName}`}
             </Text>
           </TouchableOpacity>
         )}
@@ -1079,11 +1087,11 @@ export default function JobDetailsScreen() {
             <View style={[styles.footerRow, teamJob && styles.footerItem]}>
               {/* Applied and waiting: they can take it back (for example before
                   agreeing work hours with a business that cover it). */}
-              {isApplied && !teamJob && (
+              {isApplied && (!teamJob || teamOver) && (
                 <TouchableOpacity
                   style={styles.declineBtn}
                   onPress={() => {
-                    showDialog('Withdraw your application?', 'The customer won’t see it any more, and you can’t apply for this job again.', [
+                    showDialog('Withdraw your application?', 'The customer won’t see it any more. You can apply again only if the job’s time changes.', [
                       { text: 'Keep it', style: 'cancel' },
                       {
                         text: 'Withdraw',
@@ -1136,12 +1144,12 @@ export default function JobDetailsScreen() {
               )}
               <TouchableOpacity
                 style={[
-                  (job.isDirectRequest && !job.isOngoing && !isApplied && !isFinal && !isLocked) || (isApplied && !teamJob)
+                  (job.isDirectRequest && !job.isOngoing && !isApplied && !isFinal && !isLocked) || (isApplied && (!teamJob || teamOver))
                     ? styles.applyButtonFlex : styles.applyButtonFull,
                   job.isOngoing && styles.ongoingButton,
                   isApplied && styles.appliedButton,
                   (isLocked || isConflictLocked || isFinal) && styles.conflictButton,
-                  teamJob && !isApplied && !isFinal && !isLocked && !isConflictLocked && styles.secondaryApplyButton,
+                  teamJob && !teamOver && !isApplied && !isFinal && !isLocked && !isConflictLocked && styles.secondaryApplyButton,
                 ]}
                 onPress={() => {
                   if (job.isOngoing) {
@@ -1173,8 +1181,8 @@ export default function JobDetailsScreen() {
                     isApplying ? 'Applying…' :
                     job.isOngoing ? 'Enter Service Room' :
                     isApplied ? 'Applied ✓' :
-                    isWithdrawn ? 'Withdrawn' :
-                    isRejected ? 'Not Selected' :
+                    isWithdrawn ? (teamJob ? 'You withdrew' : 'Withdrawn') :
+                    isRejected ? (teamJob ? 'You weren’t selected' : 'Not Selected') :
                     job.isClosed ? 'No Longer Available' :
                     isLocked ? 'Locked — Not Selected' :
                     isConflictLocked ? 'Conflict Locked' :

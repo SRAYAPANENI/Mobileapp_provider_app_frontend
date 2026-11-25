@@ -415,7 +415,7 @@ const JobFeedCard = React.memo(function JobFeedCard({
                   // to tell a job you'd already bid on apart from one you
                   // hadn't, until you tapped it and got an error.
                   (job.applicationId
-                    ? (job.appStatus === 'REJECTED' ? 'Rejected' : 'Applied ✓')
+                    ? (job.appStatus === 'REJECTED' ? 'Not selected' : 'Applied ✓')
                     : (isConflict ? 'Conflict' : (activeJobId ? 'Locked' : 'Apply Job')))}
               </ThemedText>
             </Animated.View>

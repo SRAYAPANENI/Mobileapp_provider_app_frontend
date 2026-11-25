@@ -880,8 +880,10 @@ export interface TeamOpenJob {
   applied_worker_id?: string | null; applied_worker_booked?: boolean;
   /** They've left the team since; and changes by choice still allowed. */
   applied_worker_left?: boolean; person_changes_left?: number;
-  /** The business withdrew its application: final, it can't apply again. */
+  /** The business withdrew its application: it can't apply again, unless the time changes. */
   withdrawn?: boolean;
+  /** The customer turned the business down, whoever it named. */
+  rejected?: boolean;
 }
 export interface TeamActiveJob {
   job_id: string; title: string; status: string; scheduled_at: string | null; created_at?: string; hired_at: string | null;
@@ -898,12 +900,19 @@ export interface MeetingInfo {
   short_link: string | null;
   set_by: 'customer' | 'provider' | null;
 }
-export interface BusinessBoard { open: TeamOpenJob[]; active: TeamActiveJob[] }
-/** The open jobs the business's lists show. A withdrawn one is gone for good
- * (it can't apply again), so it's left out; job details still gets it from
- * the board, to say the business withdrew. */
+export interface BusinessBoard {
+  open: TeamOpenJob[];
+  active: TeamActiveJob[];
+  /** Paused from new jobs after giving up several. */
+  paused_until?: string | null;
+  given_up?: { created_at: string; job_title: string | null; by_name: string | null }[];
+  given_up_limit?: number;
+}
+/** The open jobs the business's lists show. One it withdrew from or was
+ * turned down for (it can't apply now) is left out; job details still gets
+ * it from the board, to say so. */
 export const listedTeamJobs = (board: BusinessBoard | null | undefined): TeamOpenJob[] =>
-  board?.open.filter((j) => !j.withdrawn) ?? [];
+  board?.open.filter((j) => !j.withdrawn && !j.rejected) ?? [];
 /** Whoever our application names can't do it now: someone else is needed (not counted). */
 export const needsSomeoneElse = (j: TeamOpenJob): boolean => !!(j.applied_worker_booked || j.applied_worker_left);
 /** Listed jobs the business hasn't applied for yet — the counts on the tabs. */
