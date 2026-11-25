@@ -607,7 +607,7 @@ export default function JobDetailsScreen() {
         title: 'Set your price first',
         message: job.upfront.unitWord === 'trip'
           ? 'Add your base fare and price per mile for Pickup & Delivery in Rates & hosting, then apply.'
-          : `Add your price per ${job.upfront.unitWord} for this skill in Rates & hosting, then apply.`,
+          : `Add your price per ${job.upfront.unitWord} for ${(job.requiredSkills?.length ?? 0) > 1 ? 'every skill this job needs' : 'this skill'} in Rates & hosting, then apply.`,
         actionLabel: 'Set my price',
         onAction: () => { setGateModal(null); router.push('/rates-and-hosting' as any); },
       });
