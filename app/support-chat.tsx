@@ -29,6 +29,8 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Animated, { FadeInLeft, FadeInRight } from 'react-native-reanimated';
 import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import AnimatedLogoMark from '@/components/animated-logo-mark';
+import { TypingBubble } from '@/components/typing-bubble';
+import { useTypingScroll, useTypingSender, useTypingShown } from '@/hooks/use-typing';
 
 import { Popup } from '@/components/popup';
 interface Message {
@@ -45,8 +47,8 @@ interface Message {
 
 const isPdf = (url: string) => /\.pdf($|\?)/i.test(url);
 
-// No WebSocket for support tickets (unlike job chat) — a plain interval
-// while the screen is focused is how new admin replies get picked up.
+// New replies arrive over the ticket's live line (supportCallLine); this
+// interval is the fallback for when that line is down.
 const POLL_INTERVAL_MS = 8000;
 
 // Shown before the first message, so a ticket is raised with a real subject
@@ -166,7 +168,13 @@ export default function SupportChatScreen() {
   // A tapped notification for this ticket comes back here instead of opening a copy.
   useOpenScreen('/support-chat', ticketId, { ticketId: paramTicketId, jobId });
   // Voice calls with the agent handling this ticket (services/call/supportCall.ts).
-  const supportCall = useSupportCall(ticketId);
+  // The same line brings "typing…" and new replies.
+  const { shown: agentTyping, set: setAgentTyping } = useTypingShown();
+  const supportCall = useSupportCall(ticketId, {
+    onTyping: setAgentTyping,
+    onMessage: () => { if (ticketId) void loadTicket(ticketId); },
+  });
+  const { onText: onTypingText, sent: sentTyping, stop: stopTyping } = useTypingSender(supportCall.sendTyping);
   useEffect(() => {
     if (!supportCall.error) return;
     alert.show('info', 'Call', supportCall.error, undefined, 3500);
@@ -214,6 +222,7 @@ export default function SupportChatScreen() {
   const offline = useOfflinePage(!paramTicketId || thread.length > 0,
     () => { if (paramTicketId) void loadTicket(paramTicketId); });
   const messages = [...intro, ...thread];
+  const typingScroll = useTypingScroll(agentTyping, messages.length);
 
   const addIntro = (text: string, sender: Message['sender']) =>
     setIntro(prev => [...prev, { id: `intro-${Date.now()}-${prev.length}`, text, sender, timestamp: nowTime() }]);
@@ -223,9 +232,18 @@ export default function SupportChatScreen() {
   // Sent but not confirmed yet: local key → text.
   const sendingRef = useRef(new Map<string, string>());
 
+  // Refreshes can overlap (the poll, and a reply arriving live): an older
+  // copy that answers late is dropped.
+  const loadSeqRef = useRef({ asked: 0, shown: 0 });
+  // The agent's messages on screen: a new one means they're done typing.
+  const agentCountRef = useRef(0);
+
   const loadTicket = useCallback(async (id: string) => {
+    const seq = ++loadSeqRef.current.asked;
     try {
       const ticket: any = await SkoFyApi.supportTickets.get(id);
+      if (seq < loadSeqRef.current.shown) return;
+      loadSeqRef.current.shown = seq;
       const sending = new Map(sendingRef.current);
       const mapped: Message[] = (ticket.messages ?? []).map((m: any) => {
         const sender: Message['sender'] = m.sender_role === 'admin' || m.sender_role === 'system' ? 'agent' : 'user';
@@ -259,13 +277,16 @@ export default function SupportChatScreen() {
         ...mapped,
         ...prev.filter(m => !!m.key && (sending.has(m.key) || (confirmed.has(m.id) && !fetched.has(m.id)))),
       ]);
+      const agentCount = mapped.filter(m => m.sender === 'agent').length;
+      if (agentCount > agentCountRef.current) setAgentTyping(false);
+      agentCountRef.current = agentCount;
       setAssignedAdminName(ticket.assigned_admin_name ?? null);
     } catch (err) {
       // A background refresh failing silently and retrying next poll is
       // fine — no need to interrupt the user every 8s over a blip.
       console.warn('Failed to refresh support ticket:', err);
     }
-  }, []);
+  }, [setAgentTyping]);
 
   useEffect(() => {
     if (!paramTicketId) return;
@@ -305,6 +326,7 @@ export default function SupportChatScreen() {
     const text = inputText.trim();
     if (text === '' || sending || creatingTicket) return;
 
+    sentTyping();
     setInputText('');
     Keyboard.dismiss();
     setSending(true);
@@ -329,6 +351,7 @@ export default function SupportChatScreen() {
     } catch (err) {
       sendingRef.current.delete(optimisticId);
       console.error('Failed to send support message:', err);
+      stopTyping();
       // The optimistic bubble never actually reached the server — pull it
       // back out instead of leaving a permanent "sent" message that lies
       // about what happened, and give the text back so it's not lost.
@@ -354,6 +377,7 @@ export default function SupportChatScreen() {
     const [asset] = await photoPicker.pickPhotos({ title: 'Send a Photo' });
     if (!asset) return;
     const caption = inputText.trim();
+    stopTyping();
     setSending(true);
     try {
       let id = ticketId;
@@ -534,7 +558,7 @@ export default function SupportChatScreen() {
             <View style={styles.onlineBadgeRow}>
               <View style={styles.onlineDot} />
               <ThemedText style={styles.headerStatus}>
-                {assignedAdminName ? `Chatting with ${assignedAdminName}` : 'Online'}
+                {agentTyping ? 'typing…' : assignedAdminName ? `Chatting with ${assignedAdminName}` : 'Online'}
               </ThemedText>
             </View>
           </View>
@@ -567,7 +591,19 @@ export default function SupportChatScreen() {
           renderItem={renderMessage}
           keyExtractor={item => item.key ?? item.id}
           contentContainerStyle={styles.messageList}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+          onContentSizeChange={() => {
+            if (typingScroll.follows()) flatListRef.current?.scrollToEnd({ animated: true });
+          }}
+          onScroll={({ nativeEvent }) => typingScroll.onScroll(nativeEvent)}
+          scrollEventThrottle={200}
+          ListFooterComponent={agentTyping ? (
+            <View style={styles.typingRow}>
+              <View style={[styles.agentAvatar, styles.typingAvatar]}>
+                <Image source={require('@/assets/images/logo-mark.png')} style={{ width: 20, height: 20 }} contentFit="contain" />
+              </View>
+              <TypingBubble name={assignedAdminName ?? 'Dodorez Support'} />
+            </View>
+          ) : null}
         />
       )}
 
@@ -625,7 +661,7 @@ export default function SupportChatScreen() {
           placeholder="Type a message..."
           placeholderTextColor="#9CA3AF"
           value={inputText}
-          onChangeText={setInputText}
+          onChangeText={(text) => { setInputText(text); onTypingText(text); }}
           multiline
         />
         <TouchableOpacity
@@ -695,6 +731,8 @@ function makeStyles(t: typeof Colors.light) {
     messageWrapper: { marginBottom: 16, maxWidth: '80%', flexDirection: 'row', alignItems: 'flex-end' },
     userMessageWrapper: { alignSelf: 'flex-end' },
     agentMessageWrapper: { alignSelf: 'flex-start' },
+    typingRow: { flexDirection: 'row', alignItems: 'flex-end' },
+  typingAvatar: { marginBottom: 20 },
     agentAvatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#FFFBEB', justifyContent: 'center', alignItems: 'center', marginRight: 8, marginBottom: 4 },
     messageBubble: { padding: 12, borderRadius: 16, maxWidth: '100%' },
     userBubble: { backgroundColor: '#111827', borderBottomRightRadius: 4 },
