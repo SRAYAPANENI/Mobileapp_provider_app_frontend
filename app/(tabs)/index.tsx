@@ -362,7 +362,7 @@ const JobFeedCard = React.memo(function JobFeedCard({
       <View style={styles.divider} />
 
       <View style={styles.cardFooter}>
-        <View>
+        <View style={styles.feeBlock}>
           <ThemedText style={styles.feeLabel}>{job.feeLabel ?? 'Service Fee'}</ThemedText>
           {job.priceMissing ? (
             <TouchableOpacity onPress={() => router.push('/rates-and-hosting' as any)} accessibilityRole="link">
@@ -2294,10 +2294,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     marginBottom: 12,
   },
+  // The price and the buttons side by side when they fit; when they don't (a
+  // long price breakdown, "$60.00/hour × 23.5 hours = $1,410.00", or larger
+  // text) the buttons go on a line of their own, at the right — they used to
+  // be pushed off the card's edge, "Apply Job" cut in half.
   cardFooter: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
+    rowGap: 12,
+    columnGap: 12,
+  },
+  feeBlock: {
+    flexShrink: 1,
+    minWidth: 0,
   },
   feeLabel: {
     fontSize: 11,
@@ -2312,13 +2323,14 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.poppinsSemiBold,
     color: '#6B7280',
   },
-  // How their price is made up — "$15.00/hour × 5 hours = $75.00".
+  // How their price is made up — "$15.00/hour × 5 hours = $75.00". The whole
+  // width it needs: a long one puts the buttons on the line below (cardFooter)
+  // rather than breaking itself at "=" beside an empty space.
   feeDetail: {
     fontSize: 11,
     lineHeight: 16,
     fontFamily: Fonts.poppins,
     color: '#6B7280',
-    maxWidth: 190,
   },
   // Their rates don't cover this job yet: one tap to Rates & hosting.
   feeSetPrice: {
@@ -2331,6 +2343,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginLeft: 'auto',
+    flexShrink: 0,
   },
   detailsButton: {
     paddingHorizontal: 14,
