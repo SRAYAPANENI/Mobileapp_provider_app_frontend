@@ -28,6 +28,7 @@ import { Audio } from 'expo-av';
 import { isRatingSkipped } from '@/services/ratingReminders';
 import { CustomerRatingSheet } from '@/components/customer-rating-sheet';
 import { SkoFyApi, TokenStore, getFreshAccessToken } from '@/services/api';
+import { jobContactOpen } from '@/services/job-contact';
 // The call's audio — through our own media server (docs/CALL_RECORDING_DESIGN.md).
 import { CallMedia, CallMediaEnded } from '@/services/call/callMedia';
 import type { TransportEvent } from '@/services/call/mediaTransport';
@@ -83,9 +84,8 @@ interface ChatMessage {
 
 type CallState = 'idle' | 'connecting' | 'calling' | 'ringing' | 'connected' | 'ended';
 
-// Chat and calls are open only while the job is being done — the server
-// enforces the same rule (domain/job_contact.py). History stays readable.
-const CONTACT_OPEN_STATUSES = new Set(['ACCEPTED', 'INSPECTING', 'INVOICE_PENDING', 'IN_PROGRESS']);
+// Chat and calls are open only while the job is being done (services/job-contact.ts,
+// the same rule the server enforces). History stays readable.
 const CLOSED_TEXT = "This job is closed. Chat and calls are only available while a job is active.";
 
 /** What the caller sees when the other side didn't pick up. */
@@ -240,7 +240,7 @@ export default function ChatScreen() {
   // null until loaded — treated as open meanwhile (the server still checks).
   const [jobStatus, setJobStatus] = useState<string | null>(null);
   const [serverContactOpen, setServerContactOpen] = useState<boolean | null>(null);
-  const contactOpen = jobStatus === null || (serverContactOpen ?? CONTACT_OPEN_STATUSES.has(jobStatus));
+  const contactOpen = jobStatus === null || (serverContactOpen ?? jobContactOpen(jobStatus));
   const refreshJobStatusRef = useRef<() => void>(() => {});
   // "Ringing…" on the caller's screen once the other phone reports it.
   const [remoteRinging, setRemoteRinging] = useState(false);

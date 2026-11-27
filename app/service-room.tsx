@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { showDialog } from '@/components/alert-host';
 import { ArrivalPanel, WaitResult } from '@/components/arrival-panel';
 import { CareJobPanel } from '@/components/care-job-panel';
+import { CustomerRatingSheet } from '@/components/customer-rating-sheet';
 import { DeliveryHandover } from '@/components/delivery-handover';
 import { ExtraWorkPanel } from '@/components/extra-work-panel';
 import { InspectionReportForm } from '@/components/inspection-report-form';
@@ -26,6 +27,7 @@ import { useBottomInset } from '@/hooks/use-bottom-inset';
 import { useServiceRoomJob, type RoomJob } from '@/hooks/use-service-room-job';
 import { SkoFyApi } from '@/services/api';
 import { callTapAllowed } from '@/services/callManager';
+import { jobContactOpen } from '@/services/job-contact';
 import { currentPosition } from '@/services/live-position';
 import { isBuyForMe, isDelivered, isDelivery, isOrderCollected, navigationTarget, purchaseSummary } from '@/services/pickupDelivery';
 import { emitRoomEvent, markServiceRoomOpen } from '@/services/service-room';
@@ -71,6 +73,20 @@ export default function ServiceRoomScreen() {
   };
   // Over while open (cancelled, completed by the customer): it was said; close.
   useEffect(() => { if (ended) close(); }, [ended]);
+
+  // Opened on a job that's already done (an old notification): whether the
+  // customer's rating is still owed — the job's own rating status.
+  const [ratingOwed, setRatingOwed] = useState(false);
+  const [rating, setRating] = useState(false);
+  const doneOnOpen = !active && !ended && detail?.status === 'COMPLETED';
+  useEffect(() => {
+    if (!jobId || !doneOnOpen) return;
+    let cancelled = false;
+    SkoFyApi.ratingStatus.get(jobId)
+      .then((s) => { if (!cancelled) setRatingOwed(!s.provider_has_rated); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [jobId, doneOnOpen]);
 
   /** The job is over here; the dashboard updates its lock. */
   const leave = (event: 'completed' | 'ended') => {
@@ -147,12 +163,18 @@ export default function ServiceRoomScreen() {
           <ThemedText style={st.goneText}>
             {failed && !detail
               ? "This job couldn't be loaded. Check your connection and try again."
-              : "This job isn't active anymore — it may have already been completed or cancelled."}
+              : goneMessage(detail?.status)}
           </ThemedText>
           <View style={{ flexDirection: 'row', gap: 12 }}>
             {failed && !detail && (
               <TouchableOpacity style={[st.goneBtn, st.goneBtnQuiet]} onPress={retry}>
                 <ThemedText style={st.goneBtnText}>Try again</ThemedText>
+              </TouchableOpacity>
+            )}
+            {/* Done and not rated yet (an old notification lands here): rate the customer. */}
+            {ratingOwed && job && (
+              <TouchableOpacity style={[st.goneBtn, st.goneBtnQuiet]} onPress={() => setRating(true)}>
+                <ThemedText style={st.goneBtnText} numberOfLines={1}>Rate {job.customer.name.split(' ')[0] || 'customer'}</ThemedText>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={st.goneBtn} onPress={close}>
@@ -197,12 +219,17 @@ export default function ServiceRoomScreen() {
                 <ThemedText style={st.ratingText}>New customer</ThemedText>
               )}
             </View>
-            <TouchableOpacity style={[st.contactBtn, { backgroundColor: '#DCFCE7' }]} onPress={() => openChat(true)} accessibilityLabel="Call the customer">
-              <Phone size={18} color="#16A34A" />
-            </TouchableOpacity>
-            <TouchableOpacity style={[st.contactBtn, { backgroundColor: '#DBEAFE' }]} onPress={() => openChat(false)} accessibilityLabel="Message the customer">
-              <MessageSquare size={18} color="#2563EB" />
-            </TouchableOpacity>
+            {/* Not once the job is over: both would only lead to "this job is closed". */}
+            {(typeof detail?.contact_open === 'boolean' ? detail.contact_open : jobContactOpen(job.status)) && (
+              <>
+                <TouchableOpacity style={[st.contactBtn, { backgroundColor: '#DCFCE7' }]} onPress={() => openChat(true)} accessibilityLabel="Call the customer">
+                  <Phone size={18} color="#16A34A" />
+                </TouchableOpacity>
+                <TouchableOpacity style={[st.contactBtn, { backgroundColor: '#DBEAFE' }]} onPress={() => openChat(false)} accessibilityLabel="Message the customer">
+                  <MessageSquare size={18} color="#2563EB" />
+                </TouchableOpacity>
+              </>
+            )}
           </View>
 
           {isDelivery(job) && <TripCard detail={detail} />}
@@ -249,10 +276,23 @@ export default function ServiceRoomScreen() {
             // Disputed: off the active list, under review.
             onFiled={() => { setReportOpen(false); leave('ended'); }}
           />
+          <CustomerRatingSheet
+            jobId={rating ? jobId : null}
+            customerName={job?.customer.name}
+            onClose={(submitted) => { setRating(false); if (submitted) setRatingOwed(false); }}
+          />
         </>
       )}
     </View>
   );
+}
+
+/** Opened on a job that's over: what happened to it, said plainly. */
+function goneMessage(status: string | undefined): string {
+  if (status === 'COMPLETED') return 'This job is done.';
+  if (status === 'CANCELLED') return 'This job was cancelled.';
+  if (status === 'EXPIRED') return 'This job expired before it started.';
+  return "This job isn't active anymore — it may have already been completed or cancelled.";
 }
 
 // ── The banner: where the job is, said truly ────────────────────────────────
