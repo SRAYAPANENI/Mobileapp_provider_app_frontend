@@ -13,6 +13,7 @@ import { padBottom, useBottomInset } from '@/hooks/use-bottom-inset';
 import { usePullRefresh } from '@/hooks/use-pull-refresh';
 import { ProviderRate, SkoFyApi } from '@/services/api';
 import { useAppConfig } from '@/services/queries/app-config';
+import { SEVERAL_SKILLS_NOTE } from '@/services/several-skills';
 import { qk } from '@/services/queries/keys';
 import { MySkill, useHosting, useMySkills, useProviderProfile } from '@/services/queries/provider';
 import { useQueryClient } from '@tanstack/react-query';
@@ -181,6 +182,7 @@ export default function RatesAndHostingScreen() {
           {empty && byQuote.length === 0 && (
             <ThemedText style={rs.muted}>No skills priced by the hour or the visit yet.</ThemedText>
           )}
+          {section.data.length > 1 && <ThemedText style={rs.hint}>{SEVERAL_SKILLS_NOTE.skills}</ThemedText>}
           {byQuote.length > 0 && (
             <View style={rs.card}>
               <ThemedText style={rs.cardTitle}>Priced by quote</ThemedText>
@@ -212,6 +214,7 @@ export default function RatesAndHostingScreen() {
     return (
       <View style={s.footer}>
         {empty && <ThemedText style={rs.muted}>No skills priced by the night or the day yet.</ThemedText>}
+        {section.data.length > 1 && <ThemedText style={rs.hint}>{SEVERAL_SKILLS_NOTE.stays}</ThemedText>}
         {hostingOn && <HostingCard hosting={hosting.data!} verified={verified} notify={notify} />}
       </View>
     );

@@ -3,6 +3,7 @@ import { OfflineScreen, useOfflinePage } from '@/components/offline-gate';
 import { AppAlert } from '@/components/app-alert';
 import { showDialog } from '@/components/alert-host';
 import { purchaseSummary } from '@/services/pickupDelivery';
+import { severalSkillsRule } from '@/services/several-skills';
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, ScrollView, TouchableOpacity, SafeAreaView, Platform, Dimensions, ActivityIndicator, Pressable, LayoutChangeEvent } from 'react-native';
 import { Text } from '@/components/scaled-text';
@@ -468,6 +469,8 @@ export default function JobDetailsScreen() {
             atBusiness: !!j.host_address || j.host_lat != null,
             // How their price is made up ("$6 + 4.2 mi × $1.50").
             priceText: (j.my_price ?? j.upfront_price)?.text ?? null,
+            // Several skills: how they add up (services/several-skills.ts).
+            pricingRule: severalSkillsRule(j.all_skills_priced, requiredSkills.length, j.shape?.pricing_unit),
             // What the customer needs the provider to have ("fenced yard", "has a van").
             needs: (j.shape?.requirements ?? []) as string[],
             applicantCount: j.applicant_count ?? 0,
@@ -874,6 +877,9 @@ export default function JobDetailsScreen() {
           )}
           {!!job.priceText && (
             <FactRow icon={<Receipt size={18} color="#16A34A" />} label="Your price" value={job.priceText} styles={styles} />
+          )}
+          {!!job.pricingRule && (
+            <FactRow icon={<ListChecks size={18} color="#16A34A" />} label="Several skills" value={job.pricingRule} styles={styles} />
           )}
           {!job.upfront && !!job.fee && (
             <FactRow icon={<Receipt size={18} color="#16A34A" />} label="How it’s paid" value={job.fee} styles={styles} />

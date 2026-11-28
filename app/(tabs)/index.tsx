@@ -9,6 +9,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 import { onRoomEvent, openServiceRoom as openServiceRoom_ } from '@/services/service-room';
 import { setLivePosition } from '@/services/live-position';
+import { severalSkillsRule } from '@/services/several-skills';
 import { useRefreshOnFocus } from '@/hooks/use-refresh-on-focus';
 import { useActiveJobs, useInboundFeed, useInboundSkillCounts } from '@/services/queries/jobs';
 import { NoInternetState } from '@/components/no-internet-state';
@@ -377,6 +378,9 @@ const JobFeedCard = React.memo(function JobFeedCard({
           {!!job.feeDetail && (
             <ThemedText style={styles.feeDetail} numberOfLines={2}>{job.feeDetail}</ThemedText>
           )}
+          {!!job.pricingRule && (
+            <ThemedText style={styles.feeRule}>{job.pricingRule}</ThemedText>
+          )}
         </View>
         <View style={styles.cardActions}>
           <TouchableOpacity
@@ -578,6 +582,8 @@ export default function DashboardScreen() {
         // own price from your rates (server: RateCardService.prices_for_feed),
         // or "Set your price" when your rates don't cover it yet.
         ...feedPrice(j),
+        // Several skills: how they add up (services/several-skills.ts).
+        pricingRule: severalSkillsRule(j.all_skills_priced, (j.skills ?? []).length, j.shape?.pricing_unit),
         skills: j.skills ?? [],
         skillRefs: j.skill_refs ?? [],
         // Previously hardcoded false — ProviderJobView didn't carry images
@@ -2331,6 +2337,14 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontFamily: Fonts.poppins,
     color: '#6B7280',
+  },
+  // How several skills pay — under the breakdown, a little quieter than it.
+  feeRule: {
+    fontSize: 11,
+    lineHeight: 16,
+    fontFamily: Fonts.poppins,
+    color: '#9CA3AF',
+    marginTop: 2,
   },
   // Their rates don't cover this job yet: one tap to Rates & hosting.
   feeSetPrice: {
